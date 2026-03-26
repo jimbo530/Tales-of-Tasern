@@ -7,7 +7,7 @@ const geist = Geist({ variable: "--font-geist", subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: "Tales of Tasern",
-  description: "Champions of the Realm — on-chain backed NFT game on Base",
+  description: "Champions of the Realm — on-chain backed NFT card battle game on Base | memefortrees.com",
 };
 
 export default function RootLayout({
