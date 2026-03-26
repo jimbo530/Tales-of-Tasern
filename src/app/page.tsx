@@ -129,6 +129,21 @@ export default function Home() {
           {!battleMode ? (
             <>
               <button
+                onClick={() => {
+                  const url = window.location.href;
+                  const text = "Tales of Tasern — NFT card battle game powered by real impact assets on Base ⚔️🏰";
+                  if (navigator.share) {
+                    navigator.share({ title: "Tales of Tasern", text, url });
+                  } else {
+                    navigator.clipboard.writeText(`${text}\n${url}`);
+                    alert("Link copied!");
+                  }
+                }}
+                className="px-4 py-2 rounded text-xs font-bold uppercase tracking-widest"
+                style={{ background: 'rgba(139,92,246,0.2)', color: 'rgba(167,139,250,0.9)', border: '1px solid rgba(139,92,246,0.4)' }}>
+                📤 Share
+              </button>
+              <button
                 onClick={() => setCardBattleMode(true)}
                 className="px-4 py-2 rounded text-xs font-bold uppercase tracking-widest"
                 style={{ background: 'rgba(201,168,76,0.2)', color: '#f0d070', border: '1px solid rgba(201,168,76,0.4)' }}>

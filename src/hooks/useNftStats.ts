@@ -60,13 +60,22 @@ type McResult = { status: string; result?: unknown };
 
 /** Split a large multicall into sequential chunks to avoid gas/size limits */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function chunkedMulticall(client: any, contracts: any[], chunkSize = 400): Promise<McResult[]> {
+async function chunkedMulticall(client: any, contracts: any[], chunkSize = 100): Promise<McResult[]> {
   if (contracts.length === 0) return [];
   const results: McResult[] = [];
   for (let i = 0; i < contracts.length; i += chunkSize) {
     const chunk = contracts.slice(i, i + chunkSize);
-    const r = await client.multicall({ contracts: chunk, allowFailure: true });
-    results.push(...r);
+    try {
+      const r = await client.multicall({ contracts: chunk, allowFailure: true });
+      results.push(...r);
+    } catch {
+      // If entire chunk fails, push failures for each contract
+      results.push(...chunk.map(() => ({ status: "failure" as const, result: undefined })));
+    }
+    // Small delay between chunks to avoid rate limiting
+    if (i + chunkSize < contracts.length) {
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
   }
   return results;
 }
@@ -217,10 +226,16 @@ export function useNftStats() {
           baseLpBalanceResults,
           ownershipResults,
         ] = await Promise.all([
-          baseClient!.multicall({ contracts: basePairStaticCalls, allowFailure: true }),
-          chunkedMulticall(baseClient!, baseLpBalanceCalls),
-          baseClient!.multicall({ contracts: ownershipCalls, allowFailure: true }),
+          chunkedMulticall(baseClient!, basePairStaticCalls, 50),
+          chunkedMulticall(baseClient!, baseLpBalanceCalls, 100),
+          chunkedMulticall(baseClient!, ownershipCalls, 100),
         ]);
+
+        // Debug: check if Base LP data loaded
+        const basePairsOk = basePairStaticResults.filter(r => r.status === "success").length;
+        const baseLpOk = baseLpBalanceResults.filter(r => r.status === "success").length;
+        const baseLpNonZero = baseLpBalanceResults.filter(r => r.status === "success" && (r.result as bigint) > 0n).length;
+        console.log(`[ToT] Base multicalls — pairStatic: ${basePairsOk}/${basePairStaticCalls.length} ok, lpBal: ${baseLpOk}/${baseLpBalanceCalls.length} ok, ${baseLpNonZero} non-zero`);
 
         // Polygon LP calls — chunked and wrapped in catch
         let polyPairStaticResults: McResult[] = [];
