@@ -57,6 +57,7 @@ export type GameAction =
   | { type: "DRAG_PLACE_CARD"; handIndex: number; col: number; row: number }
   | { type: "END_PLACEMENT" }
   | { type: "PASS_DONE" }
+  | { type: "AI_TURN" }
   | { type: "RESOLVE_COMBAT" }
   | { type: "RESET" };
 

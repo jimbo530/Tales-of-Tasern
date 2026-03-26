@@ -161,9 +161,29 @@ function BoardRow({ board, playerBoard, row, phase, selectedHandIndex, onSlotCli
 }
 
 export function CardBattleBoard({ characters, onExit }: Props) {
-  const { state, initGame, selectCard, placeCard, dragPlaceCard, endPlacement, passDone, resolveCombat, reset } = useCardBattle();
+  const { state, initGame, selectCard, placeCard, dragPlaceCard, endPlacement, passDone, aiTurn, resolveCombat, reset } = useCardBattle();
   const logRef = useRef<HTMLDivElement>(null);
   const [chosenCards, setChosenCards] = useState<NftCharacter[]>([]);
+
+  // Auto-play AI when it's P2's turn (passToP2 → AI plays → combat)
+  useEffect(() => {
+    if (state.phase === "passToP2") {
+      // Small delay so player sees the transition
+      const t = setTimeout(() => {
+        passDone(); // advance to p2Place
+        setTimeout(() => aiTurn(), 500); // AI places a card → combat
+      }, 800);
+      return () => clearTimeout(t);
+    }
+  }, [state.phase, passDone, aiTurn]);
+
+  // Auto-resolve combat after a brief pause
+  useEffect(() => {
+    if (state.phase === "combat") {
+      const t = setTimeout(() => resolveCombat(), 1000);
+      return () => clearTimeout(t);
+    }
+  }, [state.phase, resolveCombat]);
 
   useEffect(() => {
     if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
@@ -276,17 +296,15 @@ export function CardBattleBoard({ characters, onExit }: Props) {
     );
   }
 
-  // Pass-to-P2 interstitial
-  if (state.phase === "passToP2") {
+  // AI thinking interstitial
+  if (state.phase === "passToP2" || state.phase === "p2Place") {
     return (
-      <div className="flex flex-col items-center justify-center gap-6 mt-24">
-        <h2 className="text-xl font-black tracking-widest text-gold-shimmer uppercase">Pass to Player 2</h2>
-        <p className="text-sm" style={{ color: 'rgba(201,168,76,0.5)' }}>Player 1 has placed their cards.</p>
-        <button onClick={passDone}
-          className="px-8 py-3 rounded-lg text-sm font-black uppercase tracking-widest"
-          style={{ background: 'rgba(201,168,76,0.3)', color: '#f0d070', border: '1px solid rgba(201,168,76,0.6)' }}>
-          Ready — Show Player 2's Hand
-        </button>
+      <div className="flex flex-col items-center justify-center gap-4 mt-24">
+        <div className="w-8 h-8 border-2 rounded-full animate-spin"
+          style={{ borderColor: 'rgba(220,38,38,0.3)', borderTopColor: 'rgba(220,38,38,0.9)' }} />
+        <h2 className="text-lg font-black tracking-widest uppercase" style={{ color: 'rgba(220,38,38,0.7)' }}>
+          Opponent is thinking...
+        </h2>
       </div>
     );
   }
@@ -339,7 +357,7 @@ export function CardBattleBoard({ characters, onExit }: Props) {
         </button>
         <div className="text-center">
           <span className="text-xs tracking-widest uppercase font-bold" style={{ color: 'rgba(201,168,76,0.8)', fontFamily: "'Cinzel Decorative', 'Cinzel', serif" }}>
-            {isCombat ? "⚔️ Battle! ⚔️" : `🏰 Turn ${state.turnNumber} — Player ${activePlayer} 🏰`}
+            {isCombat ? "⚔️ Battle! ⚔️" : `🏰 Turn ${state.turnNumber} — Your Move 🏰`}
           </span>
         </div>
         <div className="text-xs font-mono" style={{ color: 'rgba(201,168,76,0.4)' }}>
@@ -394,10 +412,10 @@ export function CardBattleBoard({ characters, onExit }: Props) {
       <FortressBar hp={state.players[0].fortressHp} player={1} />
 
       {/* Active hand */}
-      {(state.phase === "p1Place" || state.phase === "p2Place") && (
+      {state.phase === "p1Place" && (
         <div className="w-full">
           <p className="text-center text-xs tracking-widest uppercase mb-2" style={{ color: 'rgba(201,168,76,0.5)' }}>
-            🃏 Player {activePlayer}'s Arsenal — {activeHand.length} cards
+            🃏 Your Arsenal — {activeHand.length} cards
           </p>
           <div className="flex gap-2 justify-center flex-wrap">
             {activeHand.map((char, i) => (
@@ -420,14 +438,14 @@ export function CardBattleBoard({ characters, onExit }: Props) {
         </div>
       )}
 
-      {/* Combat phase button */}
+      {/* Combat resolving indicator */}
       {isCombat && (
-        <div className="flex justify-center">
-          <button onClick={resolveCombat}
-            className="px-8 py-3 rounded-lg text-sm font-black uppercase tracking-widest animate-pulse"
-            style={{ background: 'rgba(220,38,38,0.4)', color: '#fca5a5', border: '1px solid rgba(220,38,38,0.6)', boxShadow: '0 0 15px rgba(220,38,38,0.2)' }}>
-            ⚔️ Charge! ⚔️
-          </button>
+        <div className="flex items-center justify-center gap-3">
+          <div className="w-5 h-5 border-2 rounded-full animate-spin"
+            style={{ borderColor: 'rgba(220,38,38,0.3)', borderTopColor: 'rgba(220,38,38,0.9)' }} />
+          <span className="text-sm font-black tracking-widest uppercase" style={{ color: 'rgba(220,38,38,0.7)' }}>
+            ⚔️ Combat! ⚔️
+          </span>
         </div>
       )}
 

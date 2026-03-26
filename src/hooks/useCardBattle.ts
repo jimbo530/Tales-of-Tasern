@@ -119,6 +119,68 @@ function reducer(state: GameState, action: GameAction): GameState {
       return { ...state, phase: "p2Place" };
     }
 
+    case "AI_TURN": {
+      // Simple AI: pick the strongest card from hand, place in best slot
+      const ai = state.players[1];
+      if (ai.hand.length === 0) {
+        // No cards — skip to combat
+        return { ...state, phase: "combat", selectedHandIndex: null };
+      }
+
+      // Pick the card with highest total stats
+      let bestIdx = 0;
+      let bestScore = -1;
+      ai.hand.forEach((card, i) => {
+        const s = card.stats;
+        const score = s.attack + s.mAtk + s.fAtk + s.hp + s.def + s.mDef + s.mana;
+        if (score > bestScore) { bestScore = score; bestIdx = i; }
+      });
+
+      // Find best slot: prefer front row in columns with no front card, then empty columns, then back row
+      let targetCol = -1;
+      let targetRow = -1;
+
+      // Priority 1: front row in column that has a back row card but no front (support the back)
+      for (let c = 0; c < BOARD_COLS; c++) {
+        if (ai.board[c][1] === null && ai.board[c][0] !== null) { targetCol = c; targetRow = 1; break; }
+      }
+      // Priority 2: front row in empty column
+      if (targetCol === -1) {
+        for (let c = 0; c < BOARD_COLS; c++) {
+          if (ai.board[c][1] === null && ai.board[c][0] === null) { targetCol = c; targetRow = 1; break; }
+        }
+      }
+      // Priority 3: back row behind an existing front card
+      if (targetCol === -1) {
+        for (let c = 0; c < BOARD_COLS; c++) {
+          if (ai.board[c][0] === null && ai.board[c][1] !== null) { targetCol = c; targetRow = 0; break; }
+        }
+      }
+      // Priority 4: any empty slot
+      if (targetCol === -1) {
+        for (let c = 0; c < BOARD_COLS; c++) {
+          for (let r = 1; r >= 0; r--) {
+            if (ai.board[c][r] === null) { targetCol = c; targetRow = r; break; }
+          }
+          if (targetCol !== -1) break;
+        }
+      }
+
+      if (targetCol === -1) {
+        // Board full — skip to combat
+        return { ...state, phase: "combat", selectedHandIndex: null };
+      }
+
+      const card = ai.hand[bestIdx];
+      const newHand = ai.hand.filter((_, i) => i !== bestIdx);
+      const newBoard = ai.board.map((col, c) =>
+        col.map((slot, r) => (c === targetCol && r === targetRow ? makeBoardCard(card) : slot))
+      );
+      const newPlayers = [...state.players] as [PlayerState, PlayerState];
+      newPlayers[1] = { ...ai, hand: newHand, board: newBoard };
+      return { ...state, players: newPlayers, selectedHandIndex: null, phase: "combat" };
+    }
+
     case "RESOLVE_COMBAT": {
       const [p1, p2] = state.players;
       const result = resolveCombat(p1.board, p2.board);
@@ -197,5 +259,9 @@ export function useCardBattle() {
     dispatch({ type: "RESET" });
   }, []);
 
-  return { state, initGame, selectCard, placeCard, dragPlaceCard, endPlacement, passDone, resolveCombat: resolveCombatAction, reset };
+  const aiTurn = useCallback(() => {
+    dispatch({ type: "AI_TURN" });
+  }, []);
+
+  return { state, initGame, selectCard, placeCard, dragPlaceCard, endPlacement, passDone, aiTurn, resolveCombat: resolveCombatAction, reset };
 }

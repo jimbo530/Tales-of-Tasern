@@ -14,6 +14,7 @@ import { useNftStats, type NftCharacter } from "@/hooks/useNftStats";
 import { CharacterCard } from "@/components/CharacterCard";
 import { BattleView } from "@/components/BattleView";
 import { CardBattleBoard } from "@/components/CardBattleBoard";
+import { Matchmaking } from "@/components/Matchmaking";
 
 const PAGE_SIZE = 10;
 
@@ -30,6 +31,7 @@ export default function Home() {
   const [selectedFighters, setSelectedFighters] = useState<NftCharacter[]>([]);
   const [activeBattle, setActiveBattle] = useState<{ fighter1: NftCharacter; fighter2: NftCharacter } | null>(null);
   const [cardBattleMode, setCardBattleMode] = useState(false);
+  const [matchmakingMode, setMatchmakingMode] = useState(false);
 
   const sorted = [...characters].sort((a, b) => (b.owned ? 1 : 0) - (a.owned ? 1 : 0));
   const totalPages = Math.ceil(sorted.length / PAGE_SIZE);
@@ -64,6 +66,33 @@ export default function Home() {
     setActiveBattle(null);
     setBattleMode(false);
     setSelectedFighters([]);
+  }
+
+  // Online matchmaking
+  if (matchmakingMode) {
+    return (
+      <main className="flex flex-col min-h-screen fantasy-bg">
+        <header className="header-fantasy flex items-center justify-between px-6 py-4">
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">⚔️</span>
+            <div>
+              <h1 className="text-xl font-black tracking-widest text-gold-shimmer uppercase">Tales of Tasern</h1>
+              <p className="text-xs tracking-widest uppercase" style={{ color: 'rgba(201,168,76,0.5)' }}>Online Arena</p>
+            </div>
+          </div>
+        </header>
+        <div className="flex-1 px-4 py-6">
+          <Matchmaking
+            characters={characters}
+            onMatchFound={(lobby, myDeck, opponentDeck, isHost) => {
+              setMatchmakingMode(false);
+              setCardBattleMode(true);
+            }}
+            onBack={() => setMatchmakingMode(false)}
+          />
+        </div>
+      </main>
+    );
   }
 
   // Card battle mode
@@ -144,10 +173,16 @@ export default function Home() {
                 📤 Share
               </button>
               <button
+                onClick={() => setMatchmakingMode(true)}
+                className="px-4 py-2 rounded text-xs font-bold uppercase tracking-widest"
+                style={{ background: 'rgba(220,38,38,0.2)', color: '#fca5a5', border: '1px solid rgba(220,38,38,0.4)' }}>
+                🌐 Online
+              </button>
+              <button
                 onClick={() => setCardBattleMode(true)}
                 className="px-4 py-2 rounded text-xs font-bold uppercase tracking-widest"
                 style={{ background: 'rgba(201,168,76,0.2)', color: '#f0d070', border: '1px solid rgba(201,168,76,0.4)' }}>
-                🃏 Card Battle
+                🃏 Local
               </button>
               <button
                 onClick={() => { setBattleMode(true); setSelectedFighters([]); }}
