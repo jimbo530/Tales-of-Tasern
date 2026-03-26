@@ -1,0 +1,240 @@
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;900&family=Cinzel+Decorative:wght@400;700&display=swap');
+@import "tailwindcss";
+
+:root {
+  --background: #0a0608;
+  --foreground: #e8d5b0;
+  --gold: #c9a84c;
+  --gold-light: #f0d070;
+  --crimson: #8b1a1a;
+  --arcane: #6b21a8;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: 'Cinzel', Georgia, serif;
+}
+
+/* Parchment scrolled background */
+.fantasy-bg {
+  background-color: #0a0608;
+  background-image:
+    radial-gradient(ellipse at 20% 50%, rgba(139, 26, 26, 0.08) 0%, transparent 60%),
+    radial-gradient(ellipse at 80% 20%, rgba(107, 33, 168, 0.08) 0%, transparent 60%),
+    radial-gradient(ellipse at 50% 90%, rgba(201, 168, 76, 0.05) 0%, transparent 50%);
+}
+
+/* Gold shimmer text */
+.text-gold {
+  color: var(--gold);
+}
+
+.text-gold-shimmer {
+  background: linear-gradient(90deg, #c9a84c, #f0d070, #c9a84c);
+  background-size: 200%;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: shimmer 3s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+/* Runic border glow */
+.card-fantasy {
+  border: 1px solid rgba(201, 168, 76, 0.3);
+  box-shadow:
+    0 0 20px rgba(201, 168, 76, 0.05),
+    inset 0 0 20px rgba(0, 0, 0, 0.5);
+  transition: border-color 0.3s, box-shadow 0.3s;
+}
+
+.card-fantasy:hover {
+  border-color: rgba(201, 168, 76, 0.7);
+  box-shadow:
+    0 0 30px rgba(201, 168, 76, 0.15),
+    inset 0 0 20px rgba(0, 0, 0, 0.5);
+}
+
+/* Header border */
+.header-fantasy {
+  border-bottom: 1px solid rgba(201, 168, 76, 0.25);
+  background: linear-gradient(180deg, rgba(10,6,8,0.98) 0%, rgba(10,6,8,0.92) 100%);
+  backdrop-filter: blur(8px);
+}
+
+/* Divider ornament */
+.divider-rune::before,
+.divider-rune::after {
+  content: '◆';
+  color: rgba(201, 168, 76, 0.4);
+  margin: 0 0.5rem;
+  font-size: 0.5rem;
+}
+
+/* ── Battle Arena ───────────────────────────────────────── */
+.battle-arena {
+  background:
+    radial-gradient(ellipse at 50% 0%, rgba(139,26,26,0.12) 0%, transparent 50%),
+    radial-gradient(ellipse at 50% 100%, rgba(201,168,76,0.08) 0%, transparent 50%),
+    linear-gradient(180deg, #0d0810 0%, #0a0608 50%, #0d0810 100%);
+  border: 1px solid rgba(201,168,76,0.2);
+  position: relative;
+  overflow: hidden;
+}
+
+.battle-arena::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    repeating-linear-gradient(0deg, transparent, transparent 98px, rgba(201,168,76,0.03) 98px, rgba(201,168,76,0.03) 100px),
+    repeating-linear-gradient(90deg, transparent, transparent 98px, rgba(201,168,76,0.03) 98px, rgba(201,168,76,0.03) 100px);
+  pointer-events: none;
+}
+
+/* Fortress bar with castle towers */
+.fortress-bar {
+  position: relative;
+  padding: 0.5rem 0.75rem;
+  background: rgba(0,0,0,0.3);
+  border: 1px solid rgba(201,168,76,0.15);
+  border-radius: 0.5rem;
+}
+
+.fortress-bar::before,
+.fortress-bar::after {
+  font-size: 1rem;
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  opacity: 0.4;
+}
+
+.fortress-bar::before {
+  content: '🏰';
+  left: -1.5rem;
+}
+
+.fortress-bar::after {
+  content: '🏰';
+  right: -1.5rem;
+}
+
+/* Board slot medieval border */
+.board-slot {
+  position: relative;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(201,168,76,0.12);
+  border-radius: 0.5rem;
+}
+
+.board-slot::before {
+  content: '';
+  position: absolute;
+  inset: 2px;
+  border: 1px solid rgba(201,168,76,0.06);
+  border-radius: 0.375rem;
+  pointer-events: none;
+}
+
+/* Column lane markers */
+.lane-marker {
+  position: relative;
+  text-align: center;
+  font-family: 'Cinzel Decorative', 'Cinzel', serif;
+  font-size: 0.55rem;
+  color: rgba(201,168,76,0.2);
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+
+/* Battle log scroll with parchment style */
+.battle-log {
+  background:
+    linear-gradient(180deg, rgba(20,15,10,0.9) 0%, rgba(15,10,8,0.95) 100%);
+  border: 1px solid rgba(201,168,76,0.15);
+  border-radius: 0.5rem;
+  position: relative;
+}
+
+.battle-log::before {
+  content: '📜 Combat Log';
+  display: block;
+  text-align: center;
+  font-family: 'Cinzel Decorative', 'Cinzel', serif;
+  font-size: 0.6rem;
+  color: rgba(201,168,76,0.4);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  padding: 0.25rem 0;
+  border-bottom: 1px solid rgba(201,168,76,0.1);
+  margin-bottom: 0.25rem;
+}
+
+/* Sword clash animation */
+@keyframes swordClash {
+  0%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(-15deg) scale(1.2); }
+  50% { transform: rotate(15deg) scale(1.3); }
+  75% { transform: rotate(-5deg) scale(1.1); }
+}
+
+.sword-clash {
+  animation: swordClash 0.6s ease-in-out;
+}
+
+/* Damage flash */
+@keyframes damageFlash {
+  0%, 100% { box-shadow: none; }
+  50% { box-shadow: inset 0 0 20px rgba(220,38,38,0.4); }
+}
+
+.damage-flash {
+  animation: damageFlash 0.4s ease-out;
+}
+
+/* Fortress crumble when low HP */
+@keyframes fortressCrumble {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-2px); }
+  75% { transform: translateX(2px); }
+}
+
+.fortress-critical {
+  animation: fortressCrumble 0.3s ease-in-out infinite;
+}
+
+/* Hand card hover lift */
+.hand-card-hover:hover {
+  transform: translateY(-6px) scale(1.03);
+  box-shadow: 0 8px 25px rgba(201,168,76,0.2);
+}
+
+/* Medieval corner ornaments for the arena */
+.medieval-corners::before,
+.medieval-corners::after {
+  content: '⚜';
+  position: absolute;
+  font-size: 1.2rem;
+  color: rgba(201,168,76,0.15);
+}
+
+.medieval-corners::before {
+  top: 0.5rem;
+  left: 0.5rem;
+}
+
+.medieval-corners::after {
+  bottom: 0.5rem;
+  right: 0.5rem;
+}
