@@ -234,7 +234,7 @@ export function CharacterCard({ character, maxStats, selectable, selected, onSel
           </div>
 
           {/* Stats */}
-          <div className="px-3 pb-3 flex flex-col gap-1.5 flex-shrink-0">
+          <div className="px-3 pb-3 flex flex-col gap-1.5 flex-shrink-0 overflow-auto" style={{ maxHeight: '200px' }}>
             {stats.charMultiplier > 0 && (
               <div className="flex items-center justify-between px-2 py-0.5 rounded"
                 style={{ background: 'rgba(139,92,246,0.1)', border: '1px solid rgba(139,92,246,0.25)' }}>
