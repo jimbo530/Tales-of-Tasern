@@ -93,12 +93,13 @@ export function CharacterCard({ character, maxStats, selectable, selected, onSel
   // Mana folds into MDEF if no special, otherwise it's an offensive stat shown in battle only
   const mDef = (stats.mDef * multiplier * magicMult) + (hasSpecial ? 0 : mana);
 
-  const [imageUrl, setImageUrl] = useState<string | null>(null);
-  const [imgFailed, setImgFailed] = useState(false);
+  // Use pre-resolved imageUrl from API, fall back to client-side resolution
+  const [imageUrl, setImageUrl] = useState<string | null>(character.imageUrl ?? null);
+  const [imgFailed, setImgFailed] = useState(!character.imageUrl && !metadataUri);
   const [flipped, setFlipped] = useState(false);
 
   useEffect(() => {
-    console.log("[card]", name, "metadataUri:", metadataUri);
+    if (character.imageUrl) { setImageUrl(character.imageUrl); setImgFailed(false); return; }
     if (!metadataUri) { setImgFailed(true); return; }
     let cancelled = false;
     resolveImage(toHttp(metadataUri)).then((url) => {
