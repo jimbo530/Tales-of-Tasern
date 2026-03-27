@@ -58,10 +58,13 @@ function pickTarget(enemies: CombatUnit[]): CombatUnit | null {
   return alive.reduce((a, b) => a.currentHp < b.currentHp ? a : b);
 }
 
-/** Resolve one full round of combat — all alive units attack once */
+/** Resolve one full round of combat
+ * @param targetMap — maps player index to enemy index they want to attack. If not provided, auto-targets lowest HP.
+ */
 export function resolveRound(
   players: CombatUnit[],
   enemies: CombatUnit[],
+  targetMap?: Map<number, number>,
 ): { events: CombatEvent[]; players: CombatUnit[]; enemies: CombatUnit[] } {
   const events: CombatEvent[] = [];
   let p = players.map(u => ({ ...u, burns: [...u.burns] }));
@@ -85,7 +88,15 @@ export function resolveRound(
   // Players attack enemies
   for (const player of p) {
     if (player.currentHp <= 0) continue;
-    const target = pickTarget(e);
+    // Use player-chosen target if available, fall back to auto-target
+    let target: CombatUnit | null = null;
+    if (targetMap && targetMap.has(player.index)) {
+      const chosenIdx = targetMap.get(player.index)!;
+      const chosen = e[chosenIdx];
+      target = chosen && chosen.currentHp > 0 ? chosen : pickTarget(e);
+    } else {
+      target = pickTarget(e);
+    }
     if (!target) break;
 
     const dmg = calcDamage(player.stats, target.stats);

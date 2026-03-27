@@ -30,6 +30,7 @@ export default function RootLayout({
     <html lang="en" className={`${geist.variable} h-full antialiased`}>
       <head>
         <link rel="apple-touch-icon" href="/icon-192.svg" />
+        <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-2325097516629464" crossOrigin="anonymous"></script>
       </head>
       <body className="min-h-full flex flex-col bg-gray-950 text-white">
         <Providers>{children}</Providers>
