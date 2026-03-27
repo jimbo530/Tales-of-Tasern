@@ -15,6 +15,7 @@ import { CharacterCard } from "@/components/CharacterCard";
 import { BattleView } from "@/components/BattleView";
 import { CardBattleBoard } from "@/components/CardBattleBoard";
 import { Matchmaking } from "@/components/Matchmaking";
+import { AdventureMode } from "@/components/AdventureMode";
 
 const PAGE_SIZE = 10;
 
@@ -32,6 +33,7 @@ export default function Home() {
   const [activeBattle, setActiveBattle] = useState<{ fighter1: NftCharacter; fighter2: NftCharacter } | null>(null);
   const [cardBattleMode, setCardBattleMode] = useState(false);
   const [matchmakingMode, setMatchmakingMode] = useState(false);
+  const [adventureMode, setAdventureMode] = useState(false);
 
   const sorted = [...characters].sort((a, b) => (b.owned ? 1 : 0) - (a.owned ? 1 : 0));
   const totalPages = Math.ceil(sorted.length / PAGE_SIZE);
@@ -66,6 +68,26 @@ export default function Home() {
     setActiveBattle(null);
     setBattleMode(false);
     setSelectedFighters([]);
+  }
+
+  // Adventure mode
+  if (adventureMode) {
+    return (
+      <main className="flex flex-col min-h-screen fantasy-bg">
+        <header className="header-fantasy flex items-center justify-between px-6 py-4">
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">⚔️</span>
+            <div>
+              <h1 className="text-xl font-black tracking-widest text-gold-shimmer uppercase">Tales of Tasern</h1>
+              <p className="text-xs tracking-widest uppercase" style={{ color: 'rgba(201,168,76,0.5)' }}>Adventure</p>
+            </div>
+          </div>
+        </header>
+        <div className="flex-1 px-4 py-6">
+          <AdventureMode characters={characters} onExit={() => setAdventureMode(false)} />
+        </div>
+      </main>
+    );
   }
 
   // Online matchmaking
@@ -171,6 +193,12 @@ export default function Home() {
                 className="px-4 py-2 rounded text-xs font-bold uppercase tracking-widest"
                 style={{ background: 'rgba(139,92,246,0.2)', color: 'rgba(167,139,250,0.9)', border: '1px solid rgba(139,92,246,0.4)' }}>
                 📤 Share
+              </button>
+              <button
+                onClick={() => setAdventureMode(true)}
+                className="px-4 py-2 rounded text-xs font-bold uppercase tracking-widest"
+                style={{ background: 'rgba(34,197,94,0.2)', color: 'rgba(74,222,128,0.9)', border: '1px solid rgba(34,197,94,0.4)' }}>
+                📖 Adventure
               </button>
               <button
                 onClick={() => setMatchmakingMode(true)}

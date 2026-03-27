@@ -11,6 +11,8 @@ import { BOARD_COLS, FORTRESS_HP } from "@/lib/cardBattleTypes";
 type Props = {
   characters: NftCharacter[];
   onExit: () => void;
+  onBattleEnd?: (won: boolean) => void;
+  encounterStrength?: number;
 };
 
 function FortressBar({ hp, player }: { hp: number; player: PlayerID }) {
@@ -160,7 +162,7 @@ function BoardRow({ board, playerBoard, row, phase, selectedHandIndex, onSlotCli
   );
 }
 
-export function CardBattleBoard({ characters, onExit }: Props) {
+export function CardBattleBoard({ characters, onExit, onBattleEnd, encounterStrength }: Props) {
   const { state, initGame, selectCard, placeCard, dragPlaceCard, endPlacement, passDone, aiTurn, resolveCombat, reset } = useCardBattle();
   const logRef = useRef<HTMLDivElement>(null);
   const [chosenCards, setChosenCards] = useState<NftCharacter[]>([]);
@@ -328,11 +330,19 @@ export function CardBattleBoard({ characters, onExit }: Props) {
           </p>
         </div>
         <div className="flex gap-4">
-          <button onClick={() => { reset(); startGame(); }}
-            className="px-6 py-2 rounded text-sm font-bold uppercase tracking-widest"
-            style={{ background: 'rgba(201,168,76,0.2)', color: '#f0d070', border: '1px solid rgba(201,168,76,0.4)' }}>
-            Rematch
-          </button>
+          {onBattleEnd ? (
+            <button onClick={() => onBattleEnd(state.winner === 1)}
+              className="px-6 py-2 rounded text-sm font-bold uppercase tracking-widest"
+              style={{ background: 'rgba(201,168,76,0.2)', color: '#f0d070', border: '1px solid rgba(201,168,76,0.4)' }}>
+              {state.winner === 1 ? "Claim Reward →" : "Try Again"}
+            </button>
+          ) : (
+            <button onClick={() => { reset(); startGame(); }}
+              className="px-6 py-2 rounded text-sm font-bold uppercase tracking-widest"
+              style={{ background: 'rgba(201,168,76,0.2)', color: '#f0d070', border: '1px solid rgba(201,168,76,0.4)' }}>
+              Rematch
+            </button>
+          )}
           <button onClick={onExit}
             className="px-6 py-2 rounded text-sm font-bold uppercase tracking-widest"
             style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(201,168,76,0.6)', border: '1px solid rgba(201,168,76,0.15)' }}>
