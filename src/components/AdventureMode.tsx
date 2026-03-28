@@ -253,7 +253,12 @@ function PartyPicker({ characters, onStart, onBack }: {
   const pool = owned.length > 0 ? owned : characters;
   const partyAddrs = new Set(party.map(c => c.contractAddress));
 
-  function toggle(card: NftCharacter) {
+  const [heroSearch, setHeroSearch] = useState("");
+  const filteredPool = heroSearch.trim()
+    ? pool.filter(c => c.name.toLowerCase().includes(heroSearch.toLowerCase()) || c.contractAddress.toLowerCase().includes(heroSearch.toLowerCase()))
+    : pool;
+
+  function selectHero(card: NftCharacter) {
     if (partyAddrs.has(card.contractAddress)) {
       setParty(prev => prev.filter(c => c.contractAddress !== card.contractAddress));
     } else if (party.length < 4) {
@@ -263,29 +268,45 @@ function PartyPicker({ characters, onStart, onBack }: {
 
   return (
     <div className="flex flex-col items-center gap-4 max-w-2xl mx-auto">
-      <h3 className="text-lg font-black tracking-widest text-gold-shimmer uppercase">Choose Your Party</h3>
+      <h3 className="text-lg font-black tracking-widest text-gold-shimmer uppercase">Choose Your Heroes</h3>
       <p className="text-sm" style={{ color: 'rgba(201,168,76,0.5)' }}>
-        Select 1-4 heroes. More heroes = harder enemies.
+        Each player picks 1 hero they own. Up to 4 player co-op. More players = harder enemies.
       </p>
-      <div className="flex items-center gap-3">
-        <span className="text-sm font-bold" style={{ color: 'rgba(201,168,76,0.8)' }}>
-          {party.length}/4 selected
-        </span>
-        {party.length > 0 && (
-          <button onClick={() => onStart(party)}
-            className="px-6 py-2 rounded text-sm font-black uppercase tracking-widest"
-            style={{ background: 'rgba(220,38,38,0.3)', color: '#fca5a5', border: '1px solid rgba(220,38,38,0.5)' }}>
-            ⚔️ Begin!
-          </button>
-        )}
-      </div>
+      {party.length > 0 && (
+        <div className="flex flex-col items-center gap-2">
+          <div className="flex gap-2 flex-wrap justify-center">
+            {party.map((p, i) => (
+              <span key={p.contractAddress} className="px-2 py-1 rounded text-xs font-bold"
+                style={{ background: 'rgba(201,168,76,0.15)', color: '#f0d070', border: '1px solid rgba(201,168,76,0.3)' }}>
+                P{i + 1}: {p.name}
+                <button onClick={(e) => { e.stopPropagation(); setParty(prev => prev.filter(c => c.contractAddress !== p.contractAddress)); }}
+                  className="ml-1" style={{ color: 'rgba(220,38,38,0.7)' }}>✕</button>
+              </span>
+            ))}
+          </div>
+          <div className="flex gap-3">
+            <button onClick={() => onStart(party)}
+              className="px-6 py-2 rounded text-sm font-black uppercase tracking-widest"
+              style={{ background: 'rgba(220,38,38,0.3)', color: '#fca5a5', border: '1px solid rgba(220,38,38,0.5)' }}>
+              ⚔️ Begin {party.length > 1 ? `(${party.length} players)` : ""}!
+            </button>
+          </div>
+        </div>
+      )}
+      <input
+        value={heroSearch}
+        onChange={(e) => setHeroSearch(e.target.value)}
+        placeholder="Search your heroes..."
+        className="w-full max-w-md px-4 py-2 rounded-lg text-sm text-center"
+        style={{ background: 'rgba(255,255,255,0.05)', color: '#f0d070', border: '1px solid rgba(201,168,76,0.3)', outline: 'none' }}
+      />
       <div className="w-full max-h-[50vh] overflow-y-auto rounded-lg p-3"
         style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(201,168,76,0.1)' }}>
         <div className="grid grid-cols-5 sm:grid-cols-6 md:grid-cols-8 gap-2">
-          {pool.map((card) => {
+          {filteredPool.map((card) => {
             const picked = partyAddrs.has(card.contractAddress);
             return (
-              <div key={card.contractAddress} onClick={() => toggle(card)}
+              <div key={card.contractAddress} onClick={() => selectHero(card)}
                 className="rounded-lg p-1.5 cursor-pointer transition-all text-center"
                 style={{
                   background: picked ? 'rgba(201,168,76,0.2)' : 'rgba(255,255,255,0.03)',

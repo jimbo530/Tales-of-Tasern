@@ -76,3 +76,51 @@ export function subscribeLobby(lobbyId: string, callback: (lobby: Lobby) => void
 export async function updateLobbyStatus(lobbyId: string, status: Lobby["status"]) {
   await supabase.from("lobbies").update({ status }).eq("id", lobbyId);
 }
+
+// ── Marketplace Listings ────────────────────────────────────────────────────
+
+export type Listing = {
+  id: string;
+  nft_address: string;
+  seller_address: string;
+  listed_at: string;
+  status: "active" | "sold" | "cancelled";
+};
+
+export async function listNft(nftAddress: string, sellerAddress: string): Promise<Listing | null> {
+  // Check not already listed
+  const { data: existing } = await supabase
+    .from("listings")
+    .select("*")
+    .eq("nft_address", nftAddress.toLowerCase())
+    .eq("status", "active")
+    .single();
+  if (existing) return existing as Listing;
+
+  const { data, error } = await supabase
+    .from("listings")
+    .insert({ nft_address: nftAddress.toLowerCase(), seller_address: sellerAddress.toLowerCase(), status: "active" })
+    .select()
+    .single();
+  if (error) { console.error("listNft:", error); return null; }
+  return data as Listing;
+}
+
+export async function cancelListing(nftAddress: string, sellerAddress: string): Promise<boolean> {
+  const { error } = await supabase
+    .from("listings")
+    .update({ status: "cancelled" })
+    .eq("nft_address", nftAddress.toLowerCase())
+    .eq("seller_address", sellerAddress.toLowerCase())
+    .eq("status", "active");
+  return !error;
+}
+
+export async function getActiveListings(): Promise<Listing[]> {
+  const { data } = await supabase
+    .from("listings")
+    .select("*")
+    .eq("status", "active")
+    .order("listed_at", { ascending: false });
+  return (data ?? []) as Listing[];
+}

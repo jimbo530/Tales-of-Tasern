@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html>
+<head><title>Configure PowerUp Contract</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.1/ethers.umd.min.js"></script>
+</head>
+<body style="background:#0a0608;color:#e8d5b0;font-family:Georgia;padding:30px;text-align:center;max-width:700px;margin:0 auto;">
+<h1 style="color:#c9a84c;">Configure PowerUp Contract</h1>
+<p>Contract: 0xd19AA71D0AFC87240DCD55c92b8946875618fDD0</p>
+
+<button id="btn1" onclick="doConfig()" style="background:#c9a84c;color:#0a0608;border:none;padding:15px 35px;font-size:16px;font-weight:bold;border-radius:8px;cursor:pointer;">
+Connect & Configure (9 transactions)
+</button>
+<p id="status" style="margin:20px;color:#888;">Click above to start</p>
+
+<script>
+const CONTRACT = "0xd19AA71D0AFC87240DCD55c92b8946875618fDD0";
+const ABI = [{"inputs":[{"internalType":"address","name":"_router","type":"address"}],"stateMutability":"nonpayable","type":"constructor"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"nftContract","type":"address"},{"indexed":true,"internalType":"address","name":"player","type":"address"},{"indexed":false,"internalType":"uint8","name":"statId","type":"uint8"},{"indexed":false,"internalType":"uint256","name":"liquidity","type":"uint256"},{"indexed":false,"internalType":"address","name":"paymentToken","type":"address"},{"indexed":false,"internalType":"uint256","name":"paymentAmount","type":"uint256"}],"name":"PoweredUp","type":"event"},{"inputs":[{"internalType":"address","name":"","type":"address"}],"name":"acceptedTokens","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"owner","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"nftContract","type":"address"},{"internalType":"uint8","name":"statId","type":"uint8"}],"name":"powerUpWithETH","outputs":[],"stateMutability":"payable","type":"function"},{"inputs":[{"internalType":"address","name":"nftContract","type":"address"},{"internalType":"uint8","name":"statId","type":"uint8"},{"internalType":"address","name":"paymentToken","type":"address"},{"internalType":"uint256","name":"amount","type":"uint256"}],"name":"powerUpWithToken","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"token","type":"address"},{"internalType":"uint256","name":"amount","type":"uint256"}],"name":"rescue","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"rescueETH","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"router","outputs":[{"internalType":"contract IUniswapV2Router02","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"token","type":"address"},{"internalType":"bool","name":"accepted","type":"bool"}],"name":"setAcceptedToken","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint8","name":"statId","type":"uint8"},{"internalType":"address","name":"tokenA","type":"address"},{"internalType":"address","name":"tokenB","type":"address"},{"internalType":"address","name":"lpPair","type":"address"}],"name":"setStatPair","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint8","name":"","type":"uint8"}],"name":"statPairs","outputs":[{"internalType":"address","name":"tokenA","type":"address"},{"internalType":"address","name":"tokenB","type":"address"},{"internalType":"address","name":"lpPair","type":"address"}],"stateMutability":"view","type":"function"},{"stateMutability":"payable","type":"receive"}];
+const BASE_CHAIN = "0x2105";
+
+async function doConfig() {
+  const s = document.getElementById('status');
+  if (!window.ethereum) { s.innerHTML='<span style="color:#f87171">No wallet found</span>'; return; }
+
+  try {
+    s.innerText = 'Connecting wallet...';
+    await window.ethereum.request({ method: 'eth_requestAccounts' });
+    try { await window.ethereum.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: BASE_CHAIN }] }); } catch(e) {}
+
+    const provider = new ethers.BrowserProvider(window.ethereum);
+    const signer = await provider.getSigner();
+    const addr = await signer.getAddress();
+    s.innerHTML = 'Connected: '+addr.slice(0,6)+'...'+addr.slice(-4)+'<br><br>';
+
+    const c = new ethers.Contract(CONTRACT, ABI, signer);
+
+    // Check owner
+    try {
+      const owner = await c.owner();
+      s.innerHTML += 'Contract owner: '+owner+'<br>';
+      if (owner.toLowerCase() !== addr.toLowerCase()) {
+        s.innerHTML += '<span style="color:#f87171">WARNING: You are not the owner! Use the wallet that deployed the contract.</span>';
+        return;
+      }
+    } catch(e) { s.innerHTML += '<span style="color:#f87171">Could not read owner: '+e.message+'</span>'; return; }
+
+    const txs = [
+      { name:'ATK stat pair', fn:()=>c.setStatPair(0,"0x4f604735c1cf31399c6e711d5962b2b3e0225ad3","0x8fb87d13b40b1a67b22ed1a17e2835fe7e3a9ba3","0x74af6fd7f98d4ec868156e7d33c6db81fc222e84") },
+      { name:'HP stat pair', fn:()=>c.setStatPair(1,"0x8fb87d13b40b1a67b22ed1a17e2835fe7e3a9ba3","0x4f604735c1cf31399c6e711d5962b2b3e0225ad3","0x74af6fd7f98d4ec868156e7d33c6db81fc222e84") },
+      { name:'Multiplier stat pair', fn:()=>c.setStatPair(7,"0x20b048fa035d5763685d695e66adf62c5d9f5055","0x833589fcd6edb6e08f4c7c32d4f71b54bda02913","0x7af66828a7d1041db8b183f1356797788979eaf8") },
+      { name:'Accept USDGLO', fn:()=>c.setAcceptedToken("0x4f604735c1cf31399c6e711d5962b2b3e0225ad3",true) },
+      { name:'Accept USDC', fn:()=>c.setAcceptedToken("0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",true) },
+      { name:'Accept MfT', fn:()=>c.setAcceptedToken("0x8fb87d13b40b1a67b22ed1a17e2835fe7e3a9ba3",true) },
+      { name:'Accept CHAR', fn:()=>c.setAcceptedToken("0x20b048fa035d5763685d695e66adf62c5d9f5055",true) },
+      { name:'Accept EGP', fn:()=>c.setAcceptedToken("0xc1ba76771bbf0dd841347630e57c793f9d5accee",true) },
+      { name:'Accept BURGERS', fn:()=>c.setAcceptedToken("0x06a05043eb2c1691b19c2c13219db9212269ddc5",true) },
+    ];
+
+    for (let i=0; i<txs.length; i++) {
+      s.innerHTML += '<br>Tx '+(i+1)+'/9: '+txs[i].name+'... confirm in wallet';
+      try {
+        const tx = await txs[i].fn();
+        s.innerHTML += ' sent...';
+        await tx.wait();
+        s.innerHTML += ' <span style="color:#4ade80">confirmed ✓</span>';
+      } catch(e) {
+        s.innerHTML += ' <span style="color:#f87171">FAILED: '+e.message+'</span>';
+        return;
+      }
+    }
+    s.innerHTML += '<br><br><span style="color:#4ade80;font-size:18px;">All 9 transactions confirmed! Contract is ready! ✓</span>';
+  } catch(e) { s.innerHTML = '<span style="color:#f87171">'+e.message+'</span>'; }
+}
+</script>
+</body></html>

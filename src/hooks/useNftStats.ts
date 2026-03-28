@@ -3,9 +3,7 @@
 import { useState, useEffect } from "react";
 import { useAccount, usePublicClient } from "wagmi";
 import { base, polygon } from "viem/chains";
-import { ERC1155_ABI } from "@/lib/contracts";
-import { GAME_NFTS } from "@/lib/contracts";
-import { ERC721_ABI } from "@/lib/contracts";
+import { ERC1155_ABI, GAME_NFTS } from "@/lib/contracts";
 
 const TOKEN_ID = BigInt(1);
 
@@ -23,7 +21,7 @@ export type NftCharacter = {
   metadataUri?: string;
   imageUrl?: string;
   owned: boolean;
-  stats: { attack: number; mAtk: number; fAtk: number; def: number; mDef: number; hp: number; charMultiplier: number; magicMultiplier: number; mana: number };
+  stats: { attack: number; mAtk: number; fAtk: number; def: number; mDef: number; hp: number; healing: number; charMultiplier: number; magicMultiplier: number; mana: number };
   tokenAmounts: TokenAmount[];
   usdBacking: number;
   forSale: boolean;
@@ -36,6 +34,7 @@ export function useNftStats() {
 
   const [characters, setCharacters] = useState<NftCharacter[]>([]);
   const [assetTotals, setAssetTotals] = useState<{ traditional: number; game: number; impact: number }>({ traditional: 0, game: 0, impact: 0 });
+  const [tokenBreakdown, setTokenBreakdown] = useState<{ symbol: string; usd: number; category: string }[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -89,29 +88,26 @@ export function useNftStats() {
 
         setCharacters(characters);
         if (data.assetTotals) setAssetTotals(data.assetTotals);
+        if (data.tokenBreakdown) setTokenBreakdown(data.tokenBreakdown);
 
-        // Background: resolve URIs for visible cards (updates incrementally)
-        if (baseClient) {
-          const URI_BATCH = 20;
-          for (let i = 0; i < GAME_NFTS.length; i += URI_BATCH) {
-            const batch = GAME_NFTS.slice(i, i + URI_BATCH);
-            const uriResults = await Promise.all(batch.map(async (nft) => {
-              try { const r = await baseClient.readContract({ address: nft.contractAddress, abi: ERC1155_ABI, functionName: "uri", args: [TOKEN_ID] }); const raw = (r as string).replace("{id}", TOKEN_ID.toString()); if (raw) return { uri: raw, chain: "base" as const }; } catch {}
-              try { const r = await baseClient.readContract({ address: nft.contractAddress, abi: ERC721_ABI, functionName: "tokenURI", args: [TOKEN_ID] }); if (r) return { uri: r as string, chain: "base" as const }; } catch {}
-              if (polygonClient) {
-                try { const r = await polygonClient.readContract({ address: nft.contractAddress, abi: ERC1155_ABI, functionName: "uri", args: [TOKEN_ID] }); const raw = (r as string).replace("{id}", TOKEN_ID.toString()); if (raw) return { uri: raw, chain: "polygon" as const }; } catch {}
-                try { const r = await polygonClient.readContract({ address: nft.contractAddress, abi: ERC721_ABI, functionName: "tokenURI", args: [TOKEN_ID] }); if (r) return { uri: r as string, chain: "polygon" as const }; } catch {}
-              }
-              return null;
+        // Fetch cached images from API (7-day cache, much faster than per-card IPFS)
+        try {
+          const imgRes = await fetch("/api/images");
+          if (imgRes.ok) {
+            const imgData: Record<string, { metadataUri?: string; imageUrl?: string; chain?: string }> = await imgRes.json();
+            setCharacters(prev => prev.map(char => {
+              const img = imgData[char.contractAddress.toLowerCase()];
+              if (!img) return char;
+              return {
+                ...char,
+                metadataUri: img.metadataUri ?? char.metadataUri,
+                imageUrl: img.imageUrl ?? char.imageUrl,
+                chain: (img.chain as "base" | "polygon") ?? char.chain,
+              };
             }));
-            setCharacters(prev => prev.map((char, idx) => {
-              if (idx < i || idx >= i + URI_BATCH) return char;
-              const result = uriResults[idx - i];
-              if (!result) return char;
-              return { ...char, metadataUri: result.uri, chain: result.chain };
-            }));
+            console.log("[ToT] Loaded cached images for", Object.keys(imgData).length, "NFTs");
           }
-        }
+        } catch { /* images optional, cards still show without them */ }
       } catch (err) {
         console.error("[ToT]", err);
         setError(String(err));
@@ -123,5 +119,5 @@ export function useNftStats() {
     load();
   }, [address, isConnected, baseClient]);
 
-  return { characters, assetTotals, loading, error };
+  return { characters, assetTotals, tokenBreakdown, loading, error };
 }

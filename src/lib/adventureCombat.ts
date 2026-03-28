@@ -30,6 +30,7 @@ export function makeUnit(char: NftCharacter, isPlayer: boolean, index: number, s
     def: stats.def * strengthMult,
     mDef: stats.mDef * strengthMult,
     hp: stats.hp * strengthMult,
+    healing: stats.healing * strengthMult,
     mana: stats.mana * strengthMult,
   };
   return { character: char, stats: s, currentHp: s.hp, maxHp: s.hp, isPlayer, index, burns: [] };
@@ -70,7 +71,38 @@ export function resolveRound(
   let p = players.map(u => ({ ...u, burns: [...u.burns] }));
   let e = enemies.map(u => ({ ...u, burns: [...u.burns] }));
 
-  // Resolve burns first
+  // Resolve healing first — heal self, overflow to adjacent allies
+  for (const units of [p, e]) {
+    for (let i = 0; i < units.length; i++) {
+      const u = units[i];
+      if (u.currentHp <= 0 || !u.stats.healing || u.stats.healing <= 0) continue;
+      let healAmt = u.stats.healing;
+      const missing = u.maxHp - u.currentHp;
+      if (missing > 0) {
+        const selfHeal = Math.min(healAmt, missing);
+        u.currentHp += selfHeal;
+        healAmt -= selfHeal;
+        if (selfHeal > 0) events.push({ attackerName: "💚 Heal", targetName: u.character.name, damage: selfHeal, damageType: "physical", targetHpAfter: u.currentHp, killed: false });
+      }
+      // Overflow to adjacent allies
+      if (healAmt > 0) {
+        for (const adj of [i - 1, i + 1]) {
+          if (adj < 0 || adj >= units.length || healAmt <= 0) continue;
+          const ally = units[adj];
+          if (ally.currentHp <= 0) continue;
+          const allyMissing = ally.maxHp - ally.currentHp;
+          if (allyMissing > 0) {
+            const adjHeal = Math.min(healAmt, allyMissing);
+            ally.currentHp += adjHeal;
+            healAmt -= adjHeal;
+            if (adjHeal > 0) events.push({ attackerName: "💚 Heal", targetName: ally.character.name, damage: adjHeal, damageType: "physical", targetHpAfter: ally.currentHp, killed: false });
+          }
+        }
+      }
+    }
+  }
+
+  // Resolve burns
   for (const units of [p, e]) {
     for (let i = 0; i < units.length; i++) {
       const u = units[i];

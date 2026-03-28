@@ -7,6 +7,7 @@ export type ComputedStats = {
   def: number;
   mDef: number;
   hp: number;
+  healing: number;
   mana: number;
 };
 
@@ -20,6 +21,7 @@ export function computeStats(raw: NftCharacter["stats"]): ComputedStats {
     def:    raw.def * multiplier,
     mDef:   raw.mDef * multiplier * magicMult,
     hp:     raw.hp * multiplier,
+    healing: (raw.healing ?? 0) * multiplier,
     mana:   raw.mana * multiplier,
   };
 }

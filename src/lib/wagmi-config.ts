@@ -9,7 +9,7 @@ export const wagmiConfig = createConfig({
     injected(),
   ],
   transports: {
-    [base.id]: http(),
+    [base.id]: http(process.env.NEXT_PUBLIC_ALCHEMY_BASE_URL),
     [polygon.id]: http(),
   },
   ssr: true,

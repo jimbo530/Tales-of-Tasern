@@ -8,25 +8,30 @@ export const maxDuration = 300; // Allow up to 5 minutes for RPC calls
 
 const TOKEN_ID = BigInt(1);
 
-const baseClient = createPublicClient({ chain: base, transport: http() });
-const polygonClient = createPublicClient({ chain: polygon, transport: http() });
+const baseClient = createPublicClient({ chain: base, transport: http(process.env.NEXT_PUBLIC_ALCHEMY_BASE_URL ?? undefined) });
+const polygonClient = createPublicClient({ chain: polygon, transport: http() }); // Public RPC — works better than shared Alchemy rate limit
 
 type McResult = { status: string; result?: unknown };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function chunkedMulticall(client: any, contracts: any[], chunkSize = 80): Promise<McResult[]> {
+async function chunkedMulticall(client: any, contracts: any[], chunkSize = 50): Promise<McResult[]> {
   if (contracts.length === 0) return [];
   const results: McResult[] = [];
   for (let i = 0; i < contracts.length; i += chunkSize) {
     const chunk = contracts.slice(i, i + chunkSize);
-    try {
-      const r = await client.multicall({ contracts: chunk as any, allowFailure: true });
-      results.push(...(r as McResult[]));
-    } catch {
-      results.push(...chunk.map(() => ({ status: "failure" as const, result: undefined })));
+    // Retry up to 3 times on failure (this only runs once per day)
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const r = await client.multicall({ contracts: chunk as any, allowFailure: true });
+        results.push(...(r as McResult[]));
+        break;
+      } catch {
+        if (attempt === 2) results.push(...chunk.map(() => ({ status: "failure" as const, result: undefined })));
+        else await new Promise(resolve => setTimeout(resolve, 1000)); // wait before retry
+      }
     }
     if (i + chunkSize < contracts.length) {
-      await new Promise(resolve => setTimeout(resolve, 300));
+      await new Promise(resolve => setTimeout(resolve, 500)); // 500ms between chunks
     }
   }
   return results;
@@ -62,6 +67,10 @@ const TOKEN_SYMBOLS: Record<string, string> = {
   "0xdfffe0c33b4011c4218acd61e68a62a32eaf9a8b": "REGEN",
   "0x06a05043eb2c1691b19c2c13219db9212269ddc5": "BURGERS",
   "0x861f57e96678c6cb586f07dd8d3b0c34ce19dd82": "LTK",
+  "0x146642d83879257ac9ed35074b1c3714b7e8f452": "AU24T",
+  "0xef6ab48ef8dfe984fab0d5c4cd6aff2e54dfda14": "CRISP-M",
+  "0xdb7a2607b71134d0b09c27ca2d77b495e4dbeedb": "GRANTS",
+  "0xd75dfa972c6136f1c594fec1945302f885e1ab29": "TGN",
 };
 
 const TOKEN_CATEGORY: Record<string, "traditional" | "game" | "impact"> = {
@@ -82,9 +91,9 @@ const TOKEN_CATEGORY: Record<string, "traditional" | "game" | "impact"> = {
   "0x75c0a194cd8b4f01d5ed58be5b7c5b61a9c69d0a": "game", // DHG
   "0xddc330761761751e005333208889bfe36c6e6760": "game", // LGP
   "0x8fb87d13b40b1a67b22ed1a17e2835fe7e3a9ba3": "game", // MfT
-  "0x20b048fa035d5763685d695e66adf62c5d9f5055": "game", // CHAR
-  "0x11f98a36acbd04ca3aa3a149d402affbd5966fe7": "game", // CCC
-  "0xdfffe0c33b4011c4218acd61e68a62a32eaf9a8b": "game", // REGEN
+  "0x20b048fa035d5763685d695e66adf62c5d9f5055": "impact", // CHAR
+  "0x11f98a36acbd04ca3aa3a149d402affbd5966fe7": "impact", // CCC
+  "0xdfffe0c33b4011c4218acd61e68a62a32eaf9a8b": "impact", // REGEN
   // Impact
   "0xd838290e877e0188a4a44700463419ed96c16107": "impact", // NCT — carbon
   "0x2f800db0fdb5223b3c3f354886d907a671414a7f": "impact", // BCT — carbon
@@ -94,7 +103,11 @@ const TOKEN_CATEGORY: Record<string, "traditional" | "game" | "impact"> = {
   "0xcb2a97776c87433050e0ddf9de0f53ead661dab4": "impact", // TB01 — cigarette butt cleanup
   "0xace15da4edcec83c98b1fc196fc1dc44c5c429ca": "impact", // JCGWR — tokenized trees
   "0x861f57e96678c6cb586f07dd8d3b0c34ce19dd82": "impact", // LTK — litter cleanup
+  "0x146642d83879257ac9ed35074b1c3714b7e8f452": "impact", // AU24T — tokenized trees
+  "0xef6ab48ef8dfe984fab0d5c4cd6aff2e54dfda14": "impact", // CRISP-M — multiplier
+  "0xdb7a2607b71134d0b09c27ca2d77b495e4dbeedb": "impact", // Grant Wizard — mana
   "0x06a05043eb2c1691b19c2c13219db9212269ddc5": "impact", // BURGERS — feeds people
+  "0xd75dfa972c6136f1c594fec1945302f885e1ab29": "impact", // TGN
   "0x72e4327f592e9cb09d5730a55d1d68de144af53c": "impact", // PR25 — kids in school
   "0xd84415c956f44b2300a2e56c5b898401913e9a29": "impact", // PR24 — kids in school
 };
@@ -128,33 +141,30 @@ export async function GET() {
       "0xcb8c8a116ac3e12d861c1b4bd0d859aceda25d3f": 80,
     };
 
-    const tokenStatScale: Record<string, number> = {
-      "0x8fb87d13b40b1a67b22ed1a17e2835fe7e3a9ba3": 1 / 1000000,
-      "0x11f98a36acbd04ca3aa3a149d402affbd5966fe7": 1 / 2200,
-      "0x06a05043eb2c1691b19c2c13219db9212269ddc5": 1 / 1000,
-      "0xdfffe0c33b4011c4218acd61e68a62a32eaf9a8b": 0.05,
-      "0x72e4327f592e9cb09d5730a55d1d68de144af53c": 1,
+    // UNIVERSAL STAT FORMULA: $0.01 = 1 stat point (except multipliers)
+    const POINTS_PER_DOLLAR = 100; // $0.01 = 1 primary stat point
+    const SECONDARY_PER_DOLLAR = 50; // $0.02 = 1 secondary stat point
+    const TERTIARY_PER_DOLLAR = 20;  // $0.05 = 1 tertiary stat point
+    const QUATERNARY_PER_DOLLAR = 10; // $0.10 = 1 quaternary stat point
+
+    // Secondary + tertiary + quaternary stats for the 8 game tokens (HP is primary)
+    const bonusStats: Record<string, { secondary: string; tertiary: string; quaternary: string }> = {
+      "0x4bf82cf0d6b2afc87367052b793097153c859d38": { secondary: "def",    tertiary: "attack", quaternary: "mana" },   // DDD
+      "0x64f6f111e9fdb753877f17f399b759de97379170": { secondary: "healing", tertiary: "mDef",   quaternary: "mana" },   // EGP(POL)
+      "0xccf37622e6b72352e7b410481dd4913563038b7c": { secondary: "attack", tertiary: "mAtk",   quaternary: "mana" },   // OGC
+      "0x8a088dceecbcf457762eb7c66f78fff27dc0c04a": { secondary: "attack", tertiary: "mAtk",   quaternary: "def" },    // PKT
+      "0xd7c584d40216576f1d8651eab8bef9de69497666": { secondary: "mana",   tertiary: "healing", quaternary: "def" },    // BTN
+      "0xe302672798d12e7f68c783db2c2d5e6b48ccf3ce": { secondary: "mDef",   tertiary: "attack", quaternary: "mAtk" },   // IGS
+      "0x75c0a194cd8b4f01d5ed58be5b7c5b61a9c69d0a": { secondary: "mAtk",  tertiary: "mDef",   quaternary: "def" },    // DHG
+      "0xddc330761761751e005333208889bfe36c6e6760": { secondary: "def",    tertiary: "mDef",   quaternary: "attack" }, // LGP
     };
 
-    type ExtraStat = { stat: "attack" | "hp" | "mana" | "def" | "mDef" | "mAtk"; scale: number };
-    const extraStats: Record<string, ExtraStat[]> = {
-      "0xccf37622e6b72352e7b410481dd4913563038b7c": [{ stat: "attack", scale: 1 / 1000 }],
-      "0x64f6f111e9fdb753877f17f399b759de97379170": [{ stat: "mana", scale: 1 / 1000 }],
-      "0xddc330761761751e005333208889bfe36c6e6760": [{ stat: "def", scale: 1 / 1000 }],
-      "0x75c0a194cd8b4f01d5ed58be5b7c5b61a9c69d0a": [{ stat: "mAtk", scale: 1 / 1000 }],
-      "0xd7c584d40216576f1d8651eab8bef9de69497666": [{ stat: "mana", scale: 1 / 1000 }],
-      "0xe302672798d12e7f68c783db2c2d5e6b48ccf3ce": [{ stat: "mDef", scale: 1 / 1000 }],
-      "0x4bf82cf0d6b2afc87367052b793097153c859d38": [{ stat: "def", scale: 1 / 1000 }],
-      "0x8a088dceecbcf457762eb7c66f78fff27dc0c04a": [{ stat: "attack", scale: 1 / 1000 }],
-      "0xdfffe0c33b4011c4218acd61e68a62a32eaf9a8b": [{ stat: "attack", scale: 0.05 }],
-      "0x8fb87d13b40b1a67b22ed1a17e2835fe7e3a9ba3": [
-        { stat: "attack", scale: 1 / 2000000 },
-        { stat: "def", scale: 1 / 2000000 },
-      ],
-      "0x4f604735c1cf31399c6e711d5962b2b3e0225ad3": [
-        { stat: "hp", scale: 1 },
-        { stat: "def", scale: 1 },
-      ],
+    // Multipliers keep original scaling (not USD-based — they multiply other stats)
+    const multiplierScale: Record<string, number> = {
+      "0x20b048fa035d5763685d695e66adf62c5d9f5055": 1,        // CHAR: 1:1
+      "0x11f98a36acbd04ca3aa3a149d402affbd5966fe7": 1 / 2200, // CCC: 2200 = 1 multiplier
+      "0x72e4327f592e9cb09d5730a55d1d68de144af53c": 1,        // PR25: 1:1 magic multiplier
+      "0xef6ab48ef8dfe984fab0d5c4cd6aff2e54dfda14": 0.5,     // CRISP-M: 2 tokens = 1 multiplier point
     };
 
     const tokenPriceConfig: Record<string, { price: number; decimals: number }> = {
@@ -232,6 +242,31 @@ export async function GET() {
       polyLpBalanceResults = polyResults[1];
     } catch { /* polygon optional */ }
 
+    // Retry failed Polygon LP balances — find chunks that returned all failures and retry them
+    if (polyLpBalanceResults.length > 0) {
+      const polyPairCount = KNOWN_LP_PAIRS.polygon.length;
+      for (let nftIdx = 0; nftIdx < GAME_NFTS.length; nftIdx++) {
+        const start = nftIdx * polyPairCount;
+        const nftResults = polyLpBalanceResults.slice(start, start + polyPairCount);
+        const allFailed = nftResults.every(r => r.status !== "success");
+        if (allFailed && polyPairCount > 0) {
+          // This NFT got no Polygon data — retry just its calls
+          try {
+            const retryCalls = KNOWN_LP_PAIRS.polygon.map(pair => ({
+              address: pair, abi: V2_PAIR_ABI, functionName: "balanceOf" as const,
+              args: [GAME_NFTS[nftIdx].contractAddress] as [`0x${string}`],
+            }));
+            const retryResults = await chunkedMulticall(polygonClient, retryCalls, 30);
+            for (let j = 0; j < retryResults.length; j++) {
+              polyLpBalanceResults[start + j] = retryResults[j];
+            }
+          } catch { /* retry failed too */ }
+        }
+      }
+      const polySuccess = polyLpBalanceResults.filter(r => r.status === "success").length;
+      console.log("[API] Polygon LP after retries:", polySuccess, "/", polyLpBalanceResults.length, "successful");
+    }
+
     // Parse pair infos
     type PairInfo = { address: `0x${string}`; token0: string; token1: string; totalSupply: bigint; reserve0: bigint; reserve1: bigint };
     function parsePairInfos(pairs: `0x${string}`[], results: McResult[]): PairInfo[] {
@@ -264,6 +299,12 @@ export async function GET() {
     tokenUsdPrices[USDC_BASE] = 1;
     tokenUsdPrices[USDT] = 1;
     const allPairInfos = [...basePairInfos, ...polyPairInfos];
+    // Debug: check Base pair data loaded
+    const basePairsWithReserves = basePairInfos.filter(p => p.reserve0 > 0n);
+    console.log("[API] Base pairs with reserves:", basePairsWithReserves.length, "/", basePairInfos.length);
+    const mftPair = basePairInfos.find(p => p.token1 === "0x8fb87d13b40b1a67b22ed1a17e2835fe7e3a9ba3" || p.token0 === "0x8fb87d13b40b1a67b22ed1a17e2835fe7e3a9ba3");
+    if (mftPair) console.log("[API] MfT pair found:", mftPair.token0.slice(0,10), "/", mftPair.token1.slice(0,10), "reserves:", Number(mftPair.reserve0), Number(mftPair.reserve1));
+    else console.log("[API] WARNING: No MfT pair found in basePairInfos!");
     // Also fetch reference-only pairs for pricing (not in game, just for price derivation)
     const pricingOnlyPairs: `0x${string}`[] = [
       "0x0fdef11a0b332b3e723d181c0cb5cb10ea52d135", // PKT/USDT
@@ -395,9 +436,9 @@ export async function GET() {
         }
       });
 
-      // Compute final stats from tokenMap
-      let attackUsd = 0, mAtkScaled = 0, fAtkScaled = 0, defScaled = 0, mDefScaled = 0;
-      let hpScaled = 0, magicScaled = 0, magicBoostScaled = 0, manaScaled = 0;
+      // Compute final stats: $0.01 = 1 stat point for ALL tokens
+      let attack = 0, mAtk = 0, fAtk = 0, def = 0, mDef = 0;
+      let hp = 0, healing = 0, charMultiplier = 0, magicBoost = 0, mana = 0;
 
       const tokenAmounts: { symbol: string; amount: number; stat: string }[] = [];
 
@@ -405,45 +446,56 @@ export async function GET() {
         if (amount === 0n) continue;
         const decimals = tokenPriceConfig[addr]?.decimals ?? 18;
         const rawAmount = parseFloat(formatUnits(amount, decimals));
-        const scale = tokenStatScale[addr] ?? 1;
+        const usdPrice = tokenUsdPrices[addr] ?? 0;
+        const points = rawAmount * usdPrice * POINTS_PER_DOLLAR;
         let stat: string;
 
         if (attackTokens.includes(addr) || polyAttackTokens.includes(addr)) {
-          stat = "attack";
-          const price = tokenPriceConfig[addr]?.price ?? 1;
-          attackUsd += rawAmount * price;
+          stat = "attack"; attack += points;
         } else if (polyMatkTokens.includes(addr)) {
-          stat = "mAtk"; mAtkScaled += rawAmount * scale;
+          stat = "mAtk"; mAtk += points;
         } else if (polyFatkTokens.includes(addr)) {
-          stat = "fAtk"; fAtkScaled += rawAmount * scale;
+          stat = "fAtk"; fAtk += points;
         } else if (magicTokens.includes(addr) || polyMagicTokens.includes(addr)) {
-          stat = "charMultiplier"; magicScaled += rawAmount * scale;
+          stat = "charMultiplier";
+          const mScale = multiplierScale[addr] ?? 1;
+          charMultiplier += rawAmount * mScale; // NOT USD-based — raw multiplier value
         } else if (polyMagicBoostTokens.includes(addr)) {
-          stat = "magicBoost"; magicBoostScaled += rawAmount * scale;
+          stat = "magicBoost";
+          const mScale = multiplierScale[addr] ?? 1;
+          magicBoost += rawAmount * mScale; // NOT USD-based — raw multiplier value
         } else if (polyDefTokens.includes(addr)) {
-          stat = "def"; defScaled += rawAmount * scale;
+          stat = "def"; def += points;
         } else if (polyMDefTokens.includes(addr)) {
-          stat = "mDef"; mDefScaled += rawAmount * scale;
+          stat = "mDef"; mDef += points;
         } else if (manaTokens.includes(addr)) {
-          stat = "mana"; manaScaled += rawAmount * scale;
+          stat = "mana"; mana += points;
         } else {
-          stat = "hp"; hpScaled += (rawAmount * scale) / 100;
+          stat = "hp"; hp += points;
         }
 
         tokenAmounts.push({ symbol: TOKEN_SYMBOLS[addr] ?? addr.slice(0, 8), amount: rawAmount, stat });
 
-        // Extra stats
-        const extras = extraStats[addr];
-        if (extras) {
-          for (const ex of extras) {
-            const v = rawAmount * ex.scale;
-            if (ex.stat === "attack") attackUsd += v * (tokenPriceConfig[addr]?.price ?? 1);
-            if (ex.stat === "hp") hpScaled += v / 100;
-            if (ex.stat === "mana") manaScaled += v;
-            if (ex.stat === "def") defScaled += v;
-            if (ex.stat === "mDef") mDefScaled += v;
-            if (ex.stat === "mAtk") mAtkScaled += v;
-          }
+        // Bonus stats for game tokens (secondary at $0.02/pt, tertiary at $0.05/pt)
+        const bonus = bonusStats[addr];
+        if (bonus && usdPrice > 0) {
+          const usdVal = rawAmount * usdPrice;
+          const sec = usdVal * SECONDARY_PER_DOLLAR;
+          const ter = usdVal * TERTIARY_PER_DOLLAR;
+          const applyBonus = (s: string, pts: number) => {
+            if (s === "attack") attack += pts;
+            else if (s === "mAtk") mAtk += pts;
+            else if (s === "fAtk") fAtk += pts;
+            else if (s === "def") def += pts;
+            else if (s === "mDef") mDef += pts;
+            else if (s === "hp") hp += pts;
+            else if (s === "healing") healing += pts;
+            else if (s === "mana") mana += pts;
+          };
+          const quat = usdVal * QUATERNARY_PER_DOLLAR;
+          applyBonus(bonus.secondary, sec);
+          applyBonus(bonus.tertiary, ter);
+          applyBonus(bonus.quaternary, quat);
         }
       }
 
@@ -452,15 +504,16 @@ export async function GET() {
         contractAddress: nft.contractAddress,
         chain: nft.chain,
         stats: {
-          attack: attackUsd,
-          mAtk: mAtkScaled,
-          fAtk: fAtkScaled,
-          def: defScaled,
-          mDef: mDefScaled,
-          hp: hpScaled,
-          charMultiplier: magicScaled,
-          magicMultiplier: magicBoostScaled,
-          mana: manaScaled,
+          attack,
+          mAtk,
+          fAtk,
+          def,
+          mDef,
+          hp,
+          healing,
+          charMultiplier,
+          magicMultiplier: magicBoost,
+          mana,
         },
         tokenAmounts: tokenAmounts.sort((a, b) => b.amount - a.amount),
         // USD backing: sum of all token amounts × their USD price
@@ -545,15 +598,19 @@ export async function GET() {
     // Re-derive from usdBacking split by category
     // Actually, let's compute it directly from all pair infos
     const categoryTotals = { traditional: 0, game: 0, impact: 0 };
+    const tokenBreakdown: Record<string, { symbol: string; usd: number; category: string }> = {};
     for (const char of characters as any[]) {
       for (const ta of char.tokenAmounts ?? []) {
-        // Map symbol back to address to get category
         const addr = Object.entries(TOKEN_SYMBOLS).find(([, s]) => s === ta.symbol)?.[0];
         if (!addr) continue;
         const cat = TOKEN_CATEGORY[addr] ?? "game";
         const usdPrice = tokenUsdPrices[addr] ?? 0;
-        const decimals = tokenPriceConfig[addr]?.decimals ?? 18;
-        categoryTotals[cat] += ta.amount * (usdPrice > 0 ? usdPrice : 0);
+        const usdVal = ta.amount * (usdPrice > 0 ? usdPrice : 0);
+        categoryTotals[cat] += usdVal;
+        if (usdVal > 0) {
+          if (!tokenBreakdown[ta.symbol]) tokenBreakdown[ta.symbol] = { symbol: ta.symbol, usd: 0, category: cat };
+          tokenBreakdown[ta.symbol].usd += usdVal;
+        }
       }
     }
 
@@ -561,6 +618,7 @@ export async function GET() {
       characters,
       sellerOwned: [...sellerOwned],
       assetTotals: categoryTotals,
+      tokenBreakdown: Object.values(tokenBreakdown),
       prices: { btcHigh24h, ethHigh24h, polHigh24h, mftLow24h },
       updatedAt: new Date().toISOString(),
     }, {

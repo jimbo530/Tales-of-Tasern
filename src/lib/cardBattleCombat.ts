@@ -141,6 +141,37 @@ export function resolveCombat(
   let b1 = board1.map((col) => col.map((card) => card ? { ...card, burns: [...card.burns] } : null));
   let b2 = board2.map((col) => col.map((card) => card ? { ...card, burns: [...card.burns] } : null));
 
+  // Phase 0: Healing — each card heals itself, overflow to adjacent columns same row
+  for (const board of [b1, b2]) {
+    for (let col = 0; col < 5; col++) {
+      for (let row = 0; row < 2; row++) {
+        const card = board[col][row];
+        if (!card || card.currentHp <= 0 || !card.stats.healing || card.stats.healing <= 0) continue;
+        let healAmt = card.stats.healing;
+        const missing = card.maxHp - card.currentHp;
+        if (missing > 0) {
+          const selfHeal = Math.min(healAmt, missing);
+          card.currentHp += selfHeal;
+          healAmt -= selfHeal;
+        }
+        // Overflow to adjacent columns same row
+        if (healAmt > 0) {
+          for (const adjCol of [col - 1, col + 1]) {
+            if (adjCol < 0 || adjCol >= 5 || healAmt <= 0) continue;
+            const adj = board[adjCol][row];
+            if (!adj || adj.currentHp <= 0) continue;
+            const adjMissing = adj.maxHp - adj.currentHp;
+            if (adjMissing > 0) {
+              const adjHeal = Math.min(healAmt, adjMissing);
+              adj.currentHp += adjHeal;
+              healAmt -= adjHeal;
+            }
+          }
+        }
+      }
+    }
+  }
+
   // Phase 1: Resolve existing burns
   b1 = applyBurnDamage(b1, board1Damage, events, 2); // P2's fire is burning P1's cards
   b2 = applyBurnDamage(b2, board2Damage, events, 1); // P1's fire is burning P2's cards

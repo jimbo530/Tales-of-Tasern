@@ -3,6 +3,10 @@
     {
       "path": "/api/stats",
       "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/images",
+      "schedule": "0 1 * * 0"
     }
   ]
 }

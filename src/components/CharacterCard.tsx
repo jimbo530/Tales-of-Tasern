@@ -264,6 +264,9 @@ export function CharacterCard({ character, maxStats, selectable, selected, onSel
             {mDef > 0 && (
               <StatBar label="🛡️ MDEF"  value={mDef}   max={maxStats.mDef}   color="bg-teal-500" />
             )}
+            {stats.healing > 0 && (
+              <StatBar label="💚 HEAL"  value={stats.healing * multiplier}  max={maxStats.hp * 0.1}  color="bg-emerald-400" />
+            )}
           </div>
         </div>
 
