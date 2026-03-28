@@ -16,6 +16,7 @@ import { BattleView } from "@/components/BattleView";
 import { CardBattleBoard } from "@/components/CardBattleBoard";
 import { Matchmaking } from "@/components/Matchmaking";
 import { AdventureMode } from "@/components/AdventureMode";
+import { Marketplace } from "@/components/Marketplace";
 
 const PAGE_SIZE = 10;
 
@@ -23,7 +24,7 @@ export default function Home() {
   const { isConnected } = useAccount();
   const chainId = useChainId();
   const { switchChain } = useSwitchChain();
-  const { characters, loading, error } = useNftStats();
+  const { characters, assetTotals, loading, error } = useNftStats();
   const wrongChain = isConnected && chainId !== base.id;
   const [page, setPage] = useState(0);
 
@@ -34,8 +35,19 @@ export default function Home() {
   const [cardBattleMode, setCardBattleMode] = useState(false);
   const [matchmakingMode, setMatchmakingMode] = useState(false);
   const [adventureMode, setAdventureMode] = useState(false);
+  const [marketplaceMode, setMarketplaceMode] = useState(false);
 
-  const sorted = [...characters].sort((a, b) => (b.owned ? 1 : 0) - (a.owned ? 1 : 0));
+  const totalStats = (c: NftCharacter) => {
+    const s = c.stats;
+    return s.attack + s.mAtk + s.fAtk + s.def + s.mDef + s.hp + s.mana +
+      s.charMultiplier * 100 + s.magicMultiplier * 100;
+  };
+  const sorted = [...characters].sort((a, b) => {
+    // Owned first, then by total stats ascending (weakest to strongest)
+    const ownDiff = (b.owned ? 1 : 0) - (a.owned ? 1 : 0);
+    if (ownDiff !== 0) return ownDiff;
+    return totalStats(a) - totalStats(b);
+  });
   const totalPages = Math.ceil(sorted.length / PAGE_SIZE);
   const pageChars = sorted.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
@@ -68,6 +80,26 @@ export default function Home() {
     setActiveBattle(null);
     setBattleMode(false);
     setSelectedFighters([]);
+  }
+
+  // Marketplace
+  if (marketplaceMode) {
+    return (
+      <main className="flex flex-col min-h-screen fantasy-bg">
+        <header className="header-fantasy flex items-center justify-between px-6 py-4">
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">⚔️</span>
+            <div>
+              <h1 className="text-xl font-black tracking-widest text-gold-shimmer uppercase">Tales of Tasern</h1>
+              <p className="text-xs tracking-widest uppercase" style={{ color: 'rgba(201,168,76,0.5)' }}>Marketplace</p>
+            </div>
+          </div>
+        </header>
+        <div className="flex-1 px-4 py-6">
+          <Marketplace characters={characters} onBack={() => setMarketplaceMode(false)} />
+        </div>
+      </main>
+    );
   }
 
   // Adventure mode
@@ -195,6 +227,12 @@ export default function Home() {
                 📤 Share
               </button>
               <button
+                onClick={() => setMarketplaceMode(true)}
+                className="px-4 py-2 rounded text-xs font-bold uppercase tracking-widest"
+                style={{ background: 'rgba(251,191,36,0.2)', color: 'rgba(251,191,36,0.9)', border: '1px solid rgba(251,191,36,0.4)' }}>
+                🛒 Shop
+              </button>
+              <button
                 onClick={() => setAdventureMode(true)}
                 className="px-4 py-2 rounded text-xs font-bold uppercase tracking-widest"
                 style={{ background: 'rgba(34,197,94,0.2)', color: 'rgba(74,222,128,0.9)', border: '1px solid rgba(34,197,94,0.4)' }}>
@@ -259,6 +297,34 @@ export default function Home() {
         </div>
       )}
 
+      {/* Asset totals */}
+      {(assetTotals.traditional > 0 || assetTotals.game > 0 || assetTotals.impact > 0) && (
+        <div className="flex items-center justify-center gap-6 px-6 py-2 flex-wrap"
+          style={{ borderBottom: '1px solid rgba(201,168,76,0.1)' }}>
+          <div className="flex items-center gap-1.5">
+            <span style={{ fontSize: '0.6rem', color: 'rgba(251,191,36,0.6)' }}>💰</span>
+            <span className="text-xs font-bold" style={{ color: 'rgba(251,191,36,0.8)' }}>
+              ${assetTotals.traditional >= 1000 ? `${(assetTotals.traditional / 1000).toFixed(1)}K` : assetTotals.traditional.toFixed(2)}
+            </span>
+            <span style={{ fontSize: '0.5rem', color: 'rgba(251,191,36,0.4)' }}>Traditional</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span style={{ fontSize: '0.6rem', color: 'rgba(167,139,250,0.6)' }}>🎮</span>
+            <span className="text-xs font-bold" style={{ color: 'rgba(167,139,250,0.8)' }}>
+              ${assetTotals.game >= 1000 ? `${(assetTotals.game / 1000).toFixed(1)}K` : assetTotals.game.toFixed(2)}
+            </span>
+            <span style={{ fontSize: '0.5rem', color: 'rgba(167,139,250,0.4)' }}>Game Tokens</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span style={{ fontSize: '0.6rem', color: 'rgba(74,222,128,0.6)' }}>🌱</span>
+            <span className="text-xs font-bold" style={{ color: 'rgba(74,222,128,0.8)' }}>
+              ${assetTotals.impact >= 1000 ? `${(assetTotals.impact / 1000).toFixed(1)}K` : assetTotals.impact.toFixed(2)}
+            </span>
+            <span style={{ fontSize: '0.5rem', color: 'rgba(74,222,128,0.4)' }}>Impact Assets</span>
+          </div>
+        </div>
+      )}
+
       {/* Wrong network banner */}
       {wrongChain && (
         <div className="flex items-center justify-center gap-4 px-6 py-3 text-sm"
@@ -311,6 +377,7 @@ export default function Home() {
             {/* Count + page info */}
             <p className="text-center text-xs tracking-widest uppercase" style={{ color: 'rgba(201,168,76,0.5)' }}>
               {characters.filter(c => c.owned).length} Owned · {characters.length} Total · Page {page + 1} of {totalPages}
+              {'\n'}Tap a card to flip it and see the real tokens inside
             </p>
 
             {/* Cards */}

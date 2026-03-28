@@ -25,6 +25,8 @@ export type NftCharacter = {
   owned: boolean;
   stats: { attack: number; mAtk: number; fAtk: number; def: number; mDef: number; hp: number; charMultiplier: number; magicMultiplier: number; mana: number };
   tokenAmounts: TokenAmount[];
+  usdBacking: number;
+  forSale: boolean;
 };
 
 export function useNftStats() {
@@ -33,6 +35,7 @@ export function useNftStats() {
   const polygonClient = usePublicClient({ chainId: polygon.id });
 
   const [characters, setCharacters] = useState<NftCharacter[]>([]);
+  const [assetTotals, setAssetTotals] = useState<{ traditional: number; game: number; impact: number }>({ traditional: 0, game: 0, impact: 0 });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -68,7 +71,8 @@ export function useNftStats() {
           }
         }
 
-        // Merge API data with ownership
+        // Merge API data with ownership + seller info
+        const sellerOwnedSet = new Set((data.sellerOwned ?? []).map((a: string) => a.toLowerCase()));
         const characters: NftCharacter[] = data.characters.map((c: any) => ({
           name: c.name,
           contractAddress: c.contractAddress,
@@ -79,9 +83,12 @@ export function useNftStats() {
           owned: ownershipMap.get(c.contractAddress.toLowerCase()) ?? false,
           stats: c.stats,
           tokenAmounts: c.tokenAmounts ?? [],
+          usdBacking: c.usdBacking ?? 0,
+          forSale: sellerOwnedSet.has(c.contractAddress.toLowerCase()),
         }));
 
         setCharacters(characters);
+        if (data.assetTotals) setAssetTotals(data.assetTotals);
 
         // Background: resolve URIs for visible cards (updates incrementally)
         if (baseClient) {
@@ -116,5 +123,5 @@ export function useNftStats() {
     load();
   }, [address, isConnected, baseClient]);
 
-  return { characters, loading, error };
+  return { characters, assetTotals, loading, error };
 }

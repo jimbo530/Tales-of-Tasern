@@ -185,6 +185,8 @@ export const GAME_NFTS: GameNft[] = [
   { name: "Bunrick",                    contractAddress: "0x63a9c72C90860eaa64A39A31E1A4B00305aA3974", chain: "base" },
   { name: "Space Donkeys",              contractAddress: "0x2953399124F0cBB46d2CbACD8A89cF0599974963", chain: "polygon" },
   { name: "MycoVault",                  contractAddress: "0xcb8c8a116ac3e12d861c1b4bd0d859aceda25d3f", chain: "base" },
+  { name: "Vaelrith the Veiled Sovereign", contractAddress: "0x4A35B948F49A169976FCCC96220676692c987A57", chain: "base" },
+  { name: "Kira Emberstep",               contractAddress: "0x26CE8466eC418b7D42d8789476642cdFbB5e8aab", chain: "base" },
 ];
 
 // ─── Known LP Pairs (add more as the game expands) ────────────────────────────
@@ -196,7 +198,9 @@ export const KNOWN_LP_PAIRS = {
     "0x36d0c273faca6e90f827bc2e7d232246f9f89fe4", // EGP / MfT   (Uniswap V2 Base)
     "0x9aa2f6cfbd0a075a504e155085ac86f91b438287", // EGP / CHAR  (Uniswap V2 Base)
     "0x52fe32ed5d90c2b24af5a20496f01dc3fc965838", // EGP / WETH  (Uniswap V2 Base)
-    "0xa2a61fd7816951a0bcf8c67ea8f153c1ab5de288", // BURGERS / MfT (Uniswap V2 Base)
+    "0xa2a61fd7816951a0bcf8c67ea8f153c1ab5de288", // BURGERS / MfT  (Uniswap V2 Base)
+    "0x2f9669acb8623e33a0d3f9a3e1806ebe54cd319a", // BURGERS / WETH (Uniswap V2 Base)
+    "0x7af66828a7d1041db8b183f1356797788979eaf8", // CHAR / USDC    (Uniswap V2 Base)
   ] as `0x${string}`[],
   polygon: [
     // ── JLT-F24 (atk) ───────────────────────────────────────────────────────
@@ -265,7 +269,8 @@ export const KNOWN_LP_PAIRS = {
     // ── IGS (hp) ────────────────────────────────────────────────────────────
     "0x61646724babcdeb4f70683a5b7c46d2bde506ee8", // IGS / USDGLO (Uniswap V2)
     "0xc9ec8a430e194295c82d75e5900d22f3ed254268", // IGS / WBTC   (Uniswap V2)
-    "0xcd7c7a4843f1a32eb7a1e0e23b2a7430505b5e4e", // 0x861f…/IGS  (Uniswap V2)
+    "0xcd7c7a4843f1a32eb7a1e0e23b2a7430505b5e4e", // LTK / IGS    (Uniswap V2)
+    "0x8bc8fefd43e02709020b329ee083ed949475b187", // LTK / CCC    (Uniswap V2)
     // ── BTN (hp) ────────────────────────────────────────────────────────────
     "0x1395E5CBcA1F9cce3271EAd9cA3F727EA6E78cBa", // BTN / WBTC   (Uniswap V2)
     "0x553b5414C109963C636EfE142C8eB6bA2908f55C", // BTN / WPOL   (Uniswap V2)
@@ -354,6 +359,7 @@ export const STAT_TOKENS = {
     def: [
       "0xcb2a97776c87433050e0ddf9de0f53ead661dab4", // TB01 → defense
       "0xace15da4edcec83c98b1fc196fc1dc44c5c429ca", // JCGWR (also ATK)
+      "0x861f57e96678c6cb586f07dd8d3b0c34ce19dd82", // LTK → armor (litter cleanup)
     ] as `0x${string}`[],
     mDef: [
       "0xd84415c956f44b2300a2e56c5b898401913e9a29", // PR24 → magical defense

@@ -32,7 +32,7 @@ const GATEWAYS = [
 ];
 
 function toHttp(uri: string): string {
-  if (uri.startsWith("ipfs://")) return GATEWAYS[0] + uri.slice(7);
+  if (uri.startsWith("ipfs://")) return "https://ipfs.io/ipfs/" + uri.slice(7);
   return uri;
 }
 
