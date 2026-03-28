@@ -1,6 +1,6 @@
-const CACHE_NAME = "tot-v1";
-const STATS_CACHE = "tot-stats-v1";
-const IMAGE_CACHE = "tot-images-v1";
+const CACHE_NAME = "tot-v2";
+const STATS_CACHE = "tot-stats-v2";
+const IMAGE_CACHE = "tot-images-v2";
 
 // Cache app shell on install
 self.addEventListener("install", (event) => {

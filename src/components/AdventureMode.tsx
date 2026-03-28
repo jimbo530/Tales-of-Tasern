@@ -250,7 +250,7 @@ function PartyPicker({ characters, onStart, onBack }: {
 }) {
   const [party, setParty] = useState<NftCharacter[]>([]);
   const owned = characters.filter(c => c.owned);
-  const pool = owned.length > 0 ? owned : characters;
+  const pool = owned;
   const partyAddrs = new Set(party.map(c => c.contractAddress));
 
   const [heroSearch, setHeroSearch] = useState("");
@@ -272,6 +272,21 @@ function PartyPicker({ characters, onStart, onBack }: {
       <p className="text-sm" style={{ color: 'rgba(201,168,76,0.5)' }}>
         Each player picks 1 hero they own. Up to 4 player co-op. More players = harder enemies.
       </p>
+      {owned.length === 0 && (
+        <div className="flex flex-col items-center gap-3 py-8">
+          <p className="text-sm font-bold" style={{ color: 'rgba(220,38,38,0.8)' }}>
+            You need to own at least one NFT to play Adventure mode.
+          </p>
+          <p className="text-xs" style={{ color: 'rgba(201,168,76,0.4)' }}>
+            Connect your wallet and make sure you hold a Tales of Tasern hero.
+          </p>
+          <button onClick={onBack}
+            className="px-6 py-2 rounded text-sm font-bold uppercase tracking-widest"
+            style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(201,168,76,0.5)', border: '1px solid rgba(201,168,76,0.15)' }}>
+            ← Back
+          </button>
+        </div>
+      )}
       {party.length > 0 && (
         <div className="flex flex-col items-center gap-2">
           <div className="flex gap-2 flex-wrap justify-center">
@@ -293,39 +308,41 @@ function PartyPicker({ characters, onStart, onBack }: {
           </div>
         </div>
       )}
-      <input
-        value={heroSearch}
-        onChange={(e) => setHeroSearch(e.target.value)}
-        placeholder="Search your heroes..."
-        className="w-full max-w-md px-4 py-2 rounded-lg text-sm text-center"
-        style={{ background: 'rgba(255,255,255,0.05)', color: '#f0d070', border: '1px solid rgba(201,168,76,0.3)', outline: 'none' }}
-      />
-      <div className="w-full max-h-[50vh] overflow-y-auto rounded-lg p-3"
-        style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(201,168,76,0.1)' }}>
-        <div className="grid grid-cols-5 sm:grid-cols-6 md:grid-cols-8 gap-2">
-          {filteredPool.map((card) => {
-            const picked = partyAddrs.has(card.contractAddress);
-            return (
-              <div key={card.contractAddress} onClick={() => selectHero(card)}
-                className="rounded-lg p-1.5 cursor-pointer transition-all text-center"
-                style={{
-                  background: picked ? 'rgba(201,168,76,0.2)' : 'rgba(255,255,255,0.03)',
-                  border: `2px solid ${picked ? 'rgba(201,168,76,0.7)' : 'rgba(255,255,255,0.06)'}`,
-                }}>
-                <p className="text-xs font-bold truncate" style={{
-                  color: picked ? 'rgba(201,168,76,0.9)' : 'rgba(232,213,176,0.6)', fontSize: '0.5rem',
-                }}>{card.name}</p>
-                {picked && <span className="text-xs font-black" style={{ color: '#f0d070', fontSize: '0.5rem' }}>⚔️</span>}
-              </div>
-            );
-          })}
+      {owned.length > 0 && (<>
+        <input
+          value={heroSearch}
+          onChange={(e) => setHeroSearch(e.target.value)}
+          placeholder="Search your heroes..."
+          className="w-full max-w-md px-4 py-2 rounded-lg text-sm text-center"
+          style={{ background: 'rgba(255,255,255,0.05)', color: '#f0d070', border: '1px solid rgba(201,168,76,0.3)', outline: 'none' }}
+        />
+        <div className="w-full max-h-[50vh] overflow-y-auto rounded-lg p-3"
+          style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(201,168,76,0.1)' }}>
+          <div className="grid grid-cols-5 sm:grid-cols-6 md:grid-cols-8 gap-2">
+            {filteredPool.map((card) => {
+              const picked = partyAddrs.has(card.contractAddress);
+              return (
+                <div key={card.contractAddress} onClick={() => selectHero(card)}
+                  className="rounded-lg p-1.5 cursor-pointer transition-all text-center"
+                  style={{
+                    background: picked ? 'rgba(201,168,76,0.2)' : 'rgba(255,255,255,0.03)',
+                    border: `2px solid ${picked ? 'rgba(201,168,76,0.7)' : 'rgba(255,255,255,0.06)'}`,
+                  }}>
+                  <p className="text-xs font-bold truncate" style={{
+                    color: picked ? 'rgba(201,168,76,0.9)' : 'rgba(232,213,176,0.6)', fontSize: '0.5rem',
+                  }}>{card.name}</p>
+                  {picked && <span className="text-xs font-black" style={{ color: '#f0d070', fontSize: '0.5rem' }}>⚔️</span>}
+                </div>
+              );
+            })}
+          </div>
         </div>
-      </div>
-      <button onClick={onBack}
-        className="px-4 py-2 rounded text-xs font-bold uppercase tracking-widest"
-        style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(201,168,76,0.5)', border: '1px solid rgba(201,168,76,0.15)' }}>
-        ← Back
-      </button>
+        <button onClick={onBack}
+          className="px-4 py-2 rounded text-xs font-bold uppercase tracking-widest"
+          style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(201,168,76,0.5)', border: '1px solid rgba(201,168,76,0.15)' }}>
+          ← Back
+        </button>
+      </>)}
     </div>
   );
 }
