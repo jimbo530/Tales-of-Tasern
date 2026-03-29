@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useAccount, useWalletClient } from "wagmi";
 import { parseEther } from "viem";
+import { base } from "wagmi/chains";
 import type { NftCharacter } from "@/hooks/useNftStats";
 import { useNftImage } from "@/hooks/useNftImage";
 
@@ -309,20 +310,20 @@ function PowerUpPayment({ contract, nftContract, heroName, statLabel }: {
   statLabel: string;
 }) {
   const { isConnected } = useAccount();
-  const { data: walletClient } = useWalletClient();
+  const { data: client, isLoading: walletLoading } = useWalletClient();
   const [status, setStatus] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
   const FIXED_AMOUNT = "0.001";
 
   async function handlePowerUp() {
-    if (!walletClient) { setStatus("Wallet loading — try again in a moment"); return; }
+    if (!client) { setStatus("Wallet loading — try again in a moment"); return; }
     setStatus("Confirm in your wallet — sending ETH...");
     setTxHash(null);
 
     try {
-      const hash = await walletClient.writeContract({
+      const hash = await client.writeContract({
         address: contract.address,
-        abi: contract.abi,
+        abi: contract.abi as any,
         functionName: "powerUp",
         args: [nftContract],
         value: parseEther(FIXED_AMOUNT),
@@ -346,10 +347,10 @@ function PowerUpPayment({ contract, nftContract, heroName, statLabel }: {
         <div className="flex flex-col gap-3">
           <p className="text-center text-xs" style={{ color: 'rgba(201,168,76,0.5)' }}>Pay with ETH on Base — auto-swaps to LP tokens</p>
 
-          <button onClick={handlePowerUp} disabled={!walletClient}
+          <button onClick={handlePowerUp} disabled={walletLoading || !client}
             className="w-full px-6 py-3 rounded-lg text-sm font-black uppercase tracking-widest"
-            style={{ background: walletClient ? 'rgba(34,197,94,0.3)' : 'rgba(100,100,100,0.2)', color: walletClient ? 'rgba(74,222,128,0.9)' : 'rgba(150,150,150,0.5)', border: `1px solid ${walletClient ? 'rgba(34,197,94,0.5)' : 'rgba(100,100,100,0.3)'}`, cursor: walletClient ? 'pointer' : 'wait' }}>
-            {walletClient ? '⬆️ Power Up — 0.001 ETH' : '⏳ Loading wallet...'}
+            style={{ background: walletLoading ? 'rgba(100,100,100,0.2)' : 'rgba(34,197,94,0.3)', color: walletLoading ? 'rgba(150,150,150,0.5)' : 'rgba(74,222,128,0.9)', border: `1px solid ${walletLoading ? 'rgba(100,100,100,0.3)' : 'rgba(34,197,94,0.5)'}` }}>
+            {walletLoading ? '⏳ Loading wallet...' : '⬆️ Power Up — 0.001 ETH'}
           </button>
 
           {status && (
