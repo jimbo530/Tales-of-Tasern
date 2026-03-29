@@ -180,7 +180,7 @@ export default function Home() {
           <WalletDropdown>{isConnected && <Address />}<WalletDropdownDisconnect /></WalletDropdown>
         </Wallet>
       </header>
-      <div className="flex-1 px-4 py-6">{content}</div>
+      <div className="flex-1 px-4 py-6 relative" style={{ zIndex: 1 }}>{content}</div>
     </main>
   );
 

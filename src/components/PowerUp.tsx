@@ -315,7 +315,8 @@ function PowerUpPayment({ contract, nftContract, heroName, statLabel }: {
   const FIXED_AMOUNT = "0.001";
 
   async function handlePowerUp() {
-    if (!walletClient) return;
+    console.log("[PowerUp] clicked, walletClient:", !!walletClient, "contract:", contract.address, "nft:", nftContract);
+    if (!walletClient) { setStatus("Connect wallet first"); return; }
     setStatus("Confirm in your wallet — sending ETH...");
     setTxHash(null);
 
