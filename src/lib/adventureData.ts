@@ -90,10 +90,26 @@ export const ADVENTURE_CHAPTERS: Chapter[] = [
       },
       {
         name: "The Elder's Wisdom",
-        description: "Elder Brynn sits by the fire, a heavy tome across her knees. \"The others teach you how to fight. I'll teach you why it matters.\" She closes the book and stands slowly. \"Every battle you win deposits real liquidity into your heroes — AZOS and MfT, locked forever. That power grows with every fight. But heroes need rest. When they sleep at midnight, the realm counts their strength anew. Fight hard, earn LP, and let your champions grow while they dream.\" She raises a gnarled staff. \"Now — one last test before I let you leave.\"",
+        description: "Elder Brynn sits by the fire, a heavy tome across her knees. \"You've faced each challenge alone. Now face them all at once.\" She stands and gestures across the village clearing. Every opponent you've fought steps forward — Pippin, Dag, the twisted plants, the guards, the Electric Birds — all of them, together.\n\n\"This is what the road looks like,\" Brynn says. \"Enemies don't take turns. They pile on. Nine will fight you on the field, and when one falls, another steps up from reserve. Watch for it — the moment you think you've won, reinforcements arrive. That's the lesson.\"",
         aiDeckBias: "balanced",
         aiStrength: 0.45,
         mftReward: 700,
+        npcAddresses: [
+          "0xae195DF237739D6d43d4B796553f594C5ba516a7", // Pippin
+          "0x2685Bb66e8e45e386D3E816726De64d5001317fd", // Dag
+          "0x6AD5621f5719A6b32d0Ea9dd4493ca6Ac0639D4B", // Rainbow Lily
+          "0x212626D66E64C9C293A845687dB700c16466586e", // Glowing Geranium
+          "0x234b58EcdB0026B2AAF829cc46e91895F609f6d1", // Guard
+          "0x234b58EcdB0026B2AAF829cc46e91895F609f6d1", // Guard
+          "0x234b58EcdB0026B2AAF829cc46e91895F609f6d1", // Guard
+          "0x234b58EcdB0026B2AAF829cc46e91895F609f6d1", // Guard
+          "0x234b58EcdB0026B2AAF829cc46e91895F609f6d1", // Guard
+          "0x7F55796f79352Ab707e7FC41dD0B317Be6CBd165", // Electric Bird (reserve)
+          "0x7F55796f79352Ab707e7FC41dD0B317Be6CBd165", // Electric Bird (reserve)
+          "0x234b58EcdB0026B2AAF829cc46e91895F609f6d1", // Guard (reserve)
+          "0x234b58EcdB0026B2AAF829cc46e91895F609f6d1", // Guard (reserve)
+          "0x234b58EcdB0026B2AAF829cc46e91895F609f6d1", // Guard (reserve)
+        ],
       },
       {
         name: "The Village Farewell",
