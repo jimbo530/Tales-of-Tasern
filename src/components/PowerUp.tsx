@@ -318,7 +318,7 @@ function PowerUpPayment({ contract, nftContract, heroName, statLabel }: {
   const { data: client, isLoading: walletLoading } = useWalletClient();
   const [status, setStatus] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
-  const FIXED_AMOUNT = "0.001";
+  const FIXED_AMOUNT = "0.0005";
 
   async function handlePowerUp() {
     if (!client) { setStatus("Wallet loading — try again in a moment"); return; }
@@ -355,7 +355,7 @@ function PowerUpPayment({ contract, nftContract, heroName, statLabel }: {
           <button onClick={handlePowerUp} disabled={walletLoading || !client}
             className="w-full px-6 py-3 rounded-lg text-sm font-black uppercase tracking-widest"
             style={{ background: walletLoading ? 'rgba(100,100,100,0.2)' : 'rgba(34,197,94,0.3)', color: walletLoading ? 'rgba(150,150,150,0.5)' : 'rgba(74,222,128,0.9)', border: `1px solid ${walletLoading ? 'rgba(100,100,100,0.3)' : 'rgba(34,197,94,0.5)'}` }}>
-            {walletLoading ? '⏳ Loading wallet...' : '⬆️ Power Up — 0.001 ETH'}
+            {walletLoading ? '⏳ Loading wallet...' : '⬆️ Power Up — 0.0005 ETH'}
           </button>
 
           {status && (
