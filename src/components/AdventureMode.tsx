@@ -18,7 +18,7 @@ type Props = {
 };
 
 function UnitPortrait({ unit, small }: { unit: CombatUnit; small?: boolean }) {
-  const { imageUrl, imgFailed, setImgFailed } = useNftImage(unit.character.metadataUri);
+  const { imageUrl, imgFailed, setImgFailed } = useNftImage(unit.character.metadataUri, unit.character.contractAddress);
   const hpPct = unit.maxHp > 0 ? Math.max(0, (unit.currentHp / unit.maxHp) * 100) : 0;
   const dead = unit.currentHp <= 0;
   const size = small ? 50 : 70;
@@ -56,7 +56,7 @@ function UnitPortrait({ unit, small }: { unit: CombatUnit; small?: boolean }) {
 }
 
 function GridCellPortrait({ unit }: { unit: CombatUnit }) {
-  const { imageUrl, imgFailed, setImgFailed } = useNftImage(unit.character.metadataUri);
+  const { imageUrl, imgFailed, setImgFailed } = useNftImage(unit.character.metadataUri, unit.character.contractAddress);
   if (imgFailed || !imageUrl) return null;
   return (
     /* eslint-disable-next-line @next/next/no-img-element */
@@ -67,7 +67,7 @@ function GridCellPortrait({ unit }: { unit: CombatUnit }) {
 }
 
 function SlotPortrait({ character }: { character: NftCharacter }) {
-  const { imageUrl, imgFailed, setImgFailed } = useNftImage(character.metadataUri);
+  const { imageUrl, imgFailed, setImgFailed } = useNftImage(character.metadataUri, character.contractAddress);
   if (imgFailed || !imageUrl) return null;
   return (
     /* eslint-disable-next-line @next/next/no-img-element */
