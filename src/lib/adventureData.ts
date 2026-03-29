@@ -90,7 +90,7 @@ export const ADVENTURE_CHAPTERS: Chapter[] = [
       },
       {
         name: "The Elder's Wisdom",
-        description: "Elder Brynn sits by the fire, a heavy tome across her knees. \"The others teach you how to fight. I'll teach you why it matters.\" She closes the book and stands slowly. \"Every battle you win out there protects this village. Every stat you build, every LP you earn — it flows back into the world. Power up your champions and the realm grows stronger with you.\" She raises a gnarled staff. \"Now — one last test before I let you leave.\"",
+        description: "Elder Brynn sits by the fire, a heavy tome across her knees. \"The others teach you how to fight. I'll teach you why it matters.\" She closes the book and stands slowly. \"Every battle you win deposits real liquidity into your heroes — AZOS and MfT, locked forever. That power grows with every fight. But heroes need rest. When they sleep at midnight, the realm counts their strength anew. Fight hard, earn LP, and let your champions grow while they dream.\" She raises a gnarled staff. \"Now — one last test before I let you leave.\"",
         aiDeckBias: "balanced",
         aiStrength: 0.45,
         mftReward: 700,

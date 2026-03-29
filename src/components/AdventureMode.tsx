@@ -570,7 +570,7 @@ export function AdventureMode({ characters, onExit }: Props) {
     if (!walletClient || party.length === 0 || LP_FAUCET === "0x0000000000000000000000000000000000000000") return;
     const baseHeroes = party.filter(h => h.chain === "base");
     if (baseHeroes.length === 0) { setLpStatus("No Base heroes to reward"); setTimeout(() => setLpStatus(null), 3000); return; }
-    setLpStatus("Claiming LP rewards for Base heroes...");
+    setLpStatus("Depositing AZOS/MfT LP into your heroes...");
     let sent = 0;
     for (const hero of baseHeroes) {
       try {
@@ -581,12 +581,12 @@ export function AdventureMode({ characters, onExit }: Props) {
           args: [hero.contractAddress as `0x${string}`],
         });
         sent++;
-        setLpStatus(`LP claimed for ${sent}/${baseHeroes.length} Base heroes...`);
+        setLpStatus(`LP deposited to ${sent}/${baseHeroes.length} — ${hero.name} powered up!`);
       } catch (e: any) {
-        console.warn("LP reward failed for", hero.name, e.message);
+        console.warn("LP deposit failed for", hero.name, e.message);
       }
     }
-    setLpStatus(sent > 0 ? `LP rewards claimed for ${sent} Base hero${sent > 1 ? "es" : ""}!` : "LP rewards skipped (cooldown or faucet empty)");
+    setLpStatus(sent > 0 ? `${sent} hero${sent > 1 ? "es" : ""} received LP! Stats will increase.` : "LP deposit skipped — heroes on cooldown or faucet empty");
     setTimeout(() => setLpStatus(null), 5000);
   }
 
@@ -958,7 +958,7 @@ export function AdventureMode({ characters, onExit }: Props) {
               setPartyGrid(prev => new Map(prev).set(npc.contractAddress, emptySlot));
             }
           }
-          // Auto LP reward for World 1 levels
+          // LP drip to Base heroes — player pays gas, gets LP
           if (state.currentChapter === 0) {
             sendLpRewards();
           }
@@ -1008,9 +1008,17 @@ export function AdventureMode({ characters, onExit }: Props) {
           </div>
         )}
         {lpStatus && (
-          <p className="text-xs font-bold animate-pulse" style={{ color: lpStatus.includes("sent") ? 'rgba(74,222,128,0.8)' : 'rgba(201,168,76,0.7)' }}>
-            {lpStatus}
-          </p>
+          <div className="rounded-xl p-4 text-center"
+            style={{ background: lpStatus.includes("received") ? 'rgba(74,222,128,0.08)' : 'rgba(201,168,76,0.06)', border: `1px solid ${lpStatus.includes("received") ? 'rgba(74,222,128,0.3)' : 'rgba(201,168,76,0.2)'}` }}>
+            <p className="text-xs font-bold" style={{ color: lpStatus.includes("received") ? 'rgba(74,222,128,0.9)' : 'rgba(201,168,76,0.7)' }}>
+              {lpStatus}
+            </p>
+            {lpStatus.includes("received") && (
+              <p className="text-xs mt-1" style={{ color: 'rgba(74,222,128,0.5)' }}>
+                AZOS/MfT liquidity permanently locked in your heroes. Your heroes need rest — stats update at midnight UTC while they sleep.
+              </p>
+            )}
+          </div>
         )}
         <button onClick={nextEncounter}
           className="px-8 py-3 rounded-lg text-sm font-black uppercase tracking-widest"
@@ -1023,6 +1031,7 @@ export function AdventureMode({ characters, onExit }: Props) {
 
   // Chapter complete
   if (state.phase === "chapterComplete" && chapter) {
+
     return (
       <div className="flex flex-col items-center gap-6 mt-16">
         {floatingBack}
@@ -1035,6 +1044,19 @@ export function AdventureMode({ characters, onExit }: Props) {
           <p className="text-lg font-black" style={{ color: '#f0d070' }}>+{chapter.completionBonus.toLocaleString()} MfT bonus!</p>
           <p className="text-xs mt-1" style={{ color: 'rgba(201,168,76,0.5)' }}>Total: {state.mftEarned.toLocaleString()} MfT</p>
         </div>
+        {lpStatus && (
+          <div className="rounded-xl p-4 text-center"
+            style={{ background: lpStatus.includes("received") ? 'rgba(74,222,128,0.08)' : 'rgba(201,168,76,0.06)', border: `1px solid ${lpStatus.includes("received") ? 'rgba(74,222,128,0.3)' : 'rgba(201,168,76,0.2)'}` }}>
+            <p className="text-xs font-bold" style={{ color: lpStatus.includes("received") ? 'rgba(74,222,128,0.9)' : 'rgba(201,168,76,0.7)' }}>
+              {lpStatus}
+            </p>
+            {lpStatus.includes("received") && (
+              <p className="text-xs mt-1" style={{ color: 'rgba(74,222,128,0.5)' }}>
+                AZOS/MfT LP permanently locked. Heroes rest at midnight UTC — stats update while they sleep.
+              </p>
+            )}
+          </div>
+        )}
         <button onClick={backToMap}
           className="px-8 py-3 rounded-lg text-sm font-black uppercase tracking-widest"
           style={{ background: 'rgba(201,168,76,0.3)', color: '#f0d070', border: '1px solid rgba(201,168,76,0.6)' }}>
