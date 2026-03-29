@@ -10,6 +10,8 @@ const MAX_TOKEN_ID = 200;
 const STATS_CACHE_KEY = "tot-stats-cache";
 const STATS_CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
 
+const OWNERSHIP_CACHE_KEY = "tot-ownership-cache";
+
 function getCachedStats(): { data: any; timestamp: number } | null {
   if (typeof window === "undefined") return null;
   try {
@@ -25,6 +27,26 @@ function setCachedStats(data: any) {
   if (typeof window === "undefined") return;
   try {
     localStorage.setItem(STATS_CACHE_KEY, JSON.stringify({ data, timestamp: Date.now() }));
+  } catch {}
+}
+
+function getCachedOwnership(wallet: string): { map: Record<string, number>; timestamp: number } | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(`${OWNERSHIP_CACHE_KEY}-${wallet.toLowerCase()}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed && parsed.map && parsed.timestamp) return parsed;
+  } catch {}
+  return null;
+}
+
+function setCachedOwnership(wallet: string, map: Map<string, number>) {
+  if (typeof window === "undefined") return;
+  try {
+    const obj: Record<string, number> = {};
+    map.forEach((v, k) => { obj[k] = v; });
+    localStorage.setItem(`${OWNERSHIP_CACHE_KEY}-${wallet.toLowerCase()}`, JSON.stringify({ map: obj, timestamp: Date.now() }));
   } catch {}
 }
 
@@ -94,8 +116,16 @@ export function useNftStats() {
           setCachedStats(data);
         }
 
-        // Check ownership if wallet connected — checks token IDs 1-200 per contract
+        // Check ownership — cached for 24h per wallet
         let ownershipMap = new Map<string, number>();
+
+        if (isConnected && address) {
+          const cachedOwn = getCachedOwnership(address);
+          if (cachedOwn && (Date.now() - cachedOwn.timestamp) < STATS_CACHE_TTL) {
+            Object.entries(cachedOwn.map).forEach(([k, v]) => ownershipMap.set(k, v));
+            console.log("[ToT] Using cached ownership (age:", Math.round((Date.now() - cachedOwn.timestamp) / 60000), "min)");
+          }
+        }
 
         async function checkOwnership(client: any, nfts: typeof GAME_NFTS, chainName: string) {
           if (!client || nfts.length === 0) return;
@@ -138,9 +168,11 @@ export function useNftStats() {
           }
         }
 
-        if (isConnected && address) {
+        if (isConnected && address && ownershipMap.size === 0) {
+          // Only hit RPC if no cached ownership
           await checkOwnership(baseClient, GAME_NFTS.filter(n => n.chain === "base"), "Base");
           await checkOwnership(polygonClient, GAME_NFTS.filter(n => n.chain === "polygon"), "Polygon");
+          setCachedOwnership(address, ownershipMap);
         }
 
         // Merge API data with ownership + seller info
@@ -225,6 +257,7 @@ export function useNftStats() {
       if (isConnected && address) {
         await checkOwnership(baseClient, GAME_NFTS.filter(n => n.chain === "base"), "Base");
         await checkOwnership(polygonClient, GAME_NFTS.filter(n => n.chain === "polygon"), "Polygon");
+        setCachedOwnership(address, ownershipMap);
       }
 
       const sellerOwnedSet = new Set((data.sellerOwned ?? []).map((a: string) => a.toLowerCase()));
