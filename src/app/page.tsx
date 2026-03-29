@@ -502,7 +502,7 @@ export default function Home() {
               <div className="flex flex-col gap-1">
                 <span className="text-xs font-black uppercase tracking-widest mb-1" style={{ color: `${catColor},0.8)` }}>{catLabel}</span>
                 {items.map((item, i) => (
-                  <div key={item.symbol} className="flex items-center gap-2 text-xs">
+                  <div key={`${item.symbol}-${i}`} className="flex items-center gap-2 text-xs">
                     <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: sliceColors[i] }} />
                     <span style={{ color: 'rgba(255,255,255,0.7)' }}>{item.symbol}</span>
                     <span style={{ color: 'rgba(255,255,255,0.4)' }}>${item.usd >= 1000 ? `${(item.usd / 1000).toFixed(1)}K` : item.usd.toFixed(2)}</span>
