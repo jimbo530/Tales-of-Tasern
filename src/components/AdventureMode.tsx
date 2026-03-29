@@ -948,7 +948,7 @@ export function AdventureMode({ characters, onExit, onStatsRefresh }: Props) {
                     fontSize: '0.45rem', color: 'rgba(150,150,150,0.4)',
                     textShadow: '0 1px 4px rgba(0,0,0,0.9)',
                   }}>
-                  Kardov&apos;s Gate
+                  Newbsberd
                 </span>
               </div>
             </div>

@@ -63,8 +63,8 @@ export const ADVENTURE_CHAPTERS: Chapter[] = [
         npcAddresses: ["0x6AD5621f5719A6b32d0Ea9dd4493ca6Ac0639D4B", "0x212626D66E64C9C293A845687dB700c16466586e"],
       },
       {
-        name: "Guards of Kardov's Gate",
-        description: "Nine guards from the Kardov garrison are passing through the village on patrol. Their captain nods at Torven. \"Heard you've got fresh recruits. Mind if we help?\" Torven grins. \"Show them what flanking looks like.\"\n\nThe captain turns to you. \"Lesson time. When your column is open — no one standing between you and the enemy — they'll come at you from the side for extra damage. That's flanking. We're going to surround you, and when one of us drops, another steps in from reserve. Out on the real road, nobody fights fair. Better you learn that here.\"",
+        name: "Guards of Newbsberd",
+        description: "Nine guards from the Newbsberd garrison are passing through the village on patrol. Their captain nods at Torven. \"Heard you've got fresh recruits. Mind if we help?\" Torven grins. \"Show them what flanking looks like.\"\n\nThe captain turns to you. \"Lesson time. When your column is open — no one standing between you and the enemy — they'll come at you from the side for extra damage. That's flanking. We're going to surround you, and when one of us drops, another steps in from reserve. Out on the real road, nobody fights fair. Better you learn that here.\"",
         aiDeckBias: "balanced",
         aiStrength: 0.3,
         mftReward: 600,
@@ -113,7 +113,7 @@ export const ADVENTURE_CHAPTERS: Chapter[] = [
       },
       {
         name: "The Village Farewell",
-        description: "All six villagers gather at the crossroads. Pippin claps your shoulder. \"You're ready — or as ready as anyone can be.\" Maren hands you a pouch of herbs. Torven nods silently. Kael is already gone, vanished into the trees ahead. Elder Brynn raises her hand. \"The road to Kardov's Gate lies north. What you find there will make this village feel like a dream. Go well.\" One final test — face them all together to prove your worth.",
+        description: "All six villagers gather at the crossroads. Pippin claps your shoulder. \"You're ready — or as ready as anyone can be.\" Maren hands you a pouch of herbs. Torven nods silently. Kael is already gone, vanished into the trees ahead. Elder Brynn raises her hand. \"The road to Newbsberd lies east. What you find there will make this village feel like a dream. Go well.\" One final test — face them all together to prove your worth.",
         aiDeckBias: "balanced",
         aiStrength: 0.55,
         mftReward: 1000,
