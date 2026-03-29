@@ -13,29 +13,21 @@ type Props = {
   onStatsRefresh?: () => Promise<void>;
 };
 
-// Deployed contracts on Base
-const BASE_CONTRACTS: Record<string, { address: `0x${string}`; abi: readonly any[] }> = {
-  attack: {
-    address: "0xc0BBFcCab2AAff810b8dB985635d055a3dc47c1C",
-    abi: [{ name: "powerUp", type: "function", stateMutability: "payable", inputs: [{ name: "nftContract", type: "address" }], outputs: [] }] as const,
-  },
-  hp: {
-    address: "0x46D885122FEa2AfaF3977a71872b35C409a9f6AB",
-    abi: [{ name: "powerUp", type: "function", stateMutability: "payable", inputs: [{ name: "nftContract", type: "address" }], outputs: [] }] as const,
-  },
-  azos: {
-    address: "0xD7C584D40216576f1d8651Eab8bEF9DE69497666",
-    abi: [{ name: "powerUp", type: "function", stateMutability: "payable", inputs: [{ name: "nftContract", type: "address" }], outputs: [] }] as const,
-  },
-  egp: {
-    address: "0x79F9208847848Ce4a0CF107d1115aa5a3c5CE849",
-    abi: [{ name: "powerUp", type: "function", stateMutability: "payable", inputs: [{ name: "nftContract", type: "address" }], outputs: [] }] as const,
-  },
-  wethegp: {
-    address: "0x127AE66CdFA262c8A9CBA82F43da2953411D6Cf4",
-    abi: [{ name: "powerUp", type: "function", stateMutability: "payable", inputs: [{ name: "nftContract", type: "address" }], outputs: [] }] as const,
-  },
+const POWERUP_ABI = [{ name: "powerUp", type: "function", stateMutability: "payable", inputs: [{ name: "nftContract", type: "address" }], outputs: [] }] as const;
+
+// Deployed contracts
+const CONTRACTS: Record<string, { address: `0x${string}`; abi: readonly any[]; chainId: number }> = {
+  // Base (chainId 8453)
+  attack:  { address: "0xc0BBFcCab2AAff810b8dB985635d055a3dc47c1C", abi: POWERUP_ABI, chainId: 8453 },
+  hp:      { address: "0x46D885122FEa2AfaF3977a71872b35C409a9f6AB", abi: POWERUP_ABI, chainId: 8453 },
+  azos:    { address: "0xD7C584D40216576f1d8651Eab8bEF9DE69497666", abi: POWERUP_ABI, chainId: 8453 },
+  egp:     { address: "0x79F9208847848Ce4a0CF107d1115aa5a3c5CE849", abi: POWERUP_ABI, chainId: 8453 },
+  wethegp: { address: "0x127AE66CdFA262c8A9CBA82F43da2953411D6Cf4", abi: POWERUP_ABI, chainId: 8453 },
+  // Polygon (chainId 137)
+  pol_egpusdglo: { address: "0x627E6a6093403f415051755e3a85D85419cb0aBD", abi: POWERUP_ABI, chainId: 137 },
 };
+// Alias for backward compat
+const BASE_CONTRACTS = CONTRACTS;
 
 type StatOption = {
   key: string;
@@ -53,17 +45,17 @@ const STAT_OPTIONS: StatOption[] = [
   { key: "azos", label: "⚔️🛡️❤️ AZOS", desc: "ATK + DEF + HP via stablecoin", tokens: "AZOS + MfT LP", color: "rgba(74,222,128,0.8)", chain: "base", deployed: true },
   { key: "egp", label: "🌿 EGP", desc: "HP via impact token", tokens: "EGP + MfT LP", color: "rgba(34,197,94,0.8)", chain: "base", deployed: true },
   { key: "wethegp", label: "⛓️ WETH/EGP", desc: "HP + MATK + MDEF — builds liquidity", tokens: "WETH + EGP LP", color: "rgba(96,165,250,0.8)", chain: "base", deployed: true },
+  { key: "pol_egpusdglo", label: "🌿💰 EGP/USDGLO", desc: "HP + ATK + DEF via stablecoin + impact", tokens: "EGP + USDGLO LP", color: "rgba(167,139,250,0.8)", chain: "polygon", deployed: true },
   { key: "def", label: "🛡️ DEF", desc: "Physical defense", tokens: "TB01 + DDD LP", color: "rgba(148,163,184,0.8)", chain: "polygon", deployed: false },
   { key: "mAtk", label: "⚡ EATK", desc: "Electric attack", tokens: "JLT-F24 + DDD LP", color: "rgba(192,132,252,0.8)", chain: "polygon", deployed: false },
   { key: "fAtk", label: "🔥 FATK", desc: "Fire attack", tokens: "LANTERN + DDD LP", color: "rgba(251,146,60,0.8)", chain: "polygon", deployed: false },
   { key: "mDef", label: "🛡️ MDEF", desc: "Magic defense", tokens: "PR24 + DDD LP", color: "rgba(45,212,191,0.8)", chain: "polygon", deployed: false },
-  { key: "mana", label: "💧 SP.ATK", desc: "Special attack / magic def", tokens: "NCT + DDD LP", color: "rgba(96,165,250,0.8)", chain: "polygon", deployed: false },
+  { key: "mana", label: "💧 Mana", desc: "Powers up all magic stats", tokens: "NCT + DDD LP", color: "rgba(96,165,250,0.8)", chain: "polygon", deployed: false },
   { key: "charMultiplier", label: "♦ Multiplier", desc: "Boosts all stats", tokens: "CHAR + USDC LP", color: "rgba(167,139,250,0.8)", chain: "polygon", deployed: false },
 ];
 
 function HeroPortrait({ character }: { character: NftCharacter }) {
   const { imageUrl, imgFailed, setImgFailed } = useNftImage(character.metadataUri);
-  const chainColor = character.chain === "base" ? "rgba(96,165,250,0.8)" : "rgba(167,139,250,0.8)";
   return (
     <div className="flex flex-col items-center gap-2">
       <div className="rounded-xl overflow-hidden relative" style={{ width: 120, height: 120, background: '#0a0810' }}>
@@ -76,18 +68,11 @@ function HeroPortrait({ character }: { character: NftCharacter }) {
           <img src={imageUrl} alt={character.name} className="w-full h-full object-contain"
             onError={() => setImgFailed(true)} />
         )}
-        <span className="absolute top-1 right-1 px-1.5 py-0.5 rounded text-white font-bold"
-          style={{ fontSize: '0.45rem', background: character.chain === "base" ? 'rgba(37,99,235,0.8)' : 'rgba(124,58,237,0.8)' }}>
-          {character.chain === "base" ? "BASE" : "POL"}
-        </span>
       </div>
       <h3 className="font-black text-sm tracking-widest uppercase text-gold-shimmer">{character.name}</h3>
       <p className="text-xs" style={{ color: 'rgba(201,168,76,0.4)' }}>
         {character.contractAddress.slice(0, 8)}…{character.contractAddress.slice(-6)}
       </p>
-      <span className="text-xs font-bold px-2 py-0.5 rounded" style={{ color: chainColor, background: character.chain === "base" ? 'rgba(37,99,235,0.15)' : 'rgba(124,58,237,0.15)', border: `1px solid ${chainColor}` }}>
-        {character.chain === "base" ? "⬡ Base Chain" : "⬡ Polygon Chain"}
-      </span>
       {character.usdBacking > 0 && (
         <p className="text-xs font-bold" style={{ color: 'rgba(74,222,128,0.8)' }}>
           ${character.usdBacking.toFixed(2)} backing
@@ -101,17 +86,14 @@ export function PowerUp({ characters, onBack, onStatsRefresh }: Props) {
   const [search, setSearch] = useState("");
   const [selectedHero, setSelectedHero] = useState<NftCharacter | null>(null);
   const [selectedStat, setSelectedStat] = useState<string | null>(null);
-  const [chainFilter, setChainFilter] = useState<"all" | "base" | "polygon">("all");
+  const [chainTab, setChainTab] = useState<"base" | "polygon">("base");
+  const [showOwned, setShowOwned] = useState(true);
 
   const owned = characters.filter(c => c.owned);
-  const pool = owned.length > 0 ? owned : characters;
+  const pool = showOwned && owned.length > 0 ? owned : characters;
   const searched = search.trim()
     ? pool.filter(c => c.name.toLowerCase().includes(search.toLowerCase()) || c.contractAddress.toLowerCase().includes(search.toLowerCase()))
     : pool;
-  const filtered = chainFilter === "all" ? searched : searched.filter(c => c.chain === chainFilter);
-
-  const baseCount = searched.filter(c => c.chain === "base").length;
-  const polCount = searched.filter(c => c.chain === "polygon").length;
 
   const floatingBack = (
     <button onClick={selectedHero ? () => { setSelectedHero(null); setSelectedStat(null); setSearch(""); } : onBack}
@@ -134,34 +116,25 @@ export function PowerUp({ characters, onBack, onStatsRefresh }: Props) {
           Choose a hero to power up. LP deposits boost their stats permanently.
         </p>
 
-        {/* Chain filter tabs */}
+        {/* Owned / All toggle */}
         <div className="flex gap-2">
-          <button onClick={() => setChainFilter("all")}
+          <button onClick={() => setShowOwned(true)}
             className="px-4 py-1.5 rounded-lg text-xs font-bold uppercase tracking-widest transition-all"
             style={{
-              background: chainFilter === "all" ? 'rgba(201,168,76,0.2)' : 'rgba(255,255,255,0.03)',
-              color: chainFilter === "all" ? '#f0d070' : 'rgba(201,168,76,0.4)',
-              border: `1px solid ${chainFilter === "all" ? 'rgba(201,168,76,0.5)' : 'rgba(255,255,255,0.08)'}`,
+              background: showOwned ? 'rgba(74,222,128,0.2)' : 'rgba(255,255,255,0.03)',
+              color: showOwned ? 'rgba(74,222,128,0.9)' : 'rgba(74,222,128,0.4)',
+              border: `1px solid ${showOwned ? 'rgba(74,222,128,0.5)' : 'rgba(255,255,255,0.08)'}`,
             }}>
-            All ({baseCount + polCount})
+            My Heroes ({owned.length})
           </button>
-          <button onClick={() => setChainFilter("base")}
+          <button onClick={() => setShowOwned(false)}
             className="px-4 py-1.5 rounded-lg text-xs font-bold uppercase tracking-widest transition-all"
             style={{
-              background: chainFilter === "base" ? 'rgba(37,99,235,0.2)' : 'rgba(255,255,255,0.03)',
-              color: chainFilter === "base" ? 'rgba(96,165,250,0.9)' : 'rgba(96,165,250,0.4)',
-              border: `1px solid ${chainFilter === "base" ? 'rgba(37,99,235,0.5)' : 'rgba(255,255,255,0.08)'}`,
+              background: !showOwned ? 'rgba(201,168,76,0.2)' : 'rgba(255,255,255,0.03)',
+              color: !showOwned ? '#f0d070' : 'rgba(201,168,76,0.4)',
+              border: `1px solid ${!showOwned ? 'rgba(201,168,76,0.5)' : 'rgba(255,255,255,0.08)'}`,
             }}>
-            ⬡ Base ({baseCount})
-          </button>
-          <button onClick={() => setChainFilter("polygon")}
-            className="px-4 py-1.5 rounded-lg text-xs font-bold uppercase tracking-widest transition-all"
-            style={{
-              background: chainFilter === "polygon" ? 'rgba(124,58,237,0.2)' : 'rgba(255,255,255,0.03)',
-              color: chainFilter === "polygon" ? 'rgba(167,139,250,0.9)' : 'rgba(167,139,250,0.4)',
-              border: `1px solid ${chainFilter === "polygon" ? 'rgba(124,58,237,0.5)' : 'rgba(255,255,255,0.08)'}`,
-            }}>
-            ⬡ Polygon ({polCount})
+            All ({characters.length})
           </button>
         </div>
 
@@ -176,14 +149,10 @@ export function PowerUp({ characters, onBack, onStatsRefresh }: Props) {
         <div className="w-full max-h-[50vh] overflow-y-auto rounded-lg p-3"
           style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(201,168,76,0.1)' }}>
           <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 gap-3">
-            {filtered.map(card => (
+            {searched.map(card => (
               <div key={card.contractAddress} onClick={() => { setSelectedHero(card); setSelectedStat(null); }}
                 className="rounded-lg p-2 cursor-pointer transition-all text-center hover:scale-105 relative"
-                style={{ background: 'rgba(255,255,255,0.03)', border: `1px solid ${card.chain === "base" ? 'rgba(37,99,235,0.25)' : 'rgba(124,58,237,0.25)'}` }}>
-                <span className="absolute top-0.5 right-0.5 px-1 rounded text-white font-bold"
-                  style={{ fontSize: '0.4rem', background: card.chain === "base" ? 'rgba(37,99,235,0.7)' : 'rgba(124,58,237,0.7)' }}>
-                  {card.chain === "base" ? "B" : "P"}
-                </span>
+                style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(201,168,76,0.25)' }}>
                 <p className="text-xs font-bold truncate" style={{ color: 'rgba(232,213,176,0.7)', fontSize: '0.5rem' }}>
                   {card.name}
                 </p>
@@ -199,17 +168,7 @@ export function PowerUp({ characters, onBack, onStatsRefresh }: Props) {
     );
   }
 
-  const heroChain = selectedHero.chain;
-  const chainColor = heroChain === "base" ? "rgba(96,165,250" : "rgba(167,139,250";
-  const chainName = heroChain === "base" ? "Base" : "Polygon";
-
-  // Filter stat options relevant to this hero's chain
-  const baseStats = STAT_OPTIONS.filter(s => s.chain === "base" || s.chain === "both");
-  const polStats = STAT_OPTIONS.filter(s => s.chain === "polygon" || s.chain === "both");
-  const relevantStats = heroChain === "base" ? baseStats : polStats;
-  const otherStats = heroChain === "base" ? polStats : baseStats;
-
-  // Stat selection + power up
+  // Stat selection + power up — all power-ups available for all heroes regardless of chain
   return (
     <div className="flex flex-col items-center gap-6 max-w-2xl mx-auto">
       {floatingBack}
@@ -224,7 +183,15 @@ export function PowerUp({ characters, onBack, onStatsRefresh }: Props) {
       <div className="w-full rounded-xl p-4" style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(201,168,76,0.15)' }}>
         <p className="text-center text-xs tracking-widest uppercase mb-3" style={{ color: 'rgba(201,168,76,0.4)' }}>Current Stats</p>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-          {STAT_OPTIONS.filter(s => s.key !== "azos" && s.key !== "attack").map(s => {
+          {[
+            { key: "attack", label: "⚔️ ATK", color: "rgba(251,191,36,0.8)" },
+            { key: "def", label: "🛡️ DEF", color: "rgba(148,163,184,0.8)" },
+            { key: "hp", label: "❤️ HP", color: "rgba(251,113,133,0.8)" },
+            { key: "mAtk", label: "⚡ EATK", color: "rgba(192,132,252,0.8)" },
+            { key: "fAtk", label: "🔥 FATK", color: "rgba(251,146,60,0.8)" },
+            { key: "mDef", label: "🛡️ MDEF", color: "rgba(45,212,191,0.8)" },
+            { key: "charMultiplier", label: "♦ Mult", color: "rgba(167,139,250,0.8)" },
+          ].map(s => {
             const val = (selectedHero.stats as any)[s.key] ?? 0;
             return (
               <div key={s.key} className="text-center px-2 py-1.5 rounded"
@@ -239,64 +206,50 @@ export function PowerUp({ characters, onBack, onStatsRefresh }: Props) {
         </div>
       </div>
 
-      {/* Available power-ups for this chain */}
-      <div className="w-full rounded-xl p-4" style={{ background: `${chainColor},0.05)`, border: `1px solid ${chainColor},0.3)` }}>
-        <p className="text-center text-sm font-bold tracking-widest uppercase mb-1" style={{ color: `${chainColor},0.9)` }}>
-          {heroChain === "base" ? "⬡" : "⬡"} {chainName} Power-Ups
-        </p>
-        <p className="text-center mb-3" style={{ color: `${chainColor},0.4)`, fontSize: '0.5rem' }}>
-          {heroChain === "base" ? "Pay with ETH on Base — auto-swaps to LP tokens" : "Polygon contracts coming soon"}
-        </p>
-
-        <div className="grid grid-cols-2 gap-3">
-          {relevantStats.map(s => (
-            <button key={s.key} onClick={() => s.deployed ? setSelectedStat(s.key) : null}
-              className="px-4 py-3 rounded-lg text-left transition-all relative"
-              style={{
-                background: selectedStat === s.key ? `${chainColor},0.15)` : 'rgba(255,255,255,0.03)',
-                border: `1px solid ${selectedStat === s.key ? `${chainColor},0.5)` : 'rgba(255,255,255,0.08)'}`,
-                opacity: s.deployed ? 1 : 0.5,
-                cursor: s.deployed ? 'pointer' : 'not-allowed',
-              }}>
-              <span className="text-sm font-bold" style={{ color: s.color }}>{s.label}</span>
-              {!s.deployed && (
-                <span className="absolute top-1.5 right-1.5 px-1.5 py-0.5 rounded text-white font-bold"
-                  style={{ fontSize: '0.4rem', background: 'rgba(255,255,255,0.1)' }}>
-                  SOON
-                </span>
-              )}
-              <p style={{ color: 'rgba(232,213,176,0.4)', fontSize: '0.5rem' }}>{s.desc}</p>
-              <p style={{ color: `${chainColor},0.3)`, fontSize: '0.45rem' }}>Requires: {s.tokens}</p>
-            </button>
-          ))}
+      {/* Power-ups with chain tabs */}
+      <div className="w-full">
+        <div className="flex gap-2 justify-center mb-3">
+          <button onClick={() => { setSelectedStat(null); setChainTab("base"); }}
+            className="px-5 py-2 rounded-lg text-xs font-black uppercase tracking-widest"
+            style={{ background: chainTab === "base" ? 'rgba(96,165,250,0.2)' : 'rgba(255,255,255,0.03)', color: chainTab === "base" ? 'rgba(96,165,250,0.9)' : 'rgba(96,165,250,0.4)', border: `1px solid ${chainTab === "base" ? 'rgba(96,165,250,0.5)' : 'rgba(255,255,255,0.08)'}` }}>
+            ⬡ Base (ETH)
+          </button>
+          <button onClick={() => { setSelectedStat(null); setChainTab("polygon"); }}
+            className="px-5 py-2 rounded-lg text-xs font-black uppercase tracking-widest"
+            style={{ background: chainTab === "polygon" ? 'rgba(167,139,250,0.2)' : 'rgba(255,255,255,0.03)', color: chainTab === "polygon" ? 'rgba(167,139,250,0.9)' : 'rgba(167,139,250,0.4)', border: `1px solid ${chainTab === "polygon" ? 'rgba(167,139,250,0.5)' : 'rgba(255,255,255,0.08)'}` }}>
+            ⬡ Polygon (POL)
+          </button>
         </div>
-      </div>
 
-      {/* Other chain stats (dimmed, informational) */}
-      {otherStats.length > 0 && (
-        <div className="w-full rounded-xl p-4" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }}>
-          <p className="text-center text-xs tracking-widest uppercase mb-1" style={{ color: 'rgba(255,255,255,0.3)' }}>
-            {heroChain === "base" ? "⬡ Polygon" : "⬡ Base"} Power-Ups
+        <div className="w-full rounded-xl p-4" style={{ background: chainTab === "base" ? 'rgba(96,165,250,0.05)' : 'rgba(167,139,250,0.05)', border: `1px solid ${chainTab === "base" ? 'rgba(96,165,250,0.3)' : 'rgba(167,139,250,0.3)'}` }}>
+          <p className="text-center mb-3" style={{ color: chainTab === "base" ? 'rgba(96,165,250,0.5)' : 'rgba(167,139,250,0.5)', fontSize: '0.5rem' }}>
+            {chainTab === "base" ? "Pay with ETH on Base — switch wallet to Base chain" : "Pay with POL on Polygon — switch wallet to Polygon chain"}
           </p>
-          <p className="text-center mb-3" style={{ color: 'rgba(255,255,255,0.15)', fontSize: '0.45rem' }}>
-            Available for {heroChain === "base" ? "Polygon" : "Base"} heroes only
-          </p>
-          <div className="grid grid-cols-2 gap-2">
-            {otherStats.map(s => (
-              <div key={s.key} className="px-3 py-2 rounded-lg"
-                style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.04)', opacity: 0.4 }}>
-                <span className="text-xs font-bold" style={{ color: s.color }}>{s.label}</span>
-                <p style={{ color: 'rgba(232,213,176,0.3)', fontSize: '0.45rem' }}>{s.tokens}</p>
-              </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            {STAT_OPTIONS.filter(s => s.chain === chainTab).map(s => (
+              <button key={s.key} onClick={() => s.deployed ? setSelectedStat(s.key) : null}
+                className="px-4 py-3 rounded-lg text-left transition-all relative"
+                style={{
+                  background: selectedStat === s.key ? 'rgba(201,168,76,0.15)' : 'rgba(255,255,255,0.03)',
+                  border: `1px solid ${selectedStat === s.key ? 'rgba(201,168,76,0.5)' : 'rgba(255,255,255,0.08)'}`,
+                  opacity: s.deployed ? 1 : 0.5,
+                  cursor: s.deployed ? 'pointer' : 'not-allowed',
+                }}>
+                <span className="text-sm font-bold" style={{ color: s.color }}>{s.label}</span>
+                {!s.deployed && <span className="absolute top-1.5 right-1.5 px-1.5 py-0.5 rounded text-white font-bold" style={{ fontSize: '0.4rem', background: 'rgba(255,255,255,0.1)' }}>SOON</span>}
+                <p style={{ color: 'rgba(232,213,176,0.4)', fontSize: '0.5rem' }}>{s.desc}</p>
+                <p style={{ color: 'rgba(201,168,76,0.3)', fontSize: '0.45rem' }}>{s.tokens}</p>
+              </button>
             ))}
           </div>
         </div>
-      )}
+      </div>
 
       {/* Payment */}
-      {selectedStat && heroChain === "base" && BASE_CONTRACTS[selectedStat] && (
+      {selectedStat && CONTRACTS[selectedStat] && (
         <PowerUpPayment
-          contract={BASE_CONTRACTS[selectedStat]}
+          contract={CONTRACTS[selectedStat]}
           nftContract={selectedHero.contractAddress as `0x${string}`}
           heroName={selectedHero.name}
           statLabel={STAT_OPTIONS.find(s => s.key === selectedStat)?.label ?? ""}

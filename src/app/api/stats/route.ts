@@ -152,11 +152,11 @@ export async function GET() {
 
     // Secondary + tertiary + quaternary stats for the 8 game tokens (HP is primary)
     const bonusStats: Record<string, { secondary: string; tertiary: string; quaternary: string }> = {
-      "0x4bf82cf0d6b2afc87367052b793097153c859d38": { secondary: "def",    tertiary: "attack", quaternary: "mana" },   // DDD
-      "0x64f6f111e9fdb753877f17f399b759de97379170": { secondary: "healing", tertiary: "mDef",   quaternary: "mana" },   // EGP(POL)
-      "0xccf37622e6b72352e7b410481dd4913563038b7c": { secondary: "attack", tertiary: "mAtk",   quaternary: "mana" },   // OGC
+      "0x4bf82cf0d6b2afc87367052b793097153c859d38": { secondary: "def",    tertiary: "attack", quaternary: "mDef" },   // DDD
+      "0x64f6f111e9fdb753877f17f399b759de97379170": { secondary: "healing", tertiary: "mDef",   quaternary: "mAtk" },   // EGP(POL)
+      "0xccf37622e6b72352e7b410481dd4913563038b7c": { secondary: "attack", tertiary: "mAtk",   quaternary: "mDef" },   // OGC
       "0x8a088dceecbcf457762eb7c66f78fff27dc0c04a": { secondary: "attack", tertiary: "mAtk",   quaternary: "def" },    // PKT
-      "0xd7c584d40216576f1d8651eab8bef9de69497666": { secondary: "mana",   tertiary: "healing", quaternary: "def" },    // BTN
+      "0xd7c584d40216576f1d8651eab8bef9de69497666": { secondary: "mAtk",   tertiary: "healing", quaternary: "def" },    // BTN
       "0xe302672798d12e7f68c783db2c2d5e6b48ccf3ce": { secondary: "mDef",   tertiary: "attack", quaternary: "mAtk" },   // IGS
       "0x75c0a194cd8b4f01d5ed58be5b7c5b61a9c69d0a": { secondary: "mAtk",  tertiary: "mDef",   quaternary: "def" },    // DHG
       "0xddc330761761751e005333208889bfe36c6e6760": { secondary: "def",    tertiary: "mDef",   quaternary: "attack" }, // LGP
@@ -463,7 +463,7 @@ export async function GET() {
         } else if (addr === WBTC_ADDR) {
           stat = "attack"; hp += points; attack += points; mAtk += points;
         } else if (WETH_ADDRS.includes(addr)) {
-          stat = "def"; def += points * 3;
+          stat = "def"; hp += points; mAtk += points; mDef += points;
         } else if (attackTokens.includes(addr) || polyAttackTokens.includes(addr)) {
           stat = "attack"; attack += points;
         } else if (polyMatkTokens.includes(addr)) {
@@ -483,7 +483,7 @@ export async function GET() {
         } else if (polyMDefTokens.includes(addr)) {
           stat = "mDef"; mDef += points;
         } else if (manaTokens.includes(addr)) {
-          stat = "mana"; mana += points;
+          stat = "mDef"; mDef += points; mAtk += points;
         } else {
           stat = "hp"; hp += points;
         }
