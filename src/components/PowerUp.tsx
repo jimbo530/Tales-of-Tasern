@@ -38,9 +38,9 @@ type StatOption = {
 };
 
 const STAT_OPTIONS: StatOption[] = [
-  { key: "attack", label: "⚔️ ATK", desc: "Physical attack power", tokens: "USDGLO + MfT LP", color: "rgba(251,191,36,0.8)", chain: "base", deployed: true },
+  { key: "attack", label: "⚔️🛡️❤️ ALL", desc: "ATK + DEF + HP via stablecoin", tokens: "USDGLO + MfT LP", color: "rgba(251,191,36,0.8)", chain: "base", deployed: true },
   { key: "hp", label: "❤️ HP", desc: "Hit points via TGN", tokens: "TGN + MfT LP", color: "rgba(251,113,133,0.8)", chain: "base", deployed: true },
-  { key: "azos", label: "🛡️⚔️❤️ ALL", desc: "ATK + DEF + HP via stablecoin", tokens: "AZOS + MfT LP", color: "rgba(74,222,128,0.8)", chain: "base", deployed: true },
+  { key: "azos", label: "⚔️🛡️❤️ ALL", desc: "ATK + DEF + HP via stablecoin", tokens: "AZOS + MfT LP", color: "rgba(74,222,128,0.8)", chain: "base", deployed: true },
   { key: "def", label: "🛡️ DEF", desc: "Physical defense", tokens: "TB01 + DDD LP", color: "rgba(148,163,184,0.8)", chain: "polygon", deployed: false },
   { key: "mAtk", label: "⚡ EATK", desc: "Electric attack", tokens: "JLT-F24 + DDD LP", color: "rgba(192,132,252,0.8)", chain: "polygon", deployed: false },
   { key: "fAtk", label: "🔥 FATK", desc: "Fire attack", tokens: "LANTERN + DDD LP", color: "rgba(251,146,60,0.8)", chain: "polygon", deployed: false },
@@ -315,8 +315,7 @@ function PowerUpPayment({ contract, nftContract, heroName, statLabel }: {
   const FIXED_AMOUNT = "0.001";
 
   async function handlePowerUp() {
-    console.log("[PowerUp] clicked, walletClient:", !!walletClient, "contract:", contract.address, "nft:", nftContract);
-    if (!walletClient) { setStatus("Connect wallet first"); return; }
+    if (!walletClient) { setStatus("Wallet loading — try again in a moment"); return; }
     setStatus("Confirm in your wallet — sending ETH...");
     setTxHash(null);
 
@@ -347,10 +346,10 @@ function PowerUpPayment({ contract, nftContract, heroName, statLabel }: {
         <div className="flex flex-col gap-3">
           <p className="text-center text-xs" style={{ color: 'rgba(201,168,76,0.5)' }}>Pay with ETH on Base — auto-swaps to LP tokens</p>
 
-          <button onClick={handlePowerUp}
+          <button onClick={handlePowerUp} disabled={!walletClient}
             className="w-full px-6 py-3 rounded-lg text-sm font-black uppercase tracking-widest"
-            style={{ background: 'rgba(34,197,94,0.3)', color: 'rgba(74,222,128,0.9)', border: '1px solid rgba(34,197,94,0.5)' }}>
-            ⬆️ Power Up — 0.001 ETH
+            style={{ background: walletClient ? 'rgba(34,197,94,0.3)' : 'rgba(100,100,100,0.2)', color: walletClient ? 'rgba(74,222,128,0.9)' : 'rgba(150,150,150,0.5)', border: `1px solid ${walletClient ? 'rgba(34,197,94,0.5)' : 'rgba(100,100,100,0.3)'}`, cursor: walletClient ? 'pointer' : 'wait' }}>
+            {walletClient ? '⬆️ Power Up — 0.001 ETH' : '⏳ Loading wallet...'}
           </button>
 
           {status && (

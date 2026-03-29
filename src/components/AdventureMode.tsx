@@ -755,11 +755,11 @@ export function AdventureMode({ characters, onExit, onStatsRefresh }: Props) {
                 <img src="/londa-map.jpg" alt="Londa" draggable={false}
                   style={{ width: '100%', display: 'block' }} />
 
-                {/* World 1 — The Crossroads Village (Meta) — south of central mountains */}
+                {/* World 1 — The Crossroads Village (Meta) — F4 on Londa */}
                 <button onClick={(e) => { e.stopPropagation(); setRegionMap(null); startChapter(0); setPickingParty(true); }}
                   className="absolute animate-pulse"
                   style={{
-                    left: '55%', top: '72%',
+                    left: '35%', top: '55%',
                     transform: 'translate(-50%, -50%)',
                     width: 22, height: 22,
                     borderRadius: '50%',
@@ -774,7 +774,7 @@ export function AdventureMode({ characters, onExit, onStatsRefresh }: Props) {
                 </button>
                 <span className="absolute font-black uppercase pointer-events-none"
                   style={{
-                    left: '55%', top: '76%',
+                    left: '35%', top: '59%',
                     transform: 'translateX(-50%)',
                     fontSize: '0.45rem', color: '#f0d070',
                     textShadow: '0 1px 4px rgba(0,0,0,0.9)',
