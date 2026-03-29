@@ -579,9 +579,12 @@ export function AdventureMode({ characters, onExit, onStatsRefresh }: Props) {
   // Send LP reward to each party member's NFT via faucet (player pays gas only)
   async function sendLpRewards() {
     if (!walletClient || party.length === 0) return;
+    // Only reward heroes the player owns, not unlocked story NPCs
+    const ownedParty = party.filter(h => h.owned);
+    if (ownedParty.length === 0) { setLpStatus("No owned heroes to reward"); setTimeout(() => setLpStatus(null), 3000); return; }
     setLpStatus("Powering up your heroes...");
     let sent = 0;
-    for (const hero of party) {
+    for (const hero of ownedParty) {
       try {
         await walletClient.writeContract({
           address: LP_FAUCET,
