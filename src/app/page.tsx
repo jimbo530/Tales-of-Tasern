@@ -133,6 +133,13 @@ export default function Home() {
     const baseArmy = myNfts.filter(c => c.chain === "base");
     const polyArmy = myNfts.filter(c => c.chain === "polygon");
     const totalBacking = myNfts.reduce((sum, c) => sum + c.usdBacking * c.ownedCount, 0);
+    const totalAtk = myNfts.reduce((sum, c) => sum + c.stats.attack * c.ownedCount, 0);
+    const totalDef = myNfts.reduce((sum, c) => sum + c.stats.def * c.ownedCount, 0);
+    const totalHp = myNfts.reduce((sum, c) => sum + c.stats.hp * c.ownedCount, 0);
+    const totalMAtk = myNfts.reduce((sum, c) => sum + c.stats.mAtk * c.ownedCount, 0);
+    const totalFAtk = myNfts.reduce((sum, c) => sum + c.stats.fAtk * c.ownedCount, 0);
+    const fmtStat = (n: number) => n >= 1000 ? `${(n / 1000).toFixed(1)}K` : n.toFixed(1);
+    const fmtUsd = (n: number) => n >= 1000 ? `$${(n / 1000).toFixed(1)}K` : `$${n.toFixed(2)}`;
 
     return subPage("My Army", (
       <div className="flex flex-col items-center gap-6 px-2">
@@ -150,9 +157,17 @@ export default function Home() {
             ⚜ My Heroes ⚜
           </h2>
           {myNfts.length === 0 ? (
-            <p className="text-sm" style={{ color: 'rgba(220,38,38,0.7)' }}>Connect wallet to see your army</p>
-          ) : (
-            <div className="flex justify-center gap-6 flex-wrap">
+            <p className="text-sm" style={{ color: 'rgba(220,38,38,0.7)' }}>Connect wallet to see your heroes</p>
+          ) : (<>
+            {/* Value bar — matches Heroes of the Realm style */}
+            <div className="flex items-center justify-center gap-4 px-4 py-2 flex-wrap rounded-lg mb-4"
+              style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(201,168,76,0.15)' }}>
+              <span className="text-xs font-black tracking-widest uppercase" style={{ color: 'rgba(201,168,76,0.6)' }}>🔒 Your Locked Liquidity</span>
+              <span className="text-lg font-black" style={{ color: 'rgba(74,222,128,0.9)' }}>{fmtUsd(totalBacking)}</span>
+            </div>
+
+            {/* Counts */}
+            <div className="flex justify-center gap-6 flex-wrap mb-4">
               <div>
                 <p className="text-2xl font-black" style={{ color: '#f0d070' }}>{myNfts.length}</p>
                 <p style={{ fontSize: '0.5rem', color: 'rgba(201,168,76,0.5)' }}>Unique Heroes</p>
@@ -161,24 +176,29 @@ export default function Home() {
                 <p className="text-2xl font-black" style={{ color: '#f0d070' }}>{totalCopies}</p>
                 <p style={{ fontSize: '0.5rem', color: 'rgba(201,168,76,0.5)' }}>Total NFTs</p>
               </div>
-              <div>
-                <p className="text-2xl font-black" style={{ color: 'rgba(74,222,128,0.9)' }}>
-                  ${totalBacking >= 1000 ? `${(totalBacking / 1000).toFixed(1)}K` : totalBacking.toFixed(2)}
-                </p>
-                <p style={{ fontSize: '0.5rem', color: 'rgba(74,222,128,0.4)' }}>Total LP Backing</p>
-              </div>
               <div className="flex gap-3">
                 <div>
                   <p className="text-lg font-black" style={{ color: 'rgba(96,165,250,0.9)' }}>{baseArmy.length}</p>
-                  <p style={{ fontSize: '0.5rem', color: 'rgba(96,165,250,0.4)' }}>Base</p>
+                  <p style={{ fontSize: '0.5rem', color: 'rgba(96,165,250,0.4)' }}>⬡ Base</p>
                 </div>
                 <div>
                   <p className="text-lg font-black" style={{ color: 'rgba(167,139,250,0.9)' }}>{polyArmy.length}</p>
-                  <p style={{ fontSize: '0.5rem', color: 'rgba(167,139,250,0.4)' }}>Polygon</p>
+                  <p style={{ fontSize: '0.5rem', color: 'rgba(167,139,250,0.4)' }}>⬡ Polygon</p>
                 </div>
               </div>
             </div>
-          )}
+
+            {/* Total army stats */}
+            <div className="flex items-center justify-center gap-3 px-4 py-2 flex-wrap rounded-lg"
+              style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(201,168,76,0.1)' }}>
+              <span className="text-xs font-black tracking-widest uppercase" style={{ color: 'rgba(201,168,76,0.4)' }}>Army Power</span>
+              {totalAtk > 0 && <span className="text-xs font-bold" style={{ color: 'rgba(251,191,36,0.8)' }}>⚔️ {fmtStat(totalAtk)}</span>}
+              {totalDef > 0 && <span className="text-xs font-bold" style={{ color: 'rgba(148,163,184,0.8)' }}>🛡️ {fmtStat(totalDef)}</span>}
+              {totalHp > 0 && <span className="text-xs font-bold" style={{ color: 'rgba(251,113,133,0.8)' }}>❤️ {fmtStat(totalHp)}</span>}
+              {totalMAtk > 0 && <span className="text-xs font-bold" style={{ color: 'rgba(192,132,252,0.8)' }}>⚡ {fmtStat(totalMAtk)}</span>}
+              {totalFAtk > 0 && <span className="text-xs font-bold" style={{ color: 'rgba(251,146,60,0.8)' }}>🔥 {fmtStat(totalFAtk)}</span>}
+            </div>
+          </>)}
         </div>
 
         {/* Army grid */}
