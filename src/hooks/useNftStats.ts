@@ -21,6 +21,7 @@ export type NftCharacter = {
   metadataUri?: string;
   imageUrl?: string;
   owned: boolean;
+  ownedCount: number;
   stats: { attack: number; mAtk: number; fAtk: number; def: number; mDef: number; hp: number; healing: number; charMultiplier: number; magicMultiplier: number; mana: number };
   tokenAmounts: TokenAmount[];
   usdBacking: number;
@@ -51,7 +52,7 @@ export function useNftStats() {
         console.log("[ToT] Loaded stats from API:", data.characters?.length, "NFTs, updated:", data.updatedAt);
 
         // Check ownership if wallet connected
-        let ownershipMap = new Map<string, boolean>();
+        let ownershipMap = new Map<string, number>();
         if (isConnected && address) {
           const baseNfts = GAME_NFTS.filter(n => n.chain === "base");
           const polyNfts = GAME_NFTS.filter(n => n.chain === "polygon");
@@ -68,7 +69,7 @@ export function useNftStats() {
               const results = await baseClient.multicall({ contracts: calls, allowFailure: true });
               baseNfts.forEach((nft, i) => {
                 const r = results[i];
-                ownershipMap.set(nft.contractAddress.toLowerCase(), r.status === "success" && (r.result as bigint) > 0n);
+                ownershipMap.set(nft.contractAddress.toLowerCase(), r.status === "success" ? Number(r.result as bigint) : 0);
               });
             } catch (e) {
               console.warn("[ToT] Base ownership check failed:", e);
@@ -87,7 +88,7 @@ export function useNftStats() {
               const results = await polygonClient.multicall({ contracts: calls, allowFailure: true });
               polyNfts.forEach((nft, i) => {
                 const r = results[i];
-                ownershipMap.set(nft.contractAddress.toLowerCase(), r.status === "success" && (r.result as bigint) > 0n);
+                ownershipMap.set(nft.contractAddress.toLowerCase(), r.status === "success" ? Number(r.result as bigint) : 0);
               });
             } catch (e) {
               console.warn("[ToT] Polygon ownership check failed:", e);
@@ -104,7 +105,8 @@ export function useNftStats() {
           tokenId: TOKEN_ID,
           metadataUri: c.metadataUri,
           imageUrl: c.imageUrl,
-          owned: ownershipMap.get(c.contractAddress.toLowerCase()) ?? false,
+          owned: (ownershipMap.get(c.contractAddress.toLowerCase()) ?? 0) > 0,
+          ownedCount: ownershipMap.get(c.contractAddress.toLowerCase()) ?? 0,
           stats: c.stats,
           tokenAmounts: c.tokenAmounts ?? [],
           usdBacking: c.usdBacking ?? 0,

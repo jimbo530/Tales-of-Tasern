@@ -32,7 +32,7 @@ export default function Home() {
   const [search, setSearch] = useState("");
 
   // Navigation
-  const [view, setView] = useState<"menu" | "heroes" | "adventure" | "castleSiege" | "castleAI" | "matchmaking" | "marketplace" | "powerUp" | "1v1">("menu");
+  const [view, setView] = useState<"menu" | "heroes" | "army" | "adventure" | "castleSiege" | "castleAI" | "matchmaking" | "marketplace" | "powerUp" | "1v1">("menu");
 
   // Cycling background images
   const BG_IMAGES = ["/bg-plains-1.webp", "/bg-plains-2.webp", "/bg-plains-3.webp", "/bg-plains-4.webp", "/bg-desert-1.webp", "/bg-desert-2.webp", "/bg-desert-3.webp", "/bg-desert-4.webp"];
@@ -125,6 +125,123 @@ export default function Home() {
   if (view === "powerUp") return subPage("Power Up", <PowerUp characters={characters} onBack={() => cycleView("menu")} />);
   if (view === "marketplace") return subPage("Marketplace", <Marketplace characters={characters} onBack={() => cycleView("menu")} />);
   if (view === "adventure") return subPage("Adventure", <AdventureMode characters={characters} onExit={() => cycleView("menu")} />);
+
+  // My Army page
+  if (view === "army") {
+    const myNfts = characters.filter(c => c.owned);
+    const totalCopies = myNfts.reduce((sum, c) => sum + c.ownedCount, 0);
+    const baseArmy = myNfts.filter(c => c.chain === "base");
+    const polyArmy = myNfts.filter(c => c.chain === "polygon");
+    const totalBacking = myNfts.reduce((sum, c) => sum + c.usdBacking * c.ownedCount, 0);
+
+    return subPage("My Army", (
+      <div className="flex flex-col items-center gap-6 px-2">
+        <button onClick={() => cycleView("menu")}
+          className="fixed top-20 left-4 z-50 px-4 py-2 rounded-lg text-sm font-black uppercase tracking-widest"
+          style={{ background: 'rgba(10,6,8,0.95)', color: '#f0d070', border: '1px solid rgba(201,168,76,0.5)', boxShadow: '0 0 15px rgba(0,0,0,0.5)', fontFamily: "'Cinzel Decorative', 'Cinzel', serif" }}>
+          ⚜ ← Back ⚜
+        </button>
+
+        {/* Army stats banner */}
+        <div className="w-full max-w-lg rounded-xl p-5 text-center"
+          style={{ background: 'rgba(201,168,76,0.08)', border: '1px solid rgba(201,168,76,0.25)' }}>
+          <h2 className="text-xl font-black tracking-widest text-gold-shimmer uppercase mb-3"
+            style={{ fontFamily: "'Cinzel Decorative', 'Cinzel', serif" }}>
+            ⚜ My Heroes ⚜
+          </h2>
+          {myNfts.length === 0 ? (
+            <p className="text-sm" style={{ color: 'rgba(220,38,38,0.7)' }}>Connect wallet to see your army</p>
+          ) : (
+            <div className="flex justify-center gap-6 flex-wrap">
+              <div>
+                <p className="text-2xl font-black" style={{ color: '#f0d070' }}>{myNfts.length}</p>
+                <p style={{ fontSize: '0.5rem', color: 'rgba(201,168,76,0.5)' }}>Unique Heroes</p>
+              </div>
+              <div>
+                <p className="text-2xl font-black" style={{ color: '#f0d070' }}>{totalCopies}</p>
+                <p style={{ fontSize: '0.5rem', color: 'rgba(201,168,76,0.5)' }}>Total NFTs</p>
+              </div>
+              <div>
+                <p className="text-2xl font-black" style={{ color: 'rgba(74,222,128,0.9)' }}>
+                  ${totalBacking >= 1000 ? `${(totalBacking / 1000).toFixed(1)}K` : totalBacking.toFixed(2)}
+                </p>
+                <p style={{ fontSize: '0.5rem', color: 'rgba(74,222,128,0.4)' }}>Total LP Backing</p>
+              </div>
+              <div className="flex gap-3">
+                <div>
+                  <p className="text-lg font-black" style={{ color: 'rgba(96,165,250,0.9)' }}>{baseArmy.length}</p>
+                  <p style={{ fontSize: '0.5rem', color: 'rgba(96,165,250,0.4)' }}>Base</p>
+                </div>
+                <div>
+                  <p className="text-lg font-black" style={{ color: 'rgba(167,139,250,0.9)' }}>{polyArmy.length}</p>
+                  <p style={{ fontSize: '0.5rem', color: 'rgba(167,139,250,0.4)' }}>Polygon</p>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Army grid */}
+        {myNfts.length > 0 && (
+          <div className="w-full max-w-2xl">
+            {[{ label: "Base Forces", chain: "base" as const, army: baseArmy, color: "rgba(96,165,250" },
+              { label: "Polygon Forces", chain: "polygon" as const, army: polyArmy, color: "rgba(167,139,250" }]
+              .filter(g => g.army.length > 0)
+              .map(group => (
+              <div key={group.chain} className="mb-6">
+                <h3 className="text-sm font-black tracking-widest uppercase mb-3 text-center"
+                  style={{ color: `${group.color},0.8)` }}>
+                  ⬡ {group.label} ({group.army.reduce((s, c) => s + c.ownedCount, 0)} NFTs)
+                </h3>
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                  {group.army.map(card => (
+                    <div key={card.contractAddress}
+                      className="rounded-xl overflow-hidden transition-all hover:scale-[1.02]"
+                      style={{ background: 'rgba(255,255,255,0.03)', border: `1px solid ${group.color},0.3)` }}>
+                      <div className="relative" style={{ height: 100, background: '#0a0810' }}>
+                        {card.imageUrl ? (
+                          /* eslint-disable-next-line @next/next/no-img-element */
+                          <img src={`/api/images?url=${encodeURIComponent(card.imageUrl)}`} alt={card.name}
+                            className="w-full h-full object-contain" />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center opacity-20">
+                            <span className="text-2xl">🛡️</span>
+                          </div>
+                        )}
+                        {card.ownedCount > 1 && (
+                          <span className="absolute top-1 right-1 px-1.5 py-0.5 rounded-full font-black text-xs"
+                            style={{ background: 'rgba(201,168,76,0.9)', color: '#0a0608', fontSize: '0.6rem' }}>
+                            x{card.ownedCount}
+                          </span>
+                        )}
+                      </div>
+                      <div className="p-2">
+                        <p className="font-black text-xs truncate" style={{ color: 'rgba(232,213,176,0.8)', fontSize: '0.55rem' }}>
+                          {card.name}
+                        </p>
+                        {card.usdBacking > 0 && (
+                          <p style={{ color: 'rgba(74,222,128,0.7)', fontSize: '0.45rem' }}>
+                            ${(card.usdBacking * card.ownedCount).toFixed(2)} backing
+                          </p>
+                        )}
+                        <div className="flex flex-wrap gap-1 mt-1" style={{ fontSize: '0.4rem', color: 'rgba(232,213,176,0.4)' }}>
+                          {card.stats.attack > 0 && <span>⚔️{card.stats.attack.toFixed(1)}</span>}
+                          {card.stats.hp > 0 && <span>❤️{card.stats.hp.toFixed(1)}</span>}
+                          {card.stats.def > 0 && <span>🛡️{card.stats.def.toFixed(1)}</span>}
+                          {card.stats.mAtk > 0 && <span>⚡{card.stats.mAtk.toFixed(1)}</span>}
+                          {card.stats.fAtk > 0 && <span>🔥{card.stats.fAtk.toFixed(1)}</span>}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    ));
+  }
 
   if (view === "castleSiege") return subPage("Castle Siege", (
     <div className="flex flex-col items-center gap-6 mt-12">
@@ -414,13 +531,26 @@ export default function Home() {
 
         {/* Main menu buttons */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 w-full max-w-lg">
-          {/* Heroes */}
-          <button onClick={() => cycleView("heroes")}
+          {/* My Heroes */}
+          <button onClick={() => cycleView("army")}
             className="flex flex-col items-center gap-3 px-6 py-8 rounded-2xl transition-all hover:scale-[1.02]"
             style={{ background: 'rgba(201,168,76,0.1)', border: '2px solid rgba(201,168,76,0.3)', boxShadow: '0 0 25px rgba(201,168,76,0.05)' }}>
+            <span className="text-4xl">⚔️</span>
+            <span className="text-sm font-black tracking-widest uppercase" style={{ color: '#f0d070' }}>My Heroes</span>
+            <span style={{ fontSize: '0.55rem', color: 'rgba(201,168,76,0.5)' }}>
+              {characters.filter(c => c.owned).length > 0
+                ? `${characters.filter(c => c.owned).length} heroes in your army`
+                : 'Connect wallet to view your army'}
+            </span>
+          </button>
+
+          {/* All Heroes */}
+          <button onClick={() => cycleView("heroes")}
+            className="flex flex-col items-center gap-3 px-6 py-8 rounded-2xl transition-all hover:scale-[1.02]"
+            style={{ background: 'rgba(201,168,76,0.06)', border: '2px solid rgba(201,168,76,0.15)', boxShadow: '0 0 25px rgba(201,168,76,0.03)' }}>
             <span className="text-4xl">🛡️</span>
-            <span className="text-sm font-black tracking-widest uppercase" style={{ color: '#f0d070' }}>Heroes of the Realm</span>
-            <span style={{ fontSize: '0.55rem', color: 'rgba(201,168,76,0.5)' }}>Browse all {characters.length} champions and their stats</span>
+            <span className="text-sm font-black tracking-widest uppercase" style={{ color: 'rgba(201,168,76,0.7)' }}>Heroes of the Realm</span>
+            <span style={{ fontSize: '0.55rem', color: 'rgba(201,168,76,0.4)' }}>Browse all {characters.length} champions</span>
           </button>
 
           {/* Adventure */}
