@@ -191,6 +191,7 @@ export const GAME_NFTS: GameNft[] = [
   { name: "Rook Highbranch",            contractAddress: "0xB9c37Ce29A0966f83B29c905c434905301435D9d", chain: "base" },
   { name: "Captain Blackfeather",      contractAddress: "0x716AdcbEd9Ef58CCf11434Aa7962b0f200A030af", chain: "base" },
   { name: "Yellectric Frog",          contractAddress: "0x9CF5CcAe7ca8Ca68BE185121401ec201D9AD02ad", chain: "polygon" },
+  { name: "Mason Ironhorn",          contractAddress: "0x412495cde08733715C2478c6EE00876ABF5e6CE8", chain: "base" },
 ];
 
 // ─── Known LP Pairs (add more as the game expands) ────────────────────────────
