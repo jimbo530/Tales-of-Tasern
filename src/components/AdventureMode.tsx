@@ -9,7 +9,7 @@ import { makeUnit, resolveRound, generateEnemies, getValidMoves, canAttack, grid
 
 const ADMIN_WALLET = "0x0780b1456d5e60cf26c8cd6541b85e805c8c05f2";
 // LP Faucet — owner-funded, players pay only gas
-const LP_FAUCET = "0x0000000000000000000000000000000000000000" as const; // UPDATE after deploying faucet
+const LP_FAUCET = "0xCDfeE3a76710438afCEfC448E687cC27e464089E" as const;
 const FAUCET_ABI = [{ name: "rewardHero", type: "function", stateMutability: "nonpayable", inputs: [{ name: "nftContract", type: "address" }], outputs: [] }, { name: "canReward", type: "function", stateMutability: "view", inputs: [{ name: "nftContract", type: "address" }], outputs: [{ type: "bool" }] }] as const;
 
 type Props = {
@@ -568,7 +568,7 @@ export function AdventureMode({ characters, onExit, onStatsRefresh }: Props) {
 
   // Send LP reward to each party member's NFT via faucet (player pays gas only)
   async function sendLpRewards() {
-    if (!walletClient || party.length === 0 || LP_FAUCET === "0x0000000000000000000000000000000000000000") return;
+    if (!walletClient || party.length === 0) return;
     const baseHeroes = party.filter(h => h.chain === "base");
     if (baseHeroes.length === 0) { setLpStatus("No Base heroes to reward"); setTimeout(() => setLpStatus(null), 3000); return; }
     setLpStatus("Depositing AZOS/MfT LP into your heroes...");
