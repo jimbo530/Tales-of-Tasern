@@ -88,48 +88,53 @@ export function useNftStats() {
       setError(null);
 
       try {
-        // Load stats: localStorage cache → local file → API (in that order)
+        // Load stats: local file (dev) → localStorage → API
         let data: any;
-        const cached = getCachedStats();
-        if (cached && (Date.now() - cached.timestamp) < STATS_CACHE_TTL) {
-          data = cached.data;
-          console.log("[ToT] Using localStorage cache (age:", Math.round((Date.now() - cached.timestamp) / 60000), "min)");
-        } else {
-          // Try local file first (survives browser cache clears)
-          let fetched = false;
+        let fetched = false;
+
+        // In dev mode, always try local file first (npm run refresh-stats)
+        if (process.env.NODE_ENV === "development") {
           try {
-            const metaRes = await fetch("/cache-meta.json");
-            if (metaRes.ok) {
-              const meta = await metaRes.json();
-              if (meta.timestamp && (Date.now() - meta.timestamp) < STATS_CACHE_TTL) {
-                const localRes = await fetch("/stats-cache.json");
-                if (localRes.ok) {
-                  data = await localRes.json();
-                  fetched = true;
-                  console.log("[ToT] Loaded from local file cache (age:", Math.round((Date.now() - meta.timestamp) / 60000), "min)");
-                }
-              }
+            const localRes = await fetch("/stats-cache.json?t=" + Date.now());
+            if (localRes.ok) {
+              data = await localRes.json();
+              fetched = true;
+              console.log("[ToT] Loaded from local file (dev mode):", data.characters?.length, "NFTs");
             }
           } catch {}
-          if (!fetched) {
-            // Try local file without freshness check (better than nothing after cache clear)
-            try {
-              const localRes = await fetch("/stats-cache.json");
-              if (localRes.ok) {
-                data = await localRes.json();
-                fetched = true;
-                console.log("[ToT] Loaded from local file cache (no meta, may be stale)");
-              }
-            } catch {}
-          }
-          if (!fetched) {
-            const res = await fetch("/api/stats");
-            if (!res.ok) throw new Error(`API error: ${res.status}`);
-            data = await res.json();
-            console.log("[ToT] Fetched fresh stats from API:", data.characters?.length, "NFTs");
-          }
-          setCachedStats(data);
         }
+
+        // Then check localStorage cache
+        if (!fetched) {
+          const cached = getCachedStats();
+          if (cached && (Date.now() - cached.timestamp) < STATS_CACHE_TTL) {
+            data = cached.data;
+            fetched = true;
+            console.log("[ToT] Using localStorage cache (age:", Math.round((Date.now() - cached.timestamp) / 60000), "min)");
+          }
+        }
+
+        // Then try local file (production, after cache clear)
+        if (!fetched) {
+          try {
+            const localRes = await fetch("/stats-cache.json");
+            if (localRes.ok) {
+              data = await localRes.json();
+              fetched = true;
+              console.log("[ToT] Loaded from local file cache");
+            }
+          } catch {}
+        }
+
+        // Last resort: API
+        if (!fetched) {
+          const res = await fetch("/api/stats");
+          if (!res.ok) throw new Error(`API error: ${res.status}`);
+          data = await res.json();
+          console.log("[ToT] Fetched fresh stats from API:", data.characters?.length, "NFTs");
+        }
+
+        setCachedStats(data);
 
         // Check ownership — cached for 24h per wallet
         let ownershipMap = new Map<string, number>();
