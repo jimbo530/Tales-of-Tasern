@@ -305,6 +305,11 @@ function PartyCombat({ players: initPlayers, enemies: initEnemies, onWin, onLose
             style={{ fontFamily: "'Cinzel Decorative', 'Cinzel', serif" }}>
             {done === "win" ? "Victory!" : "Defeated..."}
           </h2>
+          {done === "lose" && (
+            <p className="text-sm text-center px-4" style={{ color: 'rgba(232,213,176,0.6)', maxWidth: 400 }}>
+              Keep training before you leave the village. Every win makes your heroes stronger — power them up and try again.
+            </p>
+          )}
           <button onClick={done === "win" ? onWin : onLose}
             className="px-8 py-3 rounded-lg text-sm font-black uppercase tracking-widest"
             style={{ background: 'rgba(201,168,76,0.3)', color: '#f0d070', border: '1px solid rgba(201,168,76,0.6)' }}>
@@ -338,17 +343,21 @@ function PartyCombat({ players: initPlayers, enemies: initEnemies, onWin, onLose
 
 const FORMATION_LABELS = ["Front-L", "Front-C", "Front-R", "Mid-L", "Mid-C", "Mid-R", "Back-L", "Back-C", "Back-R"];
 
-function PartyPicker({ characters, onStart, onBack, isAdmin }: {
+function PartyPicker({ characters, onStart, onBack, isAdmin, unlockedNpcs }: {
   characters: NftCharacter[];
   onStart: (party: NftCharacter[], gridMap: Map<string, number>) => void;
   onBack: () => void;
   isAdmin?: boolean;
+  unlockedNpcs?: string[];
 }) {
   // 9 formation slots (3x3 grid)
   const [slots, setSlots] = useState<(NftCharacter | null)[]>(Array(9).fill(null));
   const [selectedSlot, setSelectedSlot] = useState<number | null>(null);
   const owned = characters.filter(c => c.owned);
-  const pool = isAdmin ? (owned.length > 0 ? owned : characters) : owned;
+  const unlocked = (unlockedNpcs ?? []).map(a => a.toLowerCase());
+  const npcChars = characters.filter(c => unlocked.includes(c.contractAddress.toLowerCase()) && !c.owned);
+  const available = [...owned, ...npcChars];
+  const pool = isAdmin ? (available.length > 0 ? available : characters) : available;
   const partyAddrs = new Set(slots.filter(Boolean).map(c => c!.contractAddress));
 
   const [heroSearch, setHeroSearch] = useState("");
@@ -977,7 +986,7 @@ export function AdventureMode({ characters, onExit, onStatsRefresh }: Props) {
   // Party picker
   if (pickingParty) {
     return (
-      <PartyPicker characters={characters} isAdmin={isAdmin}
+      <PartyPicker characters={characters} isAdmin={isAdmin} unlockedNpcs={state.unlockedNpcs}
         onStart={(p, gridMap) => { setParty(p); setPartyGrid(gridMap); setPickingParty(false); }}
         onBack={() => { setPickingParty(false); backToMap(); }}
       />

@@ -9,15 +9,16 @@ export type AdventureState = {
   currentEncounter: number;
   mftEarned: number;
   completedChapters: string[];
-  chapterCooldowns: Record<string, number>; // chapterId -> last completion timestamp (ms)
-  encounterCooldowns: Record<string, number>; // "chapterId-encounterIdx" -> last win timestamp (ms)
+  chapterCooldowns: Record<string, number>;
+  encounterCooldowns: Record<string, number>;
+  unlockedNpcs: string[]; // contract addresses of NPCs unlocked via joinsParty
   phase: "map" | "story" | "battle" | "reward" | "chapterComplete" | "victory";
 };
 
 const STORAGE_KEY = "tot-adventure";
 const INTRO_KEY = "tot-adventure-intro-seen";
 
-const COOLDOWN_MS = 24 * 60 * 60 * 1000; // 24 hours
+const COOLDOWN_MS = 20 * 60 * 1000; // 20 minutes
 
 function defaultState(): AdventureState {
   return {
@@ -27,6 +28,7 @@ function defaultState(): AdventureState {
     completedChapters: [],
     chapterCooldowns: {},
     encounterCooldowns: {},
+    unlockedNpcs: [],
     phase: "map",
   };
 }
@@ -137,6 +139,11 @@ export function useAdventure(wallet?: string) {
     update(s => {
       const newMft = s.mftEarned + encounter.mftReward;
       const newEncCooldowns = { ...(s.encounterCooldowns ?? {}), [encKey]: Date.now() };
+      // Permanently unlock NPC if encounter has joinsParty
+      const newUnlocked = [...(s.unlockedNpcs ?? [])];
+      if (encounter.joinsParty && !newUnlocked.includes(encounter.joinsParty.toLowerCase())) {
+        newUnlocked.push(encounter.joinsParty.toLowerCase());
+      }
       const isLastEncounter = s.currentEncounter >= chapter.encounters.length - 1;
       if (isLastEncounter) {
         return {
@@ -146,9 +153,10 @@ export function useAdventure(wallet?: string) {
           completedChapters: [...new Set([...s.completedChapters, chapter.id])],
           chapterCooldowns: { ...(s.chapterCooldowns ?? {}), [chapter.id]: Date.now() },
           encounterCooldowns: newEncCooldowns,
+          unlockedNpcs: newUnlocked,
         };
       }
-      return { ...s, mftEarned: newMft, phase: "reward", encounterCooldowns: newEncCooldowns };
+      return { ...s, mftEarned: newMft, phase: "reward", encounterCooldowns: newEncCooldowns, unlockedNpcs: newUnlocked };
     });
   }
 
