@@ -117,7 +117,14 @@ export function useAdventure(wallet?: string) {
   }
 
   function startChapter(chapterIdx: number) {
-    update(s => ({ ...s, currentChapter: chapterIdx, currentEncounter: 0, phase: "story" }));
+    update(s => {
+      const resumeEncounter = s.currentChapter === chapterIdx ? s.currentEncounter : 0;
+      return { ...s, currentChapter: chapterIdx, currentEncounter: resumeEncounter, phase: "story" };
+    });
+  }
+
+  function startEncounter(chapterIdx: number, encounterIdx: number) {
+    update(s => ({ ...s, currentChapter: chapterIdx, currentEncounter: encounterIdx, phase: "story" }));
   }
 
   function startBattle() {
@@ -232,6 +239,7 @@ export function useAdventure(wallet?: string) {
     resetAdventure,
     skipLevel,
     skipEncounter,
+    startEncounter,
     isOnCooldown,
     cooldownRemaining,
     encounterOnCooldown,

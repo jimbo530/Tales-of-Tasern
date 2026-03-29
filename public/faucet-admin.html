@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html>
+<head><title>Faucet Admin — Tales of Tasern</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.1/ethers.umd.min.js"></script>
+</head>
+<body style="background:#0a0608;color:#e8d5b0;font-family:Georgia;padding:30px;max-width:700px;margin:0 auto;">
+
+<h1 style="color:#c9a84c;text-align:center;">Faucet Admin</h1>
+<p style="text-align:center;color:#888;margin-bottom:25px;">Manage the LP reward faucet</p>
+
+<!-- Step 1 -->
+<div style="margin-bottom:20px;padding:18px;background:#1a1418;border:1px solid #c9a84c44;border-radius:8px;">
+  <h3 style="color:#c9a84c;margin-bottom:10px;">Step 1: Connect Owner Wallet</h3>
+  <p style="color:#888;font-size:13px;margin-bottom:10px;">Must be the wallet that deployed the faucet.</p>
+  <button id="connectBtn" onclick="connect()" style="background:#c9a84c;color:#0a0608;border:none;padding:12px 30px;font-size:15px;font-weight:bold;border-radius:8px;cursor:pointer;font-family:Georgia;">Connect Wallet</button>
+  <p id="walletStatus" style="margin-top:8px;color:#888;font-size:13px;"></p>
+</div>
+
+<!-- Step 2 -->
+<div style="margin-bottom:20px;padding:18px;background:#1a1418;border:1px solid #c9a84c44;border-radius:8px;">
+  <h3 style="color:#c9a84c;margin-bottom:10px;">Step 2: Current Faucet Status</h3>
+  <div id="faucetInfo" style="color:#888;font-size:13px;">Connect wallet first</div>
+  <button onclick="refreshInfo()" style="background:rgba(255,255,255,0.1);color:#e8d5b0;border:1px solid #c9a84c44;padding:6px 14px;font-size:12px;border-radius:4px;cursor:pointer;font-family:Georgia;margin-top:8px;">Refresh</button>
+</div>
+
+<!-- Step 3 -->
+<div style="margin-bottom:20px;padding:18px;background:#1a1418;border:1px solid #c9a84c44;border-radius:8px;">
+  <h3 style="color:#c9a84c;margin-bottom:10px;">Step 3: Set Cooldown to 0</h3>
+  <p style="color:#888;font-size:13px;margin-bottom:10px;">This removes the per-NFT cooldown so heroes can earn LP from every level win, not just once per day.</p>
+  <button id="cooldownBtn" onclick="setCooldown()" style="background:#4ade80;color:#0a0608;border:none;padding:12px 25px;font-size:14px;font-weight:bold;border-radius:8px;cursor:pointer;font-family:Georgia;">Set Cooldown to 0 (confirm in wallet)</button>
+  <p id="cooldownStatus" style="margin-top:8px;color:#888;font-size:13px;"></p>
+</div>
+
+<!-- Other actions -->
+<div style="margin-bottom:20px;padding:18px;background:#1a1418;border:1px solid #c9a84c44;border-radius:8px;">
+  <h3 style="color:#c9a84c;margin-bottom:10px;">Other Actions</h3>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+    <div>
+      <label style="color:#888;font-size:12px;">Set Custom Cooldown (seconds)</label>
+      <div style="display:flex;gap:4px;margin-top:4px;">
+        <input id="customCooldown" value="0" style="width:100px;padding:8px;background:#0a0608;color:#e8d5b0;border:1px solid #c9a84c44;border-radius:4px;font-family:monospace;" />
+        <button onclick="setCustomCooldown()" style="background:#c9a84c;color:#0a0608;border:none;padding:8px 14px;font-size:12px;font-weight:bold;border-radius:4px;cursor:pointer;">Set</button>
+      </div>
+    </div>
+    <div>
+      <label style="color:#888;font-size:12px;">Set Reward Amount (LP in wei)</label>
+      <div style="display:flex;gap:4px;margin-top:4px;">
+        <input id="rewardInput" value="10550000000000000000" style="width:200px;padding:8px;background:#0a0608;color:#e8d5b0;border:1px solid #c9a84c44;border-radius:4px;font-family:monospace;font-size:11px;" />
+        <button onclick="setReward()" style="background:#c9a84c;color:#0a0608;border:none;padding:8px 14px;font-size:12px;font-weight:bold;border-radius:4px;cursor:pointer;">Set</button>
+      </div>
+    </div>
+  </div>
+  <div style="margin-top:10px;">
+    <label style="color:#888;font-size:12px;">Withdraw LP back to owner</label>
+    <div style="display:flex;gap:4px;margin-top:4px;">
+      <input id="withdrawAmt" placeholder="amount in wei" style="width:200px;padding:8px;background:#0a0608;color:#e8d5b0;border:1px solid #c9a84c44;border-radius:4px;font-family:monospace;font-size:11px;" />
+      <button onclick="withdrawLp()" style="background:#f87171;color:#0a0608;border:none;padding:8px 14px;font-size:12px;font-weight:bold;border-radius:4px;cursor:pointer;">Withdraw</button>
+    </div>
+  </div>
+  <p id="actionStatus" style="margin-top:8px;color:#888;font-size:13px;"></p>
+</div>
+
+<script>
+const FAUCET = '0xCDfeE3a76710438afCEfC448E687cC27e464089E';
+const ABI = [
+  {"inputs":[],"name":"balance","outputs":[{"type":"uint256"}],"stateMutability":"view","type":"function"},
+  {"inputs":[],"name":"cooldown","outputs":[{"type":"uint256"}],"stateMutability":"view","type":"function"},
+  {"inputs":[],"name":"rewardAmount","outputs":[{"type":"uint256"}],"stateMutability":"view","type":"function"},
+  {"inputs":[],"name":"owner","outputs":[{"type":"address"}],"stateMutability":"view","type":"function"},
+  {"inputs":[{"name":"_cooldown","type":"uint256"}],"name":"setCooldown","outputs":[],"stateMutability":"nonpayable","type":"function"},
+  {"inputs":[{"name":"_amount","type":"uint256"}],"name":"setRewardAmount","outputs":[],"stateMutability":"nonpayable","type":"function"},
+  {"inputs":[{"name":"amount","type":"uint256"}],"name":"withdraw","outputs":[],"stateMutability":"nonpayable","type":"function"},
+];
+
+let provider, signer, contract;
+
+async function connect() {
+  if (!window.ethereum) { document.getElementById('walletStatus').innerHTML = '<span style="color:#f87171">No wallet found</span>'; return; }
+  try {
+    await window.ethereum.request({ method: 'eth_requestAccounts' });
+    try { await window.ethereum.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: '0x2105' }] }); } catch(e) {}
+    provider = new ethers.BrowserProvider(window.ethereum);
+    signer = await provider.getSigner();
+    contract = new ethers.Contract(FAUCET, ABI, signer);
+    const addr = await signer.getAddress();
+    document.getElementById('walletStatus').innerHTML = '<span style="color:#4ade80">Connected: ' + addr.slice(0,6) + '...' + addr.slice(-4) + '</span>';
+    refreshInfo();
+  } catch(e) { document.getElementById('walletStatus').innerHTML = '<span style="color:#f87171">' + e.message + '</span>'; }
+}
+
+async function refreshInfo() {
+  if (!contract) return;
+  try {
+    const bal = await contract.balance();
+    const cd = await contract.cooldown();
+    const reward = await contract.rewardAmount();
+    const owner = await contract.owner();
+    const balF = parseFloat(ethers.formatEther(bal));
+    const rewF = parseFloat(ethers.formatEther(reward));
+    const wins = rewF > 0 ? Math.floor(balF / rewF) : 0;
+    document.getElementById('faucetInfo').innerHTML =
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">' +
+      '<div>LP Balance: <b style="color:#4ade80">' + balF.toFixed(2) + '</b></div>' +
+      '<div>Reward/win: <b style="color:#f0d070">' + rewF.toFixed(2) + ' LP</b></div>' +
+      '<div>Cooldown: <b style="color:' + (Number(cd) === 0 ? '#4ade80' : '#f87171') + '">' + Number(cd) + 's (' + (Number(cd)/3600).toFixed(1) + 'h)</b></div>' +
+      '<div>Wins left: <b style="color:#f0d070">' + wins + '</b></div>' +
+      '<div style="grid-column:span 2">Owner: <span style="font-family:monospace;font-size:11px;">' + owner + '</span></div>' +
+      '</div>';
+  } catch(e) { document.getElementById('faucetInfo').innerHTML = '<span style="color:#f87171">' + e.message + '</span>'; }
+}
+
+async function setCooldown() {
+  if (!contract) { alert('Connect wallet first'); return; }
+  document.getElementById('cooldownStatus').innerHTML = '<span style="color:#c9a84c">Setting cooldown to 0... confirm in wallet</span>';
+  try {
+    const tx = await contract.setCooldown(0);
+    document.getElementById('cooldownStatus').innerHTML = '<span style="color:#c9a84c">Tx sent, waiting...</span>';
+    await tx.wait();
+    document.getElementById('cooldownStatus').innerHTML = '<span style="color:#4ade80">Cooldown set to 0! Heroes can earn from every level.</span>';
+    refreshInfo();
+  } catch(e) { document.getElementById('cooldownStatus').innerHTML = '<span style="color:#f87171">' + e.message + '</span>'; }
+}
+
+async function setCustomCooldown() {
+  if (!contract) return;
+  const val = document.getElementById('customCooldown').value;
+  document.getElementById('actionStatus').innerHTML = '<span style="color:#c9a84c">Setting cooldown...</span>';
+  try {
+    const tx = await contract.setCooldown(val);
+    await tx.wait();
+    document.getElementById('actionStatus').innerHTML = '<span style="color:#4ade80">Cooldown set to ' + val + 's</span>';
+    refreshInfo();
+  } catch(e) { document.getElementById('actionStatus').innerHTML = '<span style="color:#f87171">' + e.message + '</span>'; }
+}
+
+async function setReward() {
+  if (!contract) return;
+  const val = document.getElementById('rewardInput').value;
+  document.getElementById('actionStatus').innerHTML = '<span style="color:#c9a84c">Setting reward...</span>';
+  try {
+    const tx = await contract.setRewardAmount(val);
+    await tx.wait();
+    document.getElementById('actionStatus').innerHTML = '<span style="color:#4ade80">Reward set!</span>';
+    refreshInfo();
+  } catch(e) { document.getElementById('actionStatus').innerHTML = '<span style="color:#f87171">' + e.message + '</span>'; }
+}
+
+async function withdrawLp() {
+  if (!contract) return;
+  const val = document.getElementById('withdrawAmt').value;
+  document.getElementById('actionStatus').innerHTML = '<span style="color:#c9a84c">Withdrawing...</span>';
+  try {
+    const tx = await contract.withdraw(val);
+    await tx.wait();
+    document.getElementById('actionStatus').innerHTML = '<span style="color:#4ade80">Withdrawn!</span>';
+    refreshInfo();
+  } catch(e) { document.getElementById('actionStatus').innerHTML = '<span style="color:#f87171">' + e.message + '</span>'; }
+}
+
+window.addEventListener('load', () => {
+  setTimeout(() => { if (window.ethereum) document.getElementById('walletStatus').textContent = 'Wallet detected — click Connect'; }, 500);
+});
+</script>
+</body></html>

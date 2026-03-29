@@ -37,7 +37,7 @@ export const ADVENTURE_CHAPTERS: Chapter[] = [
     encounters: [
       {
         name: "A Friendly Face",
-        description: "Pippin leans against the well, arms crossed, watching you with a knowing grin. \"The world out there doesn't care if you're brave,\" he says. \"It cares if you can fight. Let me see what you've got — don't hold back, I can take it.\" He draws a wooden training sword and takes a stance. This is a sparring match — prove to Pippin you can handle yourself.",
+        description: "Pippin leans against the well, arms crossed, watching you with a knowing grin. \"The world out there doesn't care if you're brave,\" he says. \"It cares if you can fight.\"\n\nHe draws a wooden training sword and explains: \"Place your heroes on the 3×3 grid. Each round you can move one square, then everyone attacks forward. Every strike rolls a D20 — roll a 1 and you miss completely, roll a 20 and you hit for double damage. Simple as that.\"\n\nHe takes a stance. \"Now let me see what you've got — don't hold back, I can take it.\"",
         aiDeckBias: "balanced",
         aiStrength: 0.2,
         mftReward: 300,
@@ -61,8 +61,8 @@ export const ADVENTURE_CHAPTERS: Chapter[] = [
         npcAddresses: ["0x6AD5621f5719A6b32d0Ea9dd4493ca6Ac0639D4B", "0x212626D66E64C9C293A845687dB700c16466586e"],
       },
       {
-        name: "The Blacksmith's Guard",
-        description: "Torven steps out from behind his forge, flanked by armored figures. \"You've handled two plants and a lost woodsman,\" he says flatly. \"Out there, you won't face two enemies — you'll face twelve. Maybe more.\" He crosses his arms as his guards fan out across the yard, filling every inch of ground. Nine take position on the field, three more wait in reserve behind them. \"When one falls, another steps forward. That's how a real army works. Show me you can handle being outnumbered — because you will be.\"",
+        name: "Guards of Kardov's Gate",
+        description: "A patrol of nine armored guards marches into the village clearing, shields locked and spears leveled. Their captain steps forward. \"We heard there were adventurers here. The road to Kardov's Gate is closed — by order of the garrison.\" Torven the blacksmith spits into the fire. \"They don't fight fair,\" he mutters. \"They outnumber you, they flank, they use reserves. When one falls, another takes their place. That's what you'll face out there — enemies who don't care about honor. Learn to deal with it now, or don't bother leaving this village.\"",
         aiDeckBias: "balanced",
         aiStrength: 0.3,
         mftReward: 600,

@@ -21,19 +21,10 @@ export type CombatEvent = {
   killed: boolean;
 };
 
-export function makeUnit(char: NftCharacter, isPlayer: boolean, index: number, strengthMult = 1): CombatUnit {
+export function makeUnit(char: NftCharacter, isPlayer: boolean, index: number, _strengthMult = 1): CombatUnit {
   const stats = computeStats(char.stats);
-  // Scale enemy stats by strength multiplier
-  const s: ComputedStats = isPlayer ? stats : {
-    attack: stats.attack * strengthMult,
-    mAtk: stats.mAtk * strengthMult,
-    fAtk: stats.fAtk * strengthMult,
-    def: stats.def * strengthMult,
-    mDef: stats.mDef * strengthMult,
-    hp: stats.hp * strengthMult,
-    healing: stats.healing * strengthMult,
-    mana: stats.mana * strengthMult,
-  };
+  // All characters fight at their real on-chain stats — no buffs or debuffs
+  const s = stats;
   return { character: char, stats: s, currentHp: s.hp, maxHp: s.hp, isPlayer, index, burns: [], gridPos: -1 };
 }
 

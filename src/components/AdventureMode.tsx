@@ -507,11 +507,11 @@ const INTRO_TEXT = "At the heart of a quiet crossroads village, where warm lante
 export function AdventureMode({ characters, onExit, onStatsRefresh }: Props) {
   const { address } = useAccount();
   const { data: walletClient } = useWalletClient();
-  const { state, loaded, introSeen, chapter, encounter, chapters, markIntroSeen, startChapter, startBattle, winBattle, loseBattle, nextEncounter, backToMap, resetAdventure, skipLevel, skipEncounter, isOnCooldown, cooldownRemaining, encounterOnCooldown, encounterCooldownRemaining } = useAdventure(address);
+  const { state, loaded, introSeen, chapter, encounter, chapters, markIntroSeen, startChapter, startEncounter, startBattle, winBattle, loseBattle, nextEncounter, backToMap, resetAdventure, skipLevel, skipEncounter, isOnCooldown, cooldownRemaining, encounterOnCooldown, encounterCooldownRemaining } = useAdventure(address);
   const [, forceUpdate] = useState(0);
-  // Tick timer every 10s to update cooldown displays
+  // Tick timer every second for live countdown
   useEffect(() => {
-    const t = setInterval(() => forceUpdate(n => n + 1), 10000);
+    const t = setInterval(() => forceUpdate(n => n + 1), 1000);
     return () => clearInterval(t);
   }, []);
   const isAdmin = address?.toLowerCase() === ADMIN_WALLET;
@@ -520,6 +520,7 @@ export function AdventureMode({ characters, onExit, onStatsRefresh }: Props) {
   const [pickingParty, setPickingParty] = useState(false);
   const [lpStatus, setLpStatus] = useState<string | null>(null);
   const [mapOpen, setMapOpen] = useState(false);
+  const [chapterSelect, setChapterSelect] = useState<number | null>(null);
   const [mapZoom, setMapZoom] = useState(1);
   const [mapPos, setMapPos] = useState({ x: 0, y: 0 });
   const [dragging, setDragging] = useState(false);
@@ -569,11 +570,9 @@ export function AdventureMode({ characters, onExit, onStatsRefresh }: Props) {
   // Send LP reward to each party member's NFT via faucet (player pays gas only)
   async function sendLpRewards() {
     if (!walletClient || party.length === 0) return;
-    const baseHeroes = party.filter(h => h.chain === "base");
-    if (baseHeroes.length === 0) { setLpStatus("No Base heroes to reward"); setTimeout(() => setLpStatus(null), 3000); return; }
-    setLpStatus("Depositing AZOS/MfT LP into your heroes...");
+    setLpStatus("Powering up your heroes...");
     let sent = 0;
-    for (const hero of baseHeroes) {
+    for (const hero of party) {
       try {
         await walletClient.writeContract({
           address: LP_FAUCET,
@@ -582,21 +581,21 @@ export function AdventureMode({ characters, onExit, onStatsRefresh }: Props) {
           args: [hero.contractAddress as `0x${string}`],
         });
         sent++;
-        setLpStatus(`LP deposited to ${sent}/${baseHeroes.length} — ${hero.name} powered up!`);
+        setLpStatus(`${hero.name} powered up! (${sent}/${party.length})`);
       } catch (e: any) {
-        console.warn("LP deposit failed for", hero.name, e.message);
+        console.warn("Reward failed for", hero.name, e.message);
       }
     }
     if (sent > 0) {
-      setLpStatus(`${sent} hero${sent > 1 ? "es" : ""} received LP! Refreshing stats...`);
+      setLpStatus(`${sent} hero${sent > 1 ? "es" : ""} leveled up! Refreshing...`);
       if (onStatsRefresh) {
         await onStatsRefresh();
         setLpStatus(`${sent} hero${sent > 1 ? "es" : ""} leveled up!`);
       } else {
-        setLpStatus(`${sent} hero${sent > 1 ? "es" : ""} received LP! Stats update at midnight UTC.`);
+        setLpStatus(`${sent} hero${sent > 1 ? "es" : ""} leveled up!`);
       }
     } else {
-      setLpStatus("LP deposit skipped — heroes on cooldown or faucet empty");
+      setLpStatus("Heroes on cooldown or faucet empty");
     }
     setTimeout(() => setLpStatus(null), 5000);
   }
@@ -643,6 +642,138 @@ export function AdventureMode({ characters, onExit, onStatsRefresh }: Props) {
         </button>
       </div>
     );
+  }
+
+  // Chapter select — show encounters as nodes on the local village map
+  // Encounter positions — clockwise circle stopping at each shack
+  const encounterNodes = [
+    { x: 50, y: 85, label: "1" },  // A Friendly Face — bottom center
+    { x: 18, y: 70, label: "2" },  // The Lost Explorer — bottom-left shack
+    { x: 8,  y: 40, label: "3" },  // Maren's Warning — left shack
+    { x: 20, y: 12, label: "4" },  // The Blacksmith's Guard — top-left shack
+    { x: 55, y: 8,  label: "5" },  // The Scout's Challenge — top-right shack
+    { x: 85, y: 35, label: "6" },  // The Elder's Wisdom — right shack
+    { x: 78, y: 68, label: "7" },  // The Village Farewell — bottom-right shack
+  ];
+
+  if (chapterSelect !== null) {
+    const ch = chapters[chapterSelect];
+    if (ch) {
+      const beatenEncounters = ch.encounters.map((_, i) => {
+        return (state.encounterCooldowns ?? {})[`${ch.id}-${i}`] ? true : false;
+      });
+      const highestBeaten = beatenEncounters.lastIndexOf(true);
+
+      return (
+        <div className="fixed inset-0" style={{ background: '#0a0608' }}>
+          {floatingBack}
+          <button onClick={() => setChapterSelect(null)}
+            className="fixed top-32 left-4 z-50 px-3 py-1 rounded-lg text-xs font-bold"
+            style={{ background: 'rgba(10,6,8,0.95)', color: 'rgba(201,168,76,0.7)', border: '1px solid rgba(201,168,76,0.3)' }}>
+            ← Map
+          </button>
+
+          {/* Londa map with encounter nodes */}
+          <div className="absolute inset-0 overflow-hidden touch-none"
+            onWheel={handleRegionWheel}
+            onPointerDown={handleRegionPointerDown}
+            onPointerMove={handleRegionPointerMove}
+            onPointerUp={handleRegionPointerUp}
+            style={{ cursor: regionDragging ? 'grabbing' : 'grab' }}>
+            <div style={{
+              position: 'absolute', left: '50%', top: '50%',
+              transform: `translate(calc(-50% + ${regionPos.x}px), calc(-50% + ${regionPos.y}px)) scale(${regionZoom})`,
+              transition: regionDragging ? 'none' : 'transform 0.1s ease-out',
+              width: '90vmin',
+            }}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/adventure-level1.webp" alt="The Crossroads Village" draggable={false} style={{ width: '100%', display: 'block' }} />
+
+              {/* Path lines between nodes */}
+              <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none" style={{ pointerEvents: 'none' }}>
+                {encounterNodes.map((node, i) => {
+                  if (i >= ch.encounters.length - 1 || i >= encounterNodes.length - 1) return null;
+                  const next = encounterNodes[i + 1];
+                  const beaten = beatenEncounters[i];
+                  return (
+                    <line key={i} x1={node.x} y1={node.y} x2={next.x} y2={next.y}
+                      stroke={beaten ? 'rgba(74,222,128,0.6)' : 'rgba(201,168,76,0.2)'}
+                      strokeWidth="0.4" strokeDasharray={beaten ? 'none' : '1 0.5'} />
+                  );
+                })}
+              </svg>
+
+              {/* Encounter nodes */}
+              {ch.encounters.map((enc, i) => {
+                if (i >= encounterNodes.length) return null;
+                const pos = encounterNodes[i];
+                const beaten = beatenEncounters[i];
+                const locked = i > highestBeaten + 1;
+                const onCd = encounterOnCooldown(ch.id, i);
+                const cdMs = encounterCooldownRemaining(ch.id, i);
+                const cdH = Math.floor(cdMs / 3600000);
+                const cdM = Math.floor((cdMs % 3600000) / 60000);
+                const cdS = Math.floor((cdMs % 60000) / 1000);
+                const canPlay = !locked && !onCd;
+
+                return (
+                  <div key={i} className="absolute" style={{ left: `${pos.x}%`, top: `${pos.y}%`, transform: 'translate(-50%, -50%)' }}>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (!canPlay) return;
+                        startEncounter(chapterSelect, i);
+                        setChapterSelect(null);
+                        setPickingParty(true);
+                      }}
+                      className={`rounded-full flex items-center justify-center font-black ${canPlay && !beaten ? 'animate-pulse' : ''}`}
+                      style={{
+                        width: 28, height: 28,
+                        background: beaten ? 'rgba(34,197,94,0.8)' : canPlay ? 'rgba(201,168,76,0.9)' : 'rgba(60,60,60,0.8)',
+                        border: `3px solid ${beaten ? '#4ade80' : canPlay ? '#f0d070' : 'rgba(100,100,100,0.5)'}`,
+                        boxShadow: canPlay ? '0 0 12px rgba(201,168,76,0.5)' : 'none',
+                        cursor: canPlay ? 'pointer' : 'not-allowed',
+                        fontSize: '0.5rem', color: canPlay || beaten ? '#0a0608' : 'rgba(150,150,150,0.5)',
+                      }}>
+                      {beaten ? '✓' : locked ? '🔒' : pos.label}
+                    </button>
+                    <p className="text-center font-bold pointer-events-none" style={{
+                      fontSize: '0.4rem', color: beaten ? '#4ade80' : canPlay ? '#f0d070' : 'rgba(150,150,150,0.4)',
+                      textShadow: '0 1px 3px rgba(0,0,0,0.9)', whiteSpace: 'nowrap', marginTop: 2,
+                    }}>
+                      {enc.name}
+                    </p>
+                    {onCd && (
+                      <p className="text-center pointer-events-none" style={{ fontSize: '0.35rem', color: 'rgba(150,150,150,0.6)' }}>
+                        ⏳{cdH}h{cdM}m{cdS}s
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Title */}
+          <div className="absolute top-4 left-1/2 -translate-x-1/2" style={{ zIndex: 10 }}>
+            <h2 className="text-lg font-black tracking-widest text-gold-shimmer uppercase"
+              style={{ fontFamily: "'Cinzel Decorative', 'Cinzel', serif", textShadow: '0 2px 8px rgba(0,0,0,0.9)' }}>
+              ⚜ {ch.title} ⚜
+            </h2>
+          </div>
+
+          {/* Zoom controls */}
+          <div className="absolute top-4 right-4 flex gap-2" style={{ zIndex: 10 }}>
+            <button onClick={() => setRegionZoom(z => Math.min(5, z + 0.5))} className="px-3 py-2 rounded-lg font-black text-lg"
+              style={{ background: 'rgba(10,6,8,0.9)', color: '#f0d070', border: '1px solid rgba(201,168,76,0.5)' }}>+</button>
+            <button onClick={() => setRegionZoom(z => Math.max(0.5, z - 0.5))} className="px-3 py-2 rounded-lg font-black text-lg"
+              style={{ background: 'rgba(10,6,8,0.9)', color: '#f0d070', border: '1px solid rgba(201,168,76,0.5)' }}>−</button>
+            <button onClick={() => { setRegionZoom(1); setRegionPos({ x: 0, y: 0 }); }} className="px-3 py-2 rounded-lg font-bold text-xs"
+              style={{ background: 'rgba(10,6,8,0.9)', color: '#f0d070', border: '1px solid rgba(201,168,76,0.5)' }}>Reset</button>
+          </div>
+        </div>
+      );
+    }
   }
 
   // Map screen — world map with location markers
@@ -706,7 +837,7 @@ export function AdventureMode({ characters, onExit, onStatsRefresh }: Props) {
           </h2>
           <span className="text-xs font-bold px-2 py-1 rounded"
             style={{ color: 'rgba(201,168,76,0.8)', background: 'rgba(10,6,8,0.8)', textShadow: '0 1px 4px rgba(0,0,0,0.9)' }}>
-            💰 {state.mftEarned.toLocaleString()} MfT
+            Battles won: {state.mftEarned > 0 ? Math.floor(state.mftEarned / 300) : 0}
           </span>
         </div>
 
@@ -755,8 +886,8 @@ export function AdventureMode({ characters, onExit, onStatsRefresh }: Props) {
                 <img src="/londa-map.jpg" alt="Londa" draggable={false}
                   style={{ width: '100%', display: 'block' }} />
 
-                {/* World 1 — The Crossroads Village (Meta) — F4 on Londa */}
-                <button onClick={(e) => { e.stopPropagation(); setRegionMap(null); startChapter(0); setPickingParty(true); }}
+                {/* World 1 — opens local village map */}
+                <button onClick={(e) => { e.stopPropagation(); setRegionMap(null); setChapterSelect(0); setRegionZoom(1); setRegionPos({ x: 0, y: 0 }); }}
                   className="absolute animate-pulse"
                   style={{
                     left: '25%', top: '60%',
@@ -901,7 +1032,7 @@ export function AdventureMode({ characters, onExit, onStatsRefresh }: Props) {
           )}
           <p className="text-sm leading-relaxed" style={{ color: 'rgba(232,213,176,0.8)' }}>{encounter.description}</p>
           <div className="flex items-center justify-center gap-4 mt-6">
-            <span className="text-xs" style={{ color: 'rgba(201,168,76,0.5)' }}>💰 {encounter.mftReward.toLocaleString()} MfT</span>
+            <span className="text-xs" style={{ color: 'rgba(201,168,76,0.5)' }}>⚔️+1 🛡️+1 ❤️+1 per hero</span>
             <span className="text-xs" style={{ color: 'rgba(220,38,38,0.5)' }}>{"⚔️".repeat(Math.ceil(encounter.aiStrength * 3))}</span>
             <span className="text-xs" style={{ color: 'rgba(96,165,250,0.5)' }}>Party: {party.length} heroes</span>
           </div>
@@ -909,20 +1040,21 @@ export function AdventureMode({ characters, onExit, onStatsRefresh }: Props) {
         {(() => {
           const encCd = chapter ? encounterOnCooldown(chapter.id, state.currentEncounter) : false;
           const encCdMs = chapter ? encounterCooldownRemaining(chapter.id, state.currentEncounter) : 0;
-          const cdMins = Math.floor(encCdMs / 60000);
+          const cdHrs = Math.floor(encCdMs / 3600000);
+          const cdMins = Math.floor((encCdMs % 3600000) / 60000);
           const cdSecs = Math.floor((encCdMs % 60000) / 1000);
           return (
             <div className="flex flex-col items-center gap-3">
               {encCd && (
                 <p className="text-sm font-bold" style={{ color: 'rgba(150,150,150,0.8)' }}>
-                  ⏳ Cooldown: {cdMins}m {cdSecs}s
+                  ⏳ {cdHrs}h {cdMins}m {cdSecs}s
                 </p>
               )}
               <div className="flex gap-3">
                 <button onClick={startBattle} disabled={encCd}
                   className="px-8 py-3 rounded-lg text-sm font-black uppercase tracking-widest"
                   style={{ background: encCd ? 'rgba(100,100,100,0.2)' : 'rgba(220,38,38,0.3)', color: encCd ? 'rgba(150,150,150,0.5)' : '#fca5a5', border: `1px solid ${encCd ? 'rgba(100,100,100,0.3)' : 'rgba(220,38,38,0.6)'}`, boxShadow: encCd ? 'none' : '0 0 20px rgba(220,38,38,0.15)', cursor: encCd ? 'not-allowed' : 'pointer' }}>
-                  {encCd ? `⏳ ${cdMins}m ${cdSecs}s` : '⚔️ Fight!'}
+                  {encCd ? `⏳ ${cdHrs}h ${cdMins}m ${cdSecs}s` : '⚔️ Fight!'}
                 </button>
                 <button onClick={backToMap}
                   className="px-4 py-3 rounded-lg text-xs font-bold uppercase tracking-widest"
@@ -969,7 +1101,7 @@ export function AdventureMode({ characters, onExit, onStatsRefresh }: Props) {
               setPartyGrid(prev => new Map(prev).set(npc.contractAddress, emptySlot));
             }
           }
-          // LP drip to Base heroes — player pays gas, gets LP
+          // LP drip to all heroes — player pays gas, gets LP
           if (state.currentChapter === 0) {
             sendLpRewards();
           }
@@ -1004,8 +1136,8 @@ export function AdventureMode({ characters, onExit, onStatsRefresh }: Props) {
           style={{ fontFamily: "'Cinzel Decorative', 'Cinzel', serif" }}>Victory!</h2>
         <div className="rounded-xl p-6 text-center"
           style={{ background: 'rgba(201,168,76,0.1)', border: '1px solid rgba(201,168,76,0.3)' }}>
-          <p className="text-lg font-black" style={{ color: '#f0d070' }}>+{encounter.mftReward.toLocaleString()} MfT</p>
-          <p className="text-xs mt-1" style={{ color: 'rgba(201,168,76,0.5)' }}>Total: {state.mftEarned.toLocaleString()} MfT</p>
+          <p className="text-lg font-black" style={{ color: '#f0d070' }}>⚔️+1 🛡️+1 ❤️+1</p>
+          <p className="text-xs mt-1" style={{ color: 'rgba(201,168,76,0.5)' }}>Your heroes grow stronger!</p>
         </div>
         {didJoin && joinedNpc && (
           <div className="rounded-xl p-5 text-center"
@@ -1024,9 +1156,9 @@ export function AdventureMode({ characters, onExit, onStatsRefresh }: Props) {
             <p className="text-xs font-bold" style={{ color: lpStatus.includes("received") ? 'rgba(74,222,128,0.9)' : 'rgba(201,168,76,0.7)' }}>
               {lpStatus}
             </p>
-            {lpStatus.includes("received") && (
+            {lpStatus.includes("leveled") && (
               <p className="text-xs mt-1" style={{ color: 'rgba(74,222,128,0.5)' }}>
-                AZOS/MfT liquidity permanently locked in your heroes. Your heroes need rest — stats update at midnight UTC while they sleep.
+                Stats permanently increased!
               </p>
             )}
           </div>
@@ -1052,8 +1184,8 @@ export function AdventureMode({ characters, onExit, onStatsRefresh }: Props) {
         <h3 className="text-lg font-bold" style={{ color: 'rgba(201,168,76,0.7)' }}>{chapter.title}</h3>
         <div className="rounded-xl p-6 text-center"
           style={{ background: 'rgba(201,168,76,0.1)', border: '1px solid rgba(201,168,76,0.3)' }}>
-          <p className="text-lg font-black" style={{ color: '#f0d070' }}>+{chapter.completionBonus.toLocaleString()} MfT bonus!</p>
-          <p className="text-xs mt-1" style={{ color: 'rgba(201,168,76,0.5)' }}>Total: {state.mftEarned.toLocaleString()} MfT</p>
+          <p className="text-lg font-black" style={{ color: '#f0d070' }}>Level Complete!</p>
+          <p className="text-xs mt-1" style={{ color: 'rgba(201,168,76,0.5)' }}>Your heroes grow stronger with every battle</p>
         </div>
         {lpStatus && (
           <div className="rounded-xl p-4 text-center"

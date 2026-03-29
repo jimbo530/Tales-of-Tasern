@@ -288,6 +288,7 @@ export const KNOWN_LP_PAIRS = {
     "0xFD18f7baA05D19fF953D92bEa53a3D6B70F0B52c", // TB01 / OGC  (Uniswap V2)
     // ── PKT (hp) ────────────────────────────────────────────────────────────
     "0x0fdEF11A0B332B3E723D181c0cB5Cb10eA52d135", // PKT / USDT0  (Uniswap V2)
+    "0xCd0bAd3Af02b36725A82128469b03535e0d48F2A", // EGP / PKT    (Uniswap V2)
     // ── EGP (hp) ────────────────────────────────────────────────────────────
     "0xd815d289604bD1109e2F3A9B919d7f3D1f2B99fb", // EGP / WETH   (Uniswap V2)
     "0x19e01FC41c8cC561D47e615F3509cd2e128e259B", // EGP / WPOL   (Uniswap V2)
