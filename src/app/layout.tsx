@@ -8,7 +8,7 @@ const geist = Geist({ variable: "--font-geist", subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: "Tales of Tasern",
-  description: "Champions of the Realm — on-chain backed NFT card battle game on Base | memefortrees.com",
+  description: "Champions of the Realm — on-chain backed NFT card battle game on Base | memefortrees.com | MfT you SOBs",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,

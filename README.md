@@ -1,36 +1,54 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Tales of Tasern
+
+On-chain backed NFT card battle game on Base & Polygon. Every hero is backed by real liquidity — play, fight, grind, and permanently power up your champions.
+
+MfT you SOBs
+
+## What is this?
+
+A tactical RPG where your NFT heroes have stats derived from real on-chain LP tokens locked inside their contracts. The more you play, the more LP flows into your heroes, the stronger they get — forever.
+
+- 3x3 tactical grid combat with D20 rolls, flanking, fire stacking, electric splash
+- Story-driven adventure mode with named NPCs and recruitable companions
+- LP faucet rewards — play levels, earn real LP deposits to your hero NFTs
+- Cloud saves tied to your wallet address
+- Repeatable quests with cooldown timers
+- World map of Tasern with unlimited expansion potential
+
+## Stack
+
+- Next.js 16 + React 19 + Tailwind 4
+- wagmi + viem + OnchainKit (Base + Polygon)
+- Supabase (saves, lobbies, marketplace)
+- Solidity contracts (PowerUp, LP Faucet)
+- Uniswap V2 LP routing
 
 ## Getting Started
 
-First, run the development server:
-
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000)
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Contracts
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- `contracts/PowerUpAZOS.sol` — ETH to AZOS/MfT LP router
+- `contracts/LPFaucet.sol` — Owner-funded LP reward faucet
+- `contracts/PowerUpBase.sol` — Generic multi-stat PowerUp (Base)
+- `contracts/PowerUpPolygon.sol` — Generic multi-stat PowerUp (Polygon)
 
-## Learn More
+## The World of Tasern
 
-To learn more about Next.js, take a look at the following resources:
+The game takes place across the continents of Tasern — Tern, Londa, Blabek, Lanice, and beyond. World 1 begins in Meta, a small settlement on Londa. Roads branch outward to an ever-expanding world that scales to the size of Earth.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## License
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+MIT
 
-## Deploy on Vercel
+---
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+*MfT you SOBs*
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Built by [memefortrees.base.eth](https://memefortrees.com)

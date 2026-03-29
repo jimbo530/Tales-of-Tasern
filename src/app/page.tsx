@@ -478,6 +478,7 @@ export default function Home() {
             </Wallet>
           </div>
         )}
+
       </div>
     </main>
   );
