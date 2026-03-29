@@ -21,6 +21,10 @@ const BASE_CONTRACTS: Record<string, { address: `0x${string}`; abi: readonly any
     address: "0x46D885122FEa2AfaF3977a71872b35C409a9f6AB",
     abi: [{ name: "powerUp", type: "function", stateMutability: "payable", inputs: [{ name: "nftContract", type: "address" }], outputs: [] }] as const,
   },
+  azos: {
+    address: "0xD7C584D40216576f1d8651Eab8bEF9DE69497666",
+    abi: [{ name: "powerUp", type: "function", stateMutability: "payable", inputs: [{ name: "nftContract", type: "address" }], outputs: [] }] as const,
+  },
 };
 
 type StatOption = {
@@ -36,6 +40,7 @@ type StatOption = {
 const STAT_OPTIONS: StatOption[] = [
   { key: "attack", label: "⚔️ ATK", desc: "Physical attack power", tokens: "USDGLO + MfT LP", color: "rgba(251,191,36,0.8)", chain: "base", deployed: true },
   { key: "hp", label: "❤️ HP", desc: "Hit points via TGN", tokens: "TGN + MfT LP", color: "rgba(251,113,133,0.8)", chain: "base", deployed: true },
+  { key: "azos", label: "🛡️⚔️❤️ ALL", desc: "ATK + DEF + HP via stablecoin", tokens: "AZOS + MfT LP", color: "rgba(74,222,128,0.8)", chain: "base", deployed: true },
   { key: "def", label: "🛡️ DEF", desc: "Physical defense", tokens: "TB01 + DDD LP", color: "rgba(148,163,184,0.8)", chain: "polygon", deployed: false },
   { key: "mAtk", label: "⚡ EATK", desc: "Electric attack", tokens: "JLT-F24 + DDD LP", color: "rgba(192,132,252,0.8)", chain: "polygon", deployed: false },
   { key: "fAtk", label: "🔥 FATK", desc: "Fire attack", tokens: "LANTERN + DDD LP", color: "rgba(251,146,60,0.8)", chain: "polygon", deployed: false },
@@ -295,6 +300,8 @@ export function PowerUp({ characters, onBack }: Props) {
   );
 }
 
+const MAX_ETH = 0.001;
+
 function PowerUpPayment({ contract, nftContract, heroName, statLabel }: {
   contract: { address: `0x${string}`; abi: readonly any[] };
   nftContract: `0x${string}`;
@@ -307,8 +314,11 @@ function PowerUpPayment({ contract, nftContract, heroName, statLabel }: {
   const [status, setStatus] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
 
+  const parsedAmount = parseFloat(amount) || 0;
+  const overMax = parsedAmount > MAX_ETH;
+
   async function handlePowerUp() {
-    if (!walletClient || !amount || parseFloat(amount) <= 0) return;
+    if (!walletClient || !amount || parsedAmount <= 0 || overMax) return;
     setStatus("Confirm in your wallet — sending ETH...");
     setTxHash(null);
 
@@ -338,18 +348,27 @@ function PowerUpPayment({ contract, nftContract, heroName, statLabel }: {
       ) : (
         <div className="flex flex-col gap-3">
           <p className="text-center text-xs" style={{ color: 'rgba(201,168,76,0.5)' }}>Pay with ETH on Base — auto-swaps to LP tokens</p>
+          <p className="text-center text-xs" style={{ color: 'rgba(251,191,36,0.5)' }}>Max {MAX_ETH} ETH per power-up (low liquidity)</p>
 
           <input
             type="number"
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
             placeholder="Amount of ETH to spend"
+            max={MAX_ETH}
+            step="0.0001"
             className="w-full px-4 py-2 rounded-lg text-sm text-center"
-            style={{ background: 'rgba(255,255,255,0.05)', color: '#f0d070', border: '1px solid rgba(201,168,76,0.3)', outline: 'none' }}
+            style={{ background: 'rgba(255,255,255,0.05)', color: overMax ? '#f87171' : '#f0d070', border: `1px solid ${overMax ? 'rgba(248,113,113,0.5)' : 'rgba(201,168,76,0.3)'}`, outline: 'none' }}
           />
 
+          {overMax && (
+            <p className="text-center text-xs" style={{ color: '#f87171' }}>
+              Exceeds max — slippage will eat your funds. Use {MAX_ETH} ETH or less.
+            </p>
+          )}
+
           <div className="flex gap-2 justify-center">
-            {["0.001", "0.005", "0.01", "0.05"].map(a => (
+            {["0.0001", "0.0005", "0.001"].map(a => (
               <button key={a} onClick={() => setAmount(a)}
                 className="px-3 py-1 rounded text-xs"
                 style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(201,168,76,0.6)', border: '1px solid rgba(201,168,76,0.15)' }}>
@@ -359,10 +378,10 @@ function PowerUpPayment({ contract, nftContract, heroName, statLabel }: {
           </div>
 
           <button onClick={handlePowerUp}
-            disabled={!amount || parseFloat(amount) <= 0}
+            disabled={!amount || parsedAmount <= 0 || overMax}
             className="w-full px-6 py-3 rounded-lg text-sm font-black uppercase tracking-widest"
-            style={{ background: 'rgba(34,197,94,0.3)', color: 'rgba(74,222,128,0.9)', border: '1px solid rgba(34,197,94,0.5)', opacity: amount && parseFloat(amount) > 0 ? 1 : 0.4 }}>
-            ⬆️ Power Up with {amount || "0"} ETH
+            style={{ background: overMax ? 'rgba(248,113,113,0.15)' : 'rgba(34,197,94,0.3)', color: overMax ? 'rgba(248,113,113,0.6)' : 'rgba(74,222,128,0.9)', border: `1px solid ${overMax ? 'rgba(248,113,113,0.3)' : 'rgba(34,197,94,0.5)'}`, opacity: amount && parsedAmount > 0 && !overMax ? 1 : 0.4 }}>
+            {overMax ? 'Amount too high' : `⬆️ Power Up with ${amount || "0"} ETH`}
           </button>
 
           {status && (

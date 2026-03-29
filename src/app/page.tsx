@@ -31,16 +31,18 @@ export default function Home() {
   const [page, setPage] = useState(0);
   const [search, setSearch] = useState("");
 
-  // Battle mode
+  // Navigation
+  const [view, setView] = useState<"menu" | "heroes" | "adventure" | "castleSiege" | "castleAI" | "matchmaking" | "marketplace" | "powerUp" | "1v1">("menu");
+
+  // Cycling background images
+  const BG_IMAGES = ["/bg-plains-1.webp", "/bg-plains-2.webp", "/bg-plains-3.webp", "/bg-plains-4.webp", "/bg-desert-1.webp", "/bg-desert-2.webp", "/bg-desert-3.webp", "/bg-desert-4.webp"];
+  const [bgIndex, setBgIndex] = useState(0);
+  const cycleView = (v: typeof view) => { setBgIndex(i => (i + 1) % BG_IMAGES.length); setView(v); };
+
+  // Battle mode (for 1v1)
   const [battleMode, setBattleMode] = useState(false);
   const [selectedFighters, setSelectedFighters] = useState<NftCharacter[]>([]);
   const [activeBattle, setActiveBattle] = useState<{ fighter1: NftCharacter; fighter2: NftCharacter } | null>(null);
-  const [cardBattleMode, setCardBattleMode] = useState(false);
-  const [matchmakingMode, setMatchmakingMode] = useState(false);
-  const [castleSiegeMenu, setCastleSiegeMenu] = useState(false);
-  const [adventureMode, setAdventureMode] = useState(false);
-  const [marketplaceMode, setMarketplaceMode] = useState(false);
-  const [powerUpMode, setPowerUpMode] = useState(false);
 
   const totalStats = (c: NftCharacter) => {
     const s = c.stats;
@@ -91,269 +93,95 @@ export default function Home() {
     setSelectedFighters([]);
   }
 
-  // Power Up
-  if (powerUpMode) {
-    return (
-      <main className="flex flex-col min-h-screen fantasy-bg">
-        <header className="header-fantasy flex items-center justify-between px-6 py-4">
-          <div className="flex items-center gap-3">
-            <span className="text-2xl">⚔️</span>
-            <div>
-              <h1 className="text-xl font-black tracking-widest text-gold-shimmer uppercase">Tales of Tasern</h1>
-              <p className="text-xs tracking-widest uppercase" style={{ color: 'rgba(201,168,76,0.5)' }}>Power Up</p>
-            </div>
-          </div>
-        </header>
-        <div className="flex-1 px-4 py-6">
-          <PowerUp characters={characters} onBack={() => setPowerUpMode(false)} />
-        </div>
-      </main>
-    );
-  }
-
-  // Marketplace
-  if (marketplaceMode) {
-    return (
-      <main className="flex flex-col min-h-screen fantasy-bg">
-        <header className="header-fantasy flex items-center justify-between px-6 py-4">
-          <div className="flex items-center gap-3">
-            <span className="text-2xl">⚔️</span>
-            <div>
-              <h1 className="text-xl font-black tracking-widest text-gold-shimmer uppercase">Tales of Tasern</h1>
-              <p className="text-xs tracking-widest uppercase" style={{ color: 'rgba(201,168,76,0.5)' }}>Marketplace</p>
-            </div>
-          </div>
-        </header>
-        <div className="flex-1 px-4 py-6">
-          <Marketplace characters={characters} onBack={() => setMarketplaceMode(false)} />
-        </div>
-      </main>
-    );
-  }
-
-  // Adventure mode
-  if (adventureMode) {
-    return (
-      <main className="flex flex-col min-h-screen fantasy-bg">
-        <header className="header-fantasy flex items-center justify-between px-6 py-4">
-          <div className="flex items-center gap-3">
-            <span className="text-2xl">⚔️</span>
-            <div>
-              <h1 className="text-xl font-black tracking-widest text-gold-shimmer uppercase">Tales of Tasern</h1>
-              <p className="text-xs tracking-widest uppercase" style={{ color: 'rgba(201,168,76,0.5)' }}>Adventure</p>
-            </div>
-          </div>
-        </header>
-        <div className="flex-1 px-4 py-6">
-          <AdventureMode characters={characters} onExit={() => setAdventureMode(false)} />
-        </div>
-      </main>
-    );
-  }
-
-  // Castle Siege menu
-  if (castleSiegeMenu) {
-    return (
-      <main className="flex flex-col min-h-screen fantasy-bg">
-        <header className="header-fantasy flex items-center justify-between px-6 py-4">
-          <div className="flex items-center gap-3">
-            <span className="text-2xl">⚔️</span>
-            <div>
-              <h1 className="text-xl font-black tracking-widest text-gold-shimmer uppercase">Tales of Tasern</h1>
-              <p className="text-xs tracking-widest uppercase" style={{ color: 'rgba(201,168,76,0.5)' }}>Castle Siege</p>
-            </div>
-          </div>
-        </header>
-        <div className="flex flex-col items-center gap-6 mt-16 px-4">
-          <h2 className="text-2xl font-black tracking-widest text-gold-shimmer uppercase"
-            style={{ fontFamily: "'Cinzel Decorative', 'Cinzel', serif" }}>
-            🏰 Castle Siege 🏰
-          </h2>
-          <p className="text-sm text-center" style={{ color: 'rgba(201,168,76,0.5)' }}>
-            Build your deck. Destroy the enemy fortress.
-          </p>
-          <div className="flex flex-col gap-4 w-full max-w-sm">
-            <button onClick={() => { setCastleSiegeMenu(false); setCardBattleMode(true); }}
-              className="w-full px-6 py-4 rounded-lg text-sm font-black uppercase tracking-widest"
-              style={{ background: 'rgba(201,168,76,0.2)', color: '#f0d070', border: '1px solid rgba(201,168,76,0.5)', boxShadow: '0 0 15px rgba(201,168,76,0.1)' }}>
-              🤖 vs AI — Solo Play
-            </button>
-            <button onClick={() => { setCastleSiegeMenu(false); setMatchmakingMode(true); }}
-              className="w-full px-6 py-4 rounded-lg text-sm font-black uppercase tracking-widest"
-              style={{ background: 'rgba(220,38,38,0.2)', color: '#fca5a5', border: '1px solid rgba(220,38,38,0.5)', boxShadow: '0 0 15px rgba(220,38,38,0.1)' }}>
-              🌐 Online — Find Opponent
-            </button>
-            <button onClick={() => setCastleSiegeMenu(false)}
-              className="w-full px-4 py-2 rounded text-xs font-bold uppercase tracking-widest"
-              style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(201,168,76,0.5)', border: '1px solid rgba(201,168,76,0.15)' }}>
-              ← Back
-            </button>
-          </div>
-        </div>
-      </main>
-    );
-  }
-
-  // Online matchmaking
-  if (matchmakingMode) {
-    return (
-      <main className="flex flex-col min-h-screen fantasy-bg">
-        <header className="header-fantasy flex items-center justify-between px-6 py-4">
-          <div className="flex items-center gap-3">
-            <span className="text-2xl">⚔️</span>
-            <div>
-              <h1 className="text-xl font-black tracking-widest text-gold-shimmer uppercase">Tales of Tasern</h1>
-              <p className="text-xs tracking-widest uppercase" style={{ color: 'rgba(201,168,76,0.5)' }}>Online Arena</p>
-            </div>
-          </div>
-        </header>
-        <div className="flex-1 px-4 py-6">
-          <Matchmaking
-            characters={characters}
-            onMatchFound={(lobby, myDeck, opponentDeck, isHost) => {
-              setMatchmakingMode(false);
-              setCardBattleMode(true);
-            }}
-            onBack={() => setMatchmakingMode(false)}
-          />
-        </div>
-      </main>
-    );
-  }
-
-  // Card battle mode
-  if (cardBattleMode) {
-    return (
-      <main className="flex flex-col min-h-screen fantasy-bg">
-        <header className="header-fantasy flex items-center justify-between px-6 py-4">
-          <div className="flex items-center gap-3">
-            <span className="text-2xl">⚔️</span>
-            <div>
-              <h1 className="text-xl font-black tracking-widest text-gold-shimmer uppercase">Tales of Tasern</h1>
-              <p className="text-xs tracking-widest uppercase" style={{ color: 'rgba(201,168,76,0.5)' }}>Card Battle</p>
-            </div>
-          </div>
-        </header>
-        <div className="flex-1 px-4 py-6">
-          <CardBattleBoard characters={characters} onExit={() => setCardBattleMode(false)} />
-        </div>
-      </main>
-    );
-  }
-
-  // 1v1 Battle view
-  if (activeBattle) {
-    return (
-      <main className="flex flex-col min-h-screen fantasy-bg">
-        <header className="header-fantasy flex items-center justify-between px-6 py-4">
-          <div className="flex items-center gap-3">
-            <span className="text-2xl">⚔️</span>
-            <div>
-              <h1 className="text-xl font-black tracking-widest text-gold-shimmer uppercase">
-                Tales of Tasern
-              </h1>
-              <p className="text-xs tracking-widest uppercase" style={{ color: 'rgba(201,168,76,0.5)' }}>
-                ◆ Arena ◆
-              </p>
-            </div>
-          </div>
-        </header>
-        <div className="flex-1 px-6 py-8">
-          <BattleView fighter1={activeBattle.fighter1} fighter2={activeBattle.fighter2} onExit={exitBattle} />
-        </div>
-      </main>
-    );
-  }
-
-  return (
-    <main className="flex flex-col min-h-screen fantasy-bg">
-      {/* Header */}
+  // Sub-page wrapper with consistent header
+  const subPage = (subtitle: string, content: React.ReactNode) => (
+    <main className="flex flex-col min-h-screen fantasy-bg relative">
+      <div className="fixed inset-0 -z-10" style={{
+        backgroundImage: `url(${BG_IMAGES[bgIndex]})`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        opacity: 0.12,
+        filter: 'blur(2px)',
+      }} />
       <header className="header-fantasy flex items-center justify-between px-6 py-4">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 cursor-pointer" onClick={() => cycleView("menu")}>
           <span className="text-2xl">⚔️</span>
           <div>
-            <h1 className="text-xl font-black tracking-widest text-gold-shimmer uppercase">
-              Tales of Tasern
-            </h1>
-            <p className="text-xs tracking-widest uppercase" style={{ color: 'rgba(201,168,76,0.5)' }}>
-              ◆ Champions of the Realm ◆
-            </p>
+            <h1 className="text-xl font-black tracking-widest text-gold-shimmer uppercase">Tales of Tasern</h1>
+            <p className="text-xs tracking-widest uppercase" style={{ color: 'rgba(201,168,76,0.5)' }}>{subtitle}</p>
           </div>
         </div>
-        <div className="flex items-center gap-3">
-          {!battleMode ? (
-            <>
-              <button
-                onClick={() => {
-                  const url = window.location.href;
-                  const text = "Tales of Tasern — NFT card battle game powered by real impact assets on Base ⚔️🏰";
-                  if (navigator.share) {
-                    navigator.share({ title: "Tales of Tasern", text, url });
-                  } else {
-                    navigator.clipboard.writeText(`${text}\n${url}`);
-                    alert("Link copied!");
-                  }
-                }}
-                className="px-4 py-2 rounded text-xs font-bold uppercase tracking-widest"
-                style={{ background: 'rgba(139,92,246,0.2)', color: 'rgba(167,139,250,0.9)', border: '1px solid rgba(139,92,246,0.4)' }}>
-                📤 Share
-              </button>
-              <button
-                onClick={() => setPowerUpMode(true)}
-                className="px-4 py-2 rounded text-xs font-bold uppercase tracking-widest"
-                style={{ background: 'rgba(139,92,246,0.2)', color: 'rgba(167,139,250,0.9)', border: '1px solid rgba(139,92,246,0.4)' }}>
-                ⬆️ Power Up
-              </button>
-              <button
-                onClick={() => setMarketplaceMode(true)}
-                className="px-4 py-2 rounded text-xs font-bold uppercase tracking-widest"
-                style={{ background: 'rgba(251,191,36,0.2)', color: 'rgba(251,191,36,0.9)', border: '1px solid rgba(251,191,36,0.4)' }}>
-                🛒 Shop
-              </button>
-              <button
-                onClick={() => setAdventureMode(true)}
-                className="px-4 py-2 rounded text-xs font-bold uppercase tracking-widest"
-                style={{ background: 'rgba(34,197,94,0.2)', color: 'rgba(74,222,128,0.9)', border: '1px solid rgba(34,197,94,0.4)' }}>
-                📖 Adventure
-              </button>
-              <button
-                onClick={() => setCastleSiegeMenu(true)}
-                className="px-4 py-2 rounded text-xs font-bold uppercase tracking-widest"
-                style={{ background: 'rgba(201,168,76,0.2)', color: '#f0d070', border: '1px solid rgba(201,168,76,0.4)' }}>
-                🏰 Castle Siege
-              </button>
-              <button
-                onClick={() => { setBattleMode(true); setSelectedFighters([]); }}
-                className="px-4 py-2 rounded text-xs font-bold uppercase tracking-widest"
-                style={{ background: 'rgba(220,38,38,0.2)', color: '#fca5a5', border: '1px solid rgba(220,38,38,0.4)' }}>
-                ⚔️ 1v1
-              </button>
-            </>
-          ) : (
-            <button
-              onClick={() => { setBattleMode(false); setSelectedFighters([]); }}
-              className="px-4 py-2 rounded text-xs font-bold uppercase tracking-widest"
-              style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(201,168,76,0.6)', border: '1px solid rgba(201,168,76,0.15)' }}>
-              Cancel
-            </button>
-          )}
-          <Wallet>
-              <ConnectWallet>
-                <Avatar className="h-6 w-6" />
-                <Name />
-              </ConnectWallet>
-              <WalletDropdown>
-                <Address />
-                <WalletDropdownDisconnect />
-              </WalletDropdown>
-            </Wallet>
-        </div>
+        <Wallet>
+          <ConnectWallet><Avatar className="h-6 w-6" /><Name /></ConnectWallet>
+          <WalletDropdown><Address /><WalletDropdownDisconnect /></WalletDropdown>
+        </Wallet>
       </header>
+      <div className="flex-1 px-4 py-6">{content}</div>
+    </main>
+  );
 
-      {/* Battle selection bar */}
-      {battleMode && (
-        <div className="flex items-center justify-center gap-4 px-6 py-3"
-          style={{ background: 'rgba(220,38,38,0.1)', borderBottom: '1px solid rgba(220,38,38,0.3)' }}>
+  if (view === "powerUp") return subPage("Power Up", <PowerUp characters={characters} onBack={() => cycleView("menu")} />);
+  if (view === "marketplace") return subPage("Marketplace", <Marketplace characters={characters} onBack={() => cycleView("menu")} />);
+  if (view === "adventure") return subPage("Adventure", <AdventureMode characters={characters} onExit={() => cycleView("menu")} />);
+
+  if (view === "castleSiege") return subPage("Castle Siege", (
+    <div className="flex flex-col items-center gap-6 mt-12">
+      <h2 className="text-2xl font-black tracking-widest text-gold-shimmer uppercase"
+        style={{ fontFamily: "'Cinzel Decorative', 'Cinzel', serif" }}>
+        🏰 Castle Siege 🏰
+      </h2>
+      <p className="text-sm text-center" style={{ color: 'rgba(201,168,76,0.5)' }}>
+        Build your deck. Destroy the enemy fortress.
+      </p>
+      <div className="flex flex-col gap-4 w-full max-w-sm">
+        <button onClick={() => cycleView("castleAI")}
+          className="w-full px-6 py-4 rounded-lg text-sm font-black uppercase tracking-widest"
+          style={{ background: 'rgba(201,168,76,0.2)', color: '#f0d070', border: '1px solid rgba(201,168,76,0.5)', boxShadow: '0 0 15px rgba(201,168,76,0.1)' }}>
+          🤖 vs AI — Solo Play
+        </button>
+        <button onClick={() => cycleView("matchmaking")}
+          className="w-full px-6 py-4 rounded-lg text-sm font-black uppercase tracking-widest"
+          style={{ background: 'rgba(220,38,38,0.2)', color: '#fca5a5', border: '1px solid rgba(220,38,38,0.5)', boxShadow: '0 0 15px rgba(220,38,38,0.1)' }}>
+          🌐 Online — Find Opponent
+        </button>
+        <button onClick={() => cycleView("menu")}
+          className="w-full px-4 py-2 rounded text-xs font-bold uppercase tracking-widest"
+          style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(201,168,76,0.5)', border: '1px solid rgba(201,168,76,0.15)' }}>
+          ← Back
+        </button>
+      </div>
+    </div>
+  ));
+
+  if (view === "matchmaking") return subPage("Online Arena", (
+    <Matchmaking
+      characters={characters}
+      onMatchFound={() => cycleView("castleAI")}
+      onBack={() => cycleView("castleSiege")}
+    />
+  ));
+
+  if (view === "castleAI") return subPage("Card Battle", <CardBattleBoard characters={characters} onExit={() => cycleView("menu")} />);
+
+  // 1v1 Battle view
+  if (activeBattle) return subPage("◆ Arena ◆", (
+    <div className="px-2 py-4">
+      <BattleView fighter1={activeBattle.fighter1} fighter2={activeBattle.fighter2} onExit={exitBattle} />
+    </div>
+  ));
+
+  // 1v1 mode — hero gallery with battle selection
+  if (view === "1v1") {
+    battleMode || setBattleMode(true);
+    return subPage("◆ 1v1 Arena ◆", (
+      <div className="flex flex-col items-center gap-6 px-2">
+        <button onClick={() => cycleView("menu")}
+          className="fixed top-20 left-4 z-50 px-4 py-2 rounded-lg text-sm font-black uppercase tracking-widest"
+          style={{ background: 'rgba(10,6,8,0.95)', color: '#f0d070', border: '1px solid rgba(201,168,76,0.5)', boxShadow: '0 0 15px rgba(0,0,0,0.5)', fontFamily: "'Cinzel Decorative', 'Cinzel', serif" }}>
+          ⚜ ← Back ⚜
+        </button>
+        <div className="flex items-center justify-center gap-4 px-6 py-3 w-full rounded-lg"
+          style={{ background: 'rgba(220,38,38,0.1)', border: '1px solid rgba(220,38,38,0.3)' }}>
           <span className="text-sm tracking-widest uppercase" style={{ color: 'rgba(251,191,36,0.8)' }}>
             {selectedFighters.length === 0 && "Select two champions to battle"}
             {selectedFighters.length === 1 && `${selectedFighters[0].name} selected — pick an opponent`}
@@ -362,102 +190,206 @@ export default function Home() {
           {selectedFighters.length === 2 && (
             <button onClick={startBattle}
               className="px-6 py-2 rounded text-sm font-black uppercase tracking-widest animate-pulse"
-              style={{ background: 'rgba(220,38,38,0.4)', color: '#fca5a5', border: '1px solid rgba(220,38,38,0.6)', boxShadow: '0 0 15px rgba(220,38,38,0.2)' }}>
+              style={{ background: 'rgba(220,38,38,0.4)', color: '#fca5a5', border: '1px solid rgba(220,38,38,0.6)' }}>
               Fight!
             </button>
           )}
         </div>
-      )}
-
-      {/* Asset totals */}
-      {(assetTotals.traditional > 0 || assetTotals.game > 0 || assetTotals.impact > 0) && (
-        <div className="flex items-center justify-center gap-4 px-6 py-2 flex-wrap"
-          style={{ borderBottom: '1px solid rgba(201,168,76,0.1)' }}>
-          <span className="text-xs font-black tracking-widest uppercase" style={{ color: 'rgba(201,168,76,0.6)' }}>🔒 Forever Locked Liquidity</span>
-          <button className="flex items-center gap-1.5 hover:opacity-80 transition-opacity" onClick={() => setPieCategory(pieCategory === "traditional" ? null : "traditional")}>
-            <span style={{ fontSize: '0.6rem', color: 'rgba(251,191,36,0.6)' }}>💰</span>
-            <span className="text-xs font-bold" style={{ color: 'rgba(251,191,36,0.8)' }}>
-              ${assetTotals.traditional >= 1000 ? `${(assetTotals.traditional / 1000).toFixed(1)}K` : assetTotals.traditional.toFixed(2)}
-            </span>
-            <span style={{ fontSize: '0.5rem', color: 'rgba(251,191,36,0.4)' }}>Traditional</span>
-          </button>
-          <button className="flex items-center gap-1.5 hover:opacity-80 transition-opacity" onClick={() => setPieCategory(pieCategory === "game" ? null : "game")}>
-            <span style={{ fontSize: '0.6rem', color: 'rgba(167,139,250,0.6)' }}>🎮</span>
-            <span className="text-xs font-bold" style={{ color: 'rgba(167,139,250,0.8)' }}>
-              ${assetTotals.game >= 1000 ? `${(assetTotals.game / 1000).toFixed(1)}K` : assetTotals.game.toFixed(2)}
-            </span>
-            <span style={{ fontSize: '0.5rem', color: 'rgba(167,139,250,0.4)' }}>Game Tokens</span>
-          </button>
-          <button className="flex items-center gap-1.5 hover:opacity-80 transition-opacity" onClick={() => setPieCategory(pieCategory === "impact" ? null : "impact")}>
-            <span style={{ fontSize: '0.6rem', color: 'rgba(74,222,128,0.6)' }}>🌱</span>
-            <span className="text-xs font-bold" style={{ color: 'rgba(74,222,128,0.8)' }}>
-              ${assetTotals.impact >= 1000 ? `${(assetTotals.impact / 1000).toFixed(1)}K` : assetTotals.impact.toFixed(2)}
-            </span>
-            <span style={{ fontSize: '0.5rem', color: 'rgba(74,222,128,0.4)' }}>Impact Assets</span>
-          </button>
+        <input value={search} onChange={(e) => { setSearch(e.target.value); setPage(0); }}
+          placeholder="Search heroes..." className="w-full max-w-md px-4 py-2 rounded-lg text-sm text-center"
+          style={{ background: 'rgba(255,255,255,0.05)', color: '#f0d070', border: '1px solid rgba(201,168,76,0.3)', outline: 'none' }} />
+        <div className="flex flex-wrap gap-4 justify-center">
+          {pageChars.map((char) => {
+            const selectedIdx = selectedFighters.findIndex(f => f.contractAddress === char.contractAddress);
+            return (
+              <CharacterCard key={`${char.contractAddress}-${char.tokenId}`} character={char} maxStats={maxStats}
+                selectable={true} selected={selectedIdx >= 0 ? (selectedIdx + 1) as 1 | 2 : null}
+                onSelect={() => toggleFighter(char)} />
+            );
+          })}
         </div>
-      )}
-
-      {/* Pie chart breakdown */}
-      {pieCategory && (() => {
-        const items = tokenBreakdown
-          .filter(t => t.category === pieCategory)
-          .sort((a, b) => b.usd - a.usd);
-        const total = items.reduce((s, t) => s + t.usd, 0);
-        if (total <= 0 || items.length === 0) return null;
-        const catColor = pieCategory === "traditional" ? "rgba(251,191,36" : pieCategory === "game" ? "rgba(167,139,250" : "rgba(74,222,128";
-        const catLabel = pieCategory === "traditional" ? "Traditional" : pieCategory === "game" ? "Game Tokens" : "Impact Assets";
-        const sliceColors = items.map((_, i) => {
-          const h = pieCategory === "traditional" ? 45 : pieCategory === "game" ? 260 : 145;
-          const l = 70 - (i / Math.max(items.length, 1)) * 40;
-          const s = 70 + (i % 2) * 15;
-          return `hsl(${h + i * 17}, ${s}%, ${l}%)`;
-        });
-        // Build SVG pie slices
-        let cumAngle = -Math.PI / 2;
-        const slices = items.map((item, i) => {
-          const angle = (item.usd / total) * Math.PI * 2;
-          const startAngle = cumAngle;
-          cumAngle += angle;
-          const endAngle = cumAngle;
-          const largeArc = angle > Math.PI ? 1 : 0;
-          const x1 = 50 + 45 * Math.cos(startAngle);
-          const y1 = 50 + 45 * Math.sin(startAngle);
-          const x2 = 50 + 45 * Math.cos(endAngle);
-          const y2 = 50 + 45 * Math.sin(endAngle);
-          const d = items.length === 1
-            ? `M50,50 L${x1},${y1} A45,45 0 1,1 ${x1 - 0.001},${y1} Z`
-            : `M50,50 L${x1},${y1} A45,45 0 ${largeArc},1 ${x2},${y2} Z`;
-          return <path key={i} d={d} fill={sliceColors[i]} stroke="rgba(0,0,0,0.3)" strokeWidth="0.5" />;
-        });
-        return (
-          <div className="flex items-center justify-center gap-6 px-6 py-4 flex-wrap"
-            style={{ borderBottom: `1px solid ${catColor},0.2)`, background: `${catColor},0.03)` }}>
-            <svg viewBox="0 0 100 100" width="120" height="120">{slices}</svg>
-            <div className="flex flex-col gap-1">
-              <span className="text-xs font-black uppercase tracking-widest mb-1" style={{ color: `${catColor},0.8)` }}>{catLabel}</span>
-              {items.map((item, i) => (
-                <div key={item.symbol} className="flex items-center gap-2 text-xs">
-                  <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: sliceColors[i] }} />
-                  <span style={{ color: 'rgba(255,255,255,0.7)' }}>{item.symbol}</span>
-                  <span style={{ color: 'rgba(255,255,255,0.4)' }}>
-                    ${item.usd >= 1000 ? `${(item.usd / 1000).toFixed(1)}K` : item.usd.toFixed(2)}
-                  </span>
-                  <span style={{ color: 'rgba(255,255,255,0.3)' }}>({((item.usd / total) * 100).toFixed(1)}%)</span>
-                </div>
+        {totalPages > 1 && (
+          <div className="flex items-center gap-3">
+            <button onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0}
+              className="px-4 py-2 rounded text-sm font-bold uppercase tracking-widest disabled:opacity-30"
+              style={{ background: 'rgba(201,168,76,0.1)', color: 'rgba(201,168,76,0.9)', border: '1px solid rgba(201,168,76,0.3)' }}>← Prev</button>
+            <div className="flex gap-1">
+              {Array.from({ length: totalPages }, (_, i) => (
+                <button key={i} onClick={() => setPage(i)} className="w-7 h-7 rounded text-xs font-bold"
+                  style={i === page ? { background: 'rgba(201,168,76,0.4)', color: '#f0d070', border: '1px solid rgba(201,168,76,0.6)' }
+                    : { background: 'rgba(201,168,76,0.05)', color: 'rgba(201,168,76,0.4)', border: '1px solid rgba(201,168,76,0.15)' }}>{i + 1}</button>
               ))}
             </div>
+            <button onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))} disabled={page === totalPages - 1}
+              className="px-4 py-2 rounded text-sm font-bold uppercase tracking-widest disabled:opacity-30"
+              style={{ background: 'rgba(201,168,76,0.1)', color: 'rgba(201,168,76,0.9)', border: '1px solid rgba(201,168,76,0.3)' }}>Next →</button>
           </div>
-        );
-      })()}
+        )}
+      </div>
+    ));
+  }
 
-      {/* Wrong network banner */}
+  // Heroes gallery page
+  if (view === "heroes") {
+    return subPage("◆ Champions of the Realm ◆", (
+      <div className="flex flex-col items-center gap-6 px-2 relative">
+        <button onClick={() => cycleView("menu")}
+          className="fixed top-20 left-4 z-50 px-4 py-2 rounded-lg text-sm font-black uppercase tracking-widest"
+          style={{ background: 'rgba(10,6,8,0.95)', color: '#f0d070', border: '1px solid rgba(201,168,76,0.5)', boxShadow: '0 0 15px rgba(0,0,0,0.5)', fontFamily: "'Cinzel Decorative', 'Cinzel', serif" }}>
+          ⚜ ← Back ⚜
+        </button>
+
+        {/* Asset totals */}
+        {(assetTotals.traditional > 0 || assetTotals.game > 0 || assetTotals.impact > 0) && (
+          <div className="flex items-center justify-center gap-4 px-4 py-2 flex-wrap rounded-lg"
+            style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(201,168,76,0.1)' }}>
+            <span className="text-xs font-black tracking-widest uppercase" style={{ color: 'rgba(201,168,76,0.6)' }}>🔒 Forever Locked Liquidity</span>
+            <button className="flex items-center gap-1.5 hover:opacity-80 transition-opacity" onClick={() => setPieCategory(pieCategory === "traditional" ? null : "traditional")}>
+              <span style={{ fontSize: '0.6rem', color: 'rgba(251,191,36,0.6)' }}>💰</span>
+              <span className="text-xs font-bold" style={{ color: 'rgba(251,191,36,0.8)' }}>
+                ${assetTotals.traditional >= 1000 ? `${(assetTotals.traditional / 1000).toFixed(1)}K` : assetTotals.traditional.toFixed(2)}
+              </span>
+              <span style={{ fontSize: '0.5rem', color: 'rgba(251,191,36,0.4)' }}>Traditional</span>
+            </button>
+            <button className="flex items-center gap-1.5 hover:opacity-80 transition-opacity" onClick={() => setPieCategory(pieCategory === "game" ? null : "game")}>
+              <span style={{ fontSize: '0.6rem', color: 'rgba(167,139,250,0.6)' }}>🎮</span>
+              <span className="text-xs font-bold" style={{ color: 'rgba(167,139,250,0.8)' }}>
+                ${assetTotals.game >= 1000 ? `${(assetTotals.game / 1000).toFixed(1)}K` : assetTotals.game.toFixed(2)}
+              </span>
+              <span style={{ fontSize: '0.5rem', color: 'rgba(167,139,250,0.4)' }}>Game Tokens</span>
+            </button>
+            <button className="flex items-center gap-1.5 hover:opacity-80 transition-opacity" onClick={() => setPieCategory(pieCategory === "impact" ? null : "impact")}>
+              <span style={{ fontSize: '0.6rem', color: 'rgba(74,222,128,0.6)' }}>🌱</span>
+              <span className="text-xs font-bold" style={{ color: 'rgba(74,222,128,0.8)' }}>
+                ${assetTotals.impact >= 1000 ? `${(assetTotals.impact / 1000).toFixed(1)}K` : assetTotals.impact.toFixed(2)}
+              </span>
+              <span style={{ fontSize: '0.5rem', color: 'rgba(74,222,128,0.4)' }}>Impact Assets</span>
+            </button>
+          </div>
+        )}
+
+        {/* Pie chart */}
+        {pieCategory && (() => {
+          const items = tokenBreakdown.filter(t => t.category === pieCategory).sort((a, b) => b.usd - a.usd);
+          const total = items.reduce((s, t) => s + t.usd, 0);
+          if (total <= 0 || items.length === 0) return null;
+          const catColor = pieCategory === "traditional" ? "rgba(251,191,36" : pieCategory === "game" ? "rgba(167,139,250" : "rgba(74,222,128";
+          const catLabel = pieCategory === "traditional" ? "Traditional" : pieCategory === "game" ? "Game Tokens" : "Impact Assets";
+          const sliceColors = items.map((_, i) => {
+            const h = pieCategory === "traditional" ? 45 : pieCategory === "game" ? 260 : 145;
+            return `hsl(${h + i * 17}, ${70 + (i % 2) * 15}%, ${70 - (i / Math.max(items.length, 1)) * 40}%)`;
+          });
+          let cumAngle = -Math.PI / 2;
+          const slices = items.map((item, i) => {
+            const angle = (item.usd / total) * Math.PI * 2;
+            const sa = cumAngle; cumAngle += angle;
+            const x1 = 50 + 45 * Math.cos(sa), y1 = 50 + 45 * Math.sin(sa);
+            const x2 = 50 + 45 * Math.cos(cumAngle), y2 = 50 + 45 * Math.sin(cumAngle);
+            const d = items.length === 1 ? `M50,50 L${x1},${y1} A45,45 0 1,1 ${x1 - 0.001},${y1} Z`
+              : `M50,50 L${x1},${y1} A45,45 0 ${angle > Math.PI ? 1 : 0},1 ${x2},${y2} Z`;
+            return <path key={i} d={d} fill={sliceColors[i]} stroke="rgba(0,0,0,0.3)" strokeWidth="0.5" />;
+          });
+          return (
+            <div className="flex items-center justify-center gap-6 px-4 py-4 flex-wrap rounded-lg"
+              style={{ background: `${catColor},0.03)`, border: `1px solid ${catColor},0.2)` }}>
+              <svg viewBox="0 0 100 100" width="120" height="120">{slices}</svg>
+              <div className="flex flex-col gap-1">
+                <span className="text-xs font-black uppercase tracking-widest mb-1" style={{ color: `${catColor},0.8)` }}>{catLabel}</span>
+                {items.map((item, i) => (
+                  <div key={item.symbol} className="flex items-center gap-2 text-xs">
+                    <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: sliceColors[i] }} />
+                    <span style={{ color: 'rgba(255,255,255,0.7)' }}>{item.symbol}</span>
+                    <span style={{ color: 'rgba(255,255,255,0.4)' }}>${item.usd >= 1000 ? `${(item.usd / 1000).toFixed(1)}K` : item.usd.toFixed(2)}</span>
+                    <span style={{ color: 'rgba(255,255,255,0.3)' }}>({((item.usd / total) * 100).toFixed(1)}%)</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
+
+        {loading ? (
+          <div className="flex flex-col items-center gap-4 mt-12">
+            <div className="text-4xl animate-pulse">🔮</div>
+            <p className="text-sm tracking-widest uppercase" style={{ color: 'rgba(201,168,76,0.7)' }}>Consulting the Oracle...</p>
+          </div>
+        ) : (
+          <>
+            <input value={search} onChange={(e) => { setSearch(e.target.value); setPage(0); }}
+              placeholder="Search heroes by name or address..." className="w-full max-w-md px-4 py-2 rounded-lg text-sm text-center"
+              style={{ background: 'rgba(255,255,255,0.05)', color: '#f0d070', border: '1px solid rgba(201,168,76,0.3)', outline: 'none' }} />
+            <p className="text-center text-xs tracking-widest uppercase" style={{ color: 'rgba(201,168,76,0.5)' }}>
+              {characters.filter(c => c.owned).length} Owned · {sorted.length}{search ? ' matching' : ''} of {characters.length} · Page {page + 1} of {totalPages}
+            </p>
+            <div className="flex flex-wrap gap-4 justify-center">
+              {pageChars.map((char) => (
+                <CharacterCard key={`${char.contractAddress}-${char.tokenId}`} character={char} maxStats={maxStats} />
+              ))}
+            </div>
+            {totalPages > 1 && (
+              <div className="flex items-center gap-3">
+                <button onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0}
+                  className="px-4 py-2 rounded text-sm font-bold uppercase tracking-widest disabled:opacity-30"
+                  style={{ background: 'rgba(201,168,76,0.1)', color: 'rgba(201,168,76,0.9)', border: '1px solid rgba(201,168,76,0.3)' }}>← Prev</button>
+                <div className="flex gap-1">
+                  {Array.from({ length: totalPages }, (_, i) => (
+                    <button key={i} onClick={() => setPage(i)} className="w-7 h-7 rounded text-xs font-bold"
+                      style={i === page ? { background: 'rgba(201,168,76,0.4)', color: '#f0d070', border: '1px solid rgba(201,168,76,0.6)' }
+                        : { background: 'rgba(201,168,76,0.05)', color: 'rgba(201,168,76,0.4)', border: '1px solid rgba(201,168,76,0.15)' }}>{i + 1}</button>
+                  ))}
+                </div>
+                <button onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))} disabled={page === totalPages - 1}
+                  className="px-4 py-2 rounded text-sm font-bold uppercase tracking-widest disabled:opacity-30"
+                  style={{ background: 'rgba(201,168,76,0.1)', color: 'rgba(201,168,76,0.9)', border: '1px solid rgba(201,168,76,0.3)' }}>Next →</button>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    ));
+  }
+
+  // Main Menu
+  const totalLocked = assetTotals.traditional + assetTotals.game + assetTotals.impact;
+  return (
+    <main className="flex flex-col min-h-screen relative">
+      {/* Tavern background */}
+      <div className="fixed inset-0 z-0">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/tavern-bg.webp" alt="" className="w-full h-full object-cover" style={{ filter: 'brightness(0.3)' }} />
+        <div className="absolute inset-0" style={{ background: 'radial-gradient(ellipse at center, transparent 20%, rgba(10,6,8,0.8) 80%)' }} />
+      </div>
+
+      <header className="header-fantasy flex items-center justify-between px-6 py-4 relative z-10">
+        <div className="flex items-center gap-3">
+          <span className="text-2xl">⚔️</span>
+          <div>
+            <h1 className="text-xl font-black tracking-widest text-gold-shimmer uppercase">Tales of Tasern</h1>
+            <p className="text-xs tracking-widest uppercase" style={{ color: 'rgba(201,168,76,0.5)' }}>◆ The Realm Awaits ◆</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <button onClick={() => {
+            const url = window.location.href;
+            const text = "Tales of Tasern — NFT card battle game powered by real impact assets on Base";
+            if (navigator.share) navigator.share({ title: "Tales of Tasern", text, url });
+            else { navigator.clipboard.writeText(`${text}\n${url}`); alert("Link copied!"); }
+          }} className="px-3 py-1.5 rounded text-xs font-bold uppercase tracking-widest"
+            style={{ background: 'rgba(139,92,246,0.2)', color: 'rgba(167,139,250,0.9)', border: '1px solid rgba(139,92,246,0.4)' }}>
+            📤
+          </button>
+          <Wallet>
+            <ConnectWallet><Avatar className="h-6 w-6" /><Name /></ConnectWallet>
+            <WalletDropdown><Address /><WalletDropdownDisconnect /></WalletDropdown>
+          </Wallet>
+        </div>
+      </header>
+
       {wrongChain && (
-        <div className="flex items-center justify-center gap-4 px-6 py-3 text-sm"
+        <div className="flex items-center justify-center gap-4 px-6 py-3 text-sm relative z-10"
           style={{ background: 'rgba(139,26,26,0.4)', borderBottom: '1px solid rgba(139,26,26,0.6)' }}>
           <span style={{ color: '#fca5a5' }}>Switch to Base to see your champions</span>
-          <button
-            onClick={() => switchChain({ chainId: base.id })}
+          <button onClick={() => switchChain({ chainId: base.id })}
             className="px-3 py-1 rounded text-xs font-bold uppercase tracking-widest"
             style={{ background: 'rgba(201,168,76,0.2)', color: '#f0d070', border: '1px solid rgba(201,168,76,0.4)' }}>
             Switch to Base
@@ -465,107 +397,85 @@ export default function Home() {
         </div>
       )}
 
-      {/* Body */}
-      <div className="flex flex-col items-center flex-1 px-6 py-12">
-        {loading ? (
-          <div className="flex flex-col items-center gap-4 mt-24">
-            <div className="text-4xl animate-pulse">🔮</div>
-            <p className="text-sm tracking-widest uppercase" style={{ color: 'rgba(201,168,76,0.7)' }}>
-              Consulting the Oracle...
-            </p>
+      <div className="flex flex-col items-center flex-1 px-6 py-10 gap-8 relative z-10">
+        {/* Locked liquidity summary */}
+        {totalLocked > 0 && (
+          <div className="flex items-center gap-3 px-5 py-3 rounded-xl"
+            style={{ background: 'rgba(201,168,76,0.06)', border: '1px solid rgba(201,168,76,0.15)' }}>
+            <span className="text-xs font-black tracking-widest uppercase" style={{ color: 'rgba(201,168,76,0.6)' }}>
+              🔒 ${totalLocked >= 1000 ? `${(totalLocked / 1000).toFixed(1)}K` : totalLocked.toFixed(0)} Forever Locked
+            </span>
+            <span style={{ fontSize: '0.5rem', color: 'rgba(201,168,76,0.3)' }}>·</span>
+            <span style={{ fontSize: '0.5rem', color: 'rgba(201,168,76,0.4)' }}>{characters.length} Heroes</span>
           </div>
-        ) : error ? (
-          <div className="mt-24 text-center">
-            <div className="text-4xl mb-3">💀</div>
-            <p className="font-bold tracking-wide uppercase" style={{ color: '#8b1a1a' }}>The Realm is Shrouded</p>
-            <p className="text-xs mt-1" style={{ color: 'rgba(232,213,176,0.4)' }}>{error}</p>
-          </div>
-        ) : (
-          <div className="w-full flex flex-col items-center gap-8">
-            {/* Connect prompt */}
-            {!isConnected && (
-              <div className="flex items-center gap-4 px-5 py-3 rounded-lg text-sm"
-                style={{ background: 'rgba(201,168,76,0.07)', border: '1px solid rgba(201,168,76,0.2)' }}>
-                <span style={{ color: 'rgba(201,168,76,0.7)' }}>Connect wallet to see which champions you own</span>
-                <Wallet>
-              <ConnectWallet>
-                <Avatar className="h-6 w-6" />
-                <Name />
-              </ConnectWallet>
-              <WalletDropdown>
-                <Address />
-                <WalletDropdownDisconnect />
-              </WalletDropdown>
+        )}
+
+        {/* Main menu buttons */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 w-full max-w-lg">
+          {/* Heroes */}
+          <button onClick={() => cycleView("heroes")}
+            className="flex flex-col items-center gap-3 px-6 py-8 rounded-2xl transition-all hover:scale-[1.02]"
+            style={{ background: 'rgba(201,168,76,0.1)', border: '2px solid rgba(201,168,76,0.3)', boxShadow: '0 0 25px rgba(201,168,76,0.05)' }}>
+            <span className="text-4xl">🛡️</span>
+            <span className="text-sm font-black tracking-widest uppercase" style={{ color: '#f0d070' }}>Heroes of the Realm</span>
+            <span style={{ fontSize: '0.55rem', color: 'rgba(201,168,76,0.5)' }}>Browse all {characters.length} champions and their stats</span>
+          </button>
+
+          {/* Adventure */}
+          <button onClick={() => cycleView("adventure")}
+            className="flex flex-col items-center gap-3 px-6 py-8 rounded-2xl transition-all hover:scale-[1.02]"
+            style={{ background: 'rgba(34,197,94,0.1)', border: '2px solid rgba(34,197,94,0.3)', boxShadow: '0 0 25px rgba(34,197,94,0.05)' }}>
+            <span className="text-4xl">📖</span>
+            <span className="text-sm font-black tracking-widest uppercase" style={{ color: 'rgba(74,222,128,0.9)' }}>Adventure</span>
+            <span style={{ fontSize: '0.55rem', color: 'rgba(34,197,94,0.5)' }}>6 levels of story-driven combat</span>
+          </button>
+
+          {/* Castle Siege */}
+          <button onClick={() => cycleView("castleSiege")}
+            className="flex flex-col items-center gap-3 px-6 py-8 rounded-2xl transition-all hover:scale-[1.02]"
+            style={{ background: 'rgba(220,38,38,0.1)', border: '2px solid rgba(220,38,38,0.3)', boxShadow: '0 0 25px rgba(220,38,38,0.05)' }}>
+            <span className="text-4xl">🏰</span>
+            <span className="text-sm font-black tracking-widest uppercase" style={{ color: '#fca5a5' }}>Castle Siege</span>
+            <span style={{ fontSize: '0.55rem', color: 'rgba(220,38,38,0.5)' }}>Card battle vs AI or online</span>
+          </button>
+
+          {/* Marketplace */}
+          <button onClick={() => cycleView("marketplace")}
+            className="flex flex-col items-center gap-3 px-6 py-8 rounded-2xl transition-all hover:scale-[1.02]"
+            style={{ background: 'rgba(251,191,36,0.1)', border: '2px solid rgba(251,191,36,0.3)', boxShadow: '0 0 25px rgba(251,191,36,0.05)' }}>
+            <span className="text-4xl">🛒</span>
+            <span className="text-sm font-black tracking-widest uppercase" style={{ color: 'rgba(251,191,36,0.9)' }}>Marketplace</span>
+            <span style={{ fontSize: '0.55rem', color: 'rgba(251,191,36,0.5)' }}>Buy and sell hero NFTs</span>
+          </button>
+
+          {/* 1v1 */}
+          <button onClick={() => { cycleView("1v1"); setBattleMode(true); setSelectedFighters([]); }}
+            className="flex flex-col items-center gap-3 px-6 py-8 rounded-2xl transition-all hover:scale-[1.02]"
+            style={{ background: 'rgba(139,92,246,0.1)', border: '2px solid rgba(139,92,246,0.3)', boxShadow: '0 0 25px rgba(139,92,246,0.05)' }}>
+            <span className="text-4xl">⚔️</span>
+            <span className="text-sm font-black tracking-widest uppercase" style={{ color: 'rgba(167,139,250,0.9)' }}>1v1 Arena</span>
+            <span style={{ fontSize: '0.55rem', color: 'rgba(139,92,246,0.5)' }}>Pick two heroes and watch them fight</span>
+          </button>
+
+          {/* Power Up */}
+          <button onClick={() => cycleView("powerUp")}
+            className="flex flex-col items-center gap-3 px-6 py-8 rounded-2xl transition-all hover:scale-[1.02]"
+            style={{ background: 'rgba(96,165,250,0.1)', border: '2px solid rgba(96,165,250,0.3)', boxShadow: '0 0 25px rgba(96,165,250,0.05)' }}>
+            <span className="text-4xl">⬆️</span>
+            <span className="text-sm font-black tracking-widest uppercase" style={{ color: 'rgba(96,165,250,0.9)' }}>Power Up</span>
+            <span style={{ fontSize: '0.55rem', color: 'rgba(96,165,250,0.5)' }}>Boost hero stats with ETH</span>
+          </button>
+        </div>
+
+        {/* Connect prompt */}
+        {!isConnected && (
+          <div className="flex items-center gap-4 px-5 py-3 rounded-lg text-sm"
+            style={{ background: 'rgba(201,168,76,0.07)', border: '1px solid rgba(201,168,76,0.2)' }}>
+            <span style={{ color: 'rgba(201,168,76,0.7)' }}>Connect wallet to see your champions</span>
+            <Wallet>
+              <ConnectWallet><Avatar className="h-6 w-6" /><Name /></ConnectWallet>
+              <WalletDropdown><Address /><WalletDropdownDisconnect /></WalletDropdown>
             </Wallet>
-              </div>
-            )}
-
-            {/* Search */}
-            <input
-              value={search}
-              onChange={(e) => { setSearch(e.target.value); setPage(0); }}
-              placeholder="Search heroes by name or address..."
-              className="w-full max-w-md px-4 py-2 rounded-lg text-sm text-center"
-              style={{ background: 'rgba(255,255,255,0.05)', color: '#f0d070', border: '1px solid rgba(201,168,76,0.3)', outline: 'none' }}
-            />
-
-            {/* Count + page info */}
-            <p className="text-center text-xs tracking-widest uppercase" style={{ color: 'rgba(201,168,76,0.5)' }}>
-              {characters.filter(c => c.owned).length} Owned · {sorted.length}{search ? ` matching` : ''} of {characters.length} · Page {page + 1} of {totalPages}
-              {'\n'}Tap a card to flip it and see the real tokens inside
-            </p>
-
-            {/* Cards */}
-            <div className="flex flex-wrap gap-4 justify-center">
-              {pageChars.map((char) => {
-                const selectedIdx = selectedFighters.findIndex(f => f.contractAddress === char.contractAddress);
-                return (
-                  <CharacterCard
-                    key={`${char.contractAddress}-${char.tokenId}`}
-                    character={char}
-                    maxStats={maxStats}
-                    selectable={battleMode}
-                    selected={selectedIdx >= 0 ? (selectedIdx + 1) as 1 | 2 : null}
-                    onSelect={() => toggleFighter(char)}
-                  />
-                );
-              })}
-            </div>
-
-            {/* Pagination */}
-            {totalPages > 1 && (
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={() => setPage(p => Math.max(0, p - 1))}
-                  disabled={page === 0}
-                  className="px-4 py-2 rounded text-sm font-bold uppercase tracking-widest disabled:opacity-30 transition-opacity"
-                  style={{ background: 'rgba(201,168,76,0.1)', color: 'rgba(201,168,76,0.9)', border: '1px solid rgba(201,168,76,0.3)' }}>
-                  ← Prev
-                </button>
-
-                <div className="flex gap-1">
-                  {Array.from({ length: totalPages }, (_, i) => (
-                    <button
-                      key={i}
-                      onClick={() => setPage(i)}
-                      className="w-7 h-7 rounded text-xs font-bold transition-all"
-                      style={i === page
-                        ? { background: 'rgba(201,168,76,0.4)', color: '#f0d070', border: '1px solid rgba(201,168,76,0.6)' }
-                        : { background: 'rgba(201,168,76,0.05)', color: 'rgba(201,168,76,0.4)', border: '1px solid rgba(201,168,76,0.15)' }}>
-                      {i + 1}
-                    </button>
-                  ))}
-                </div>
-
-                <button
-                  onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
-                  disabled={page === totalPages - 1}
-                  className="px-4 py-2 rounded text-sm font-bold uppercase tracking-widest disabled:opacity-30 transition-opacity"
-                  style={{ background: 'rgba(201,168,76,0.1)', color: 'rgba(201,168,76,0.9)', border: '1px solid rgba(201,168,76,0.3)' }}>
-                  Next →
-                </button>
-              </div>
-            )}
           </div>
         )}
       </div>

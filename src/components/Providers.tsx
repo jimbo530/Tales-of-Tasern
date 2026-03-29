@@ -16,6 +16,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
         <OnchainKitProvider
           apiKey={process.env.NEXT_PUBLIC_ONCHAINKIT_API_KEY}
           chain={base}
+          config={{ wallet: { display: 'modal', supportedWallets: { rabby: true } } }}
         >
           {children}
         </OnchainKitProvider>

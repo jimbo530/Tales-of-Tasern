@@ -188,6 +188,7 @@ export const GAME_NFTS: GameNft[] = [
   { name: "Vaelrith the Veiled Sovereign", contractAddress: "0x4A35B948F49A169976FCCC96220676692c987A57", chain: "base" },
   { name: "Kira Emberstep",               contractAddress: "0x26CE8466eC418b7D42d8789476642cdFbB5e8aab", chain: "base" },
   { name: "Tharion Rootkeeper",          contractAddress: "0x76D50Fbc46a31aC21855b2b8218F4F642991c25e", chain: "base" },
+  { name: "Rook Highbranch",            contractAddress: "0xB9c37Ce29A0966f83B29c905c434905301435D9d", chain: "base" },
 ];
 
 // ─── Known LP Pairs (add more as the game expands) ────────────────────────────
@@ -205,6 +206,7 @@ export const KNOWN_LP_PAIRS = {
     "0xbd0cc3b0aaf91b80c862dbcaf39faa4705ee2d7a", // TGN / MfT      (Uniswap V2 Base)
     "0x2873937bb8985b0b2aafe693742c35f557ff8bff", // TGN / EGP      (Uniswap V2 Base)
     "0x6fbb3c6e531f627496d1c98ec88fb0cb01260926", // TGN / WETH     (Uniswap V2 Base)
+    "0xecc664757da0c71ba32dfed527580a26783b6697", // AZOS / MfT     (Uniswap V2 Base)
   ] as `0x${string}`[],
   polygon: [
     // ── JLT-F24 (atk) ───────────────────────────────────────────────────────
@@ -320,6 +322,7 @@ export const STAT_TOKENS = {
     attack: [
       "0x4f604735c1cf31399c6e711d5962b2b3e0225ad3", // USDGLO
       "0x4200000000000000000000000000000000000006", // WETH (Base)
+      "0x3595ca37596d5895b70efab592ac315d5b9809b2", // AZOS (stablecoin)
     ] as `0x${string}`[],
     hp:     ["0x8fb87d13b40b1a67b22ed1a17e2835fe7e3a9ba3", "0xc1ba76771bbf0dd841347630e57c793f9d5accee", "0x06a05043eb2c1691b19c2c13219db9212269ddc5", "0xd75dfa972c6136f1c594fec1945302f885e1ab29"] as `0x${string}`[], // MfT, EGP(Base), BURGERS, TGN
     magic:  ["0x20b048fa035d5763685d695e66adf62c5d9f5055"] as `0x${string}`[], // CHAR → global multiplier

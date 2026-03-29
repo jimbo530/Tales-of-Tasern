@@ -52,21 +52,46 @@ export function useNftStats() {
 
         // Check ownership if wallet connected
         let ownershipMap = new Map<string, boolean>();
-        if (isConnected && address && baseClient) {
-          try {
-            const ownershipCalls = GAME_NFTS.map((nft) => ({
-              address: nft.contractAddress,
-              abi: ERC1155_ABI,
-              functionName: "balanceOf" as const,
-              args: [address, TOKEN_ID] as [`0x${string}`, bigint],
-            }));
-            const results = await baseClient.multicall({ contracts: ownershipCalls, allowFailure: true });
-            GAME_NFTS.forEach((nft, i) => {
-              const r = results[i];
-              ownershipMap.set(nft.contractAddress.toLowerCase(), r.status === "success" && (r.result as bigint) > 0n);
-            });
-          } catch (e) {
-            console.warn("[ToT] Ownership check failed:", e);
+        if (isConnected && address) {
+          const baseNfts = GAME_NFTS.filter(n => n.chain === "base");
+          const polyNfts = GAME_NFTS.filter(n => n.chain === "polygon");
+
+          // Check Base NFT ownership
+          if (baseClient && baseNfts.length > 0) {
+            try {
+              const calls = baseNfts.map((nft) => ({
+                address: nft.contractAddress,
+                abi: ERC1155_ABI,
+                functionName: "balanceOf" as const,
+                args: [address, TOKEN_ID] as [`0x${string}`, bigint],
+              }));
+              const results = await baseClient.multicall({ contracts: calls, allowFailure: true });
+              baseNfts.forEach((nft, i) => {
+                const r = results[i];
+                ownershipMap.set(nft.contractAddress.toLowerCase(), r.status === "success" && (r.result as bigint) > 0n);
+              });
+            } catch (e) {
+              console.warn("[ToT] Base ownership check failed:", e);
+            }
+          }
+
+          // Check Polygon NFT ownership
+          if (polygonClient && polyNfts.length > 0) {
+            try {
+              const calls = polyNfts.map((nft) => ({
+                address: nft.contractAddress,
+                abi: ERC1155_ABI,
+                functionName: "balanceOf" as const,
+                args: [address, TOKEN_ID] as [`0x${string}`, bigint],
+              }));
+              const results = await polygonClient.multicall({ contracts: calls, allowFailure: true });
+              polyNfts.forEach((nft, i) => {
+                const r = results[i];
+                ownershipMap.set(nft.contractAddress.toLowerCase(), r.status === "success" && (r.result as bigint) > 0n);
+              });
+            } catch (e) {
+              console.warn("[ToT] Polygon ownership check failed:", e);
+            }
           }
         }
 

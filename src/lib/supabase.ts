@@ -124,3 +124,34 @@ export async function getActiveListings(): Promise<Listing[]> {
     .order("listed_at", { ascending: false });
   return (data ?? []) as Listing[];
 }
+
+// ── Adventure Saves ─────────────────────────────────────────────────────────
+
+export type AdventureSave = {
+  wallet: string;
+  state: any;
+  intro_seen: boolean;
+  updated_at: string;
+};
+
+export async function loadAdventureSave(wallet: string): Promise<AdventureSave | null> {
+  const { data, error } = await supabase
+    .from("adventure_saves")
+    .select("*")
+    .eq("wallet", wallet.toLowerCase())
+    .single();
+  if (error) return null;
+  return data as AdventureSave;
+}
+
+export async function saveAdventure(wallet: string, state: any, introSeen: boolean): Promise<boolean> {
+  const { error } = await supabase
+    .from("adventure_saves")
+    .upsert({
+      wallet: wallet.toLowerCase(),
+      state,
+      intro_seen: introSeen,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: "wallet" });
+  return !error;
+}

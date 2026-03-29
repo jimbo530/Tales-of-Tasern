@@ -71,6 +71,7 @@ const TOKEN_SYMBOLS: Record<string, string> = {
   "0xef6ab48ef8dfe984fab0d5c4cd6aff2e54dfda14": "CRISP-M",
   "0xdb7a2607b71134d0b09c27ca2d77b495e4dbeedb": "GRANTS",
   "0xd75dfa972c6136f1c594fec1945302f885e1ab29": "TGN",
+  "0x3595ca37596d5895b70efab592ac315d5b9809b2": "AZOS",
 };
 
 const TOKEN_CATEGORY: Record<string, "traditional" | "game" | "impact"> = {
@@ -80,6 +81,7 @@ const TOKEN_CATEGORY: Record<string, "traditional" | "game" | "impact"> = {
   "0x7ceb23fd6bc0add59e62ac25578270cff1b9f619": "traditional", // WETH Polygon
   "0x1bfd67037b42cf73acf2047067bd4f2c47d9bfd6": "traditional", // WBTC
   "0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270": "traditional", // WPOL
+  "0x3595ca37596d5895b70efab592ac315d5b9809b2": "traditional", // AZOS (stablecoin)
   // Game tokens
   "0x4bf82cf0d6b2afc87367052b793097153c859d38": "game", // DDD
   "0x64f6f111e9fdb753877f17f399b759de97379170": "game", // EGP Polygon
@@ -133,6 +135,7 @@ export async function GET() {
       "0x1bfd67037b42cf73acf2047067bd4f2c47d9bfd6": btcHigh24h,  // WBTC (Polygon)
       "0x7ceb23fd6bc0add59e62ac25578270cff1b9f619": ethHigh24h,  // WETH (Polygon)
       "0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270": polHigh24h,  // WPOL
+      "0x3595ca37596d5895b70efab592ac315d5b9809b2": 1,           // AZOS = $1 (stablecoin)
     };
 
     const nftSupplyDivisor: Record<string, number> = {
@@ -450,7 +453,18 @@ export async function GET() {
         const points = rawAmount * usdPrice * POINTS_PER_DOLLAR;
         let stat: string;
 
-        if (attackTokens.includes(addr) || polyAttackTokens.includes(addr)) {
+        // Stablecoins → ATK + DEF + HP equally
+        const STABLECOINS = ["0x4f604735c1cf31399c6e711d5962b2b3e0225ad3", "0x3595ca37596d5895b70efab592ac315d5b9809b2"]; // USDGLO, AZOS
+        const WBTC_ADDR = "0x1bfd67037b42cf73acf2047067bd4f2c47d9bfd6";
+        const WETH_ADDRS = ["0x4200000000000000000000000000000000000006", "0x7ceb23fd6bc0add59e62ac25578270cff1b9f619"];
+
+        if (STABLECOINS.includes(addr)) {
+          stat = "attack"; attack += points; def += points; hp += points;
+        } else if (addr === WBTC_ADDR) {
+          stat = "attack"; attack += points * 3;
+        } else if (WETH_ADDRS.includes(addr)) {
+          stat = "def"; def += points * 3;
+        } else if (attackTokens.includes(addr) || polyAttackTokens.includes(addr)) {
           stat = "attack"; attack += points;
         } else if (polyMatkTokens.includes(addr)) {
           stat = "mAtk"; mAtk += points;

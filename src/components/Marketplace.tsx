@@ -5,6 +5,7 @@ import { useAccount } from "wagmi";
 import type { NftCharacter } from "@/hooks/useNftStats";
 import { useNftImage } from "@/hooks/useNftImage";
 import { listNft, cancelListing, getActiveListings, type Listing } from "@/lib/supabase";
+import { STORY_NPCS } from "@/lib/adventureData";
 
 type Props = {
   characters: NftCharacter[];
@@ -103,6 +104,7 @@ export function Marketplace({ characters, onBack }: Props) {
   // For sale: seller-owned + community listings
   const forSale = useMemo(() => {
     return characters.filter(c => {
+      if (STORY_NPCS.has(c.contractAddress.toLowerCase())) return false;
       const hasValue = c.usdBacking > 0;
       const isSellerOwned = c.forSale;
       const isCommunityListed = listedAddrs.has(c.contractAddress.toLowerCase());

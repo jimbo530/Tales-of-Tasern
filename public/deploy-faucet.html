@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html>
+<head><title>Deploy LP Faucet — Tales of Tasern</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.1/ethers.umd.min.js"></script>
+</head>
+<body style="background:#0a0608;color:#e8d5b0;font-family:Georgia;padding:30px;max-width:700px;margin:0 auto;">
+
+<h1 style="color:#c9a84c;text-align:center;">LP Faucet</h1>
+<p style="text-align:center;color:#888;margin-bottom:25px;">Deploy & manage the LP reward faucet. You deposit LP tokens, players earn them by winning levels.</p>
+
+<div style="text-align:center;margin-bottom:25px;">
+  <button id="connectBtn" onclick="connect()" style="background:#c9a84c;color:#0a0608;border:none;padding:12px 30px;font-size:15px;font-weight:bold;border-radius:8px;cursor:pointer;font-family:Georgia;">Connect Wallet</button>
+  <p id="walletStatus" style="margin-top:8px;color:#888;font-size:13px;"></p>
+</div>
+
+<!-- DEPLOY -->
+<div style="margin-bottom:20px;padding:18px;background:#1a1418;border:1px solid #c9a84c44;border-radius:8px;">
+  <h3 style="color:#c9a84c;margin-bottom:10px;">Step 1: Deploy Faucet</h3>
+  <label style="color:#888;font-size:12px;">LP Token Address (the AZOS/MfT LP pair)</label>
+  <input id="lpTokenAddr" value="0xecc664757da0c71ba32dfed527580a26783b6697" style="width:100%;padding:8px;background:#0a0608;color:#e8d5b0;border:1px solid #c9a84c44;border-radius:4px;font-family:monospace;font-size:13px;margin-bottom:8px;" />
+  <label style="color:#888;font-size:12px;">Reward Per Win (LP tokens in wei — e.g. 1000000000000000 = 0.001 LP)</label>
+  <input id="rewardAmt" value="10550000000000000000" style="width:100%;padding:8px;background:#0a0608;color:#e8d5b0;border:1px solid #c9a84c44;border-radius:4px;font-family:monospace;font-size:13px;margin-bottom:12px;" />
+  <button id="deployBtn" onclick="deploy()" disabled style="background:#c9a84c;color:#0a0608;border:none;padding:10px 25px;font-size:14px;font-weight:bold;border-radius:6px;cursor:pointer;font-family:Georgia;opacity:0.5;">Deploy LPFaucet</button>
+  <p id="deployStatus" style="margin-top:8px;font-size:13px;color:#888;"></p>
+  <div style="margin-top:10px;">
+    <label style="color:#888;font-size:12px;">Or load existing faucet:</label>
+    <div style="display:flex;gap:8px;margin-top:4px;">
+      <input id="existingAddr" placeholder="0x..." style="flex:1;padding:8px;background:#0a0608;color:#e8d5b0;border:1px solid #c9a84c44;border-radius:4px;font-family:monospace;font-size:13px;" />
+      <button onclick="loadExisting()" style="background:#c9a84c;color:#0a0608;border:none;padding:8px 14px;font-size:12px;font-weight:bold;border-radius:4px;cursor:pointer;font-family:Georgia;">Load</button>
+    </div>
+  </div>
+  <div style="margin-top:10px;padding:10px;background:#0a0608;border:1px solid #c9a84c44;border-radius:6px;">
+    <p style="color:#888;font-size:12px;">Faucet Address:</p>
+    <p id="faucetAddr" style="color:#f0d070;font-family:monospace;font-size:15px;word-break:break-all;user-select:all;">Not deployed yet</p>
+  </div>
+</div>
+
+<!-- MANAGE -->
+<div style="margin-bottom:20px;padding:18px;background:#1a1418;border:1px solid #c9a84c44;border-radius:8px;">
+  <h3 style="color:#c9a84c;margin-bottom:10px;">Step 2: Fund & Manage</h3>
+  <p style="color:#888;font-size:13px;margin-bottom:10px;">Approve the faucet to hold your LP, then transfer LP tokens to it.</p>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+    <div>
+      <label style="color:#888;font-size:12px;">LP Amount to Deposit</label>
+      <input id="depositAmt" value="1" placeholder="e.g. 1.0" style="width:120px;padding:8px;background:#0a0608;color:#e8d5b0;border:1px solid #c9a84c44;border-radius:4px;font-family:monospace;font-size:13px;" />
+    </div>
+    <div style="display:flex;gap:4px;align-items:end;">
+      <button onclick="approveLp()" style="background:#c9a84c;color:#0a0608;border:none;padding:8px 14px;font-size:12px;font-weight:bold;border-radius:4px;cursor:pointer;font-family:Georgia;">Approve</button>
+      <button onclick="depositLp()" style="background:#4ade80;color:#0a0608;border:none;padding:8px 14px;font-size:12px;font-weight:bold;border-radius:4px;cursor:pointer;font-family:Georgia;">Deposit</button>
+    </div>
+  </div>
+  <div style="display:flex;gap:20px;margin-bottom:10px;">
+    <div><label style="color:#888;font-size:12px;">Faucet Balance</label><p id="faucetBal" style="color:#4ade80;font-family:monospace;font-size:14px;">—</p></div>
+    <div><label style="color:#888;font-size:12px;">Reward Per Win</label><p id="rewardDisplay" style="color:#f0d070;font-family:monospace;font-size:14px;">—</p></div>
+    <div><label style="color:#888;font-size:12px;">Wins Remaining</label><p id="winsLeft" style="color:#f0d070;font-family:monospace;font-size:14px;">—</p></div>
+  </div>
+  <button onclick="refreshInfo()" style="background:rgba(255,255,255,0.1);color:#e8d5b0;border:1px solid #c9a84c44;padding:6px 14px;font-size:12px;border-radius:4px;cursor:pointer;font-family:Georgia;">Refresh</button>
+  <p id="manageStatus" style="margin-top:8px;font-size:13px;color:#888;"></p>
+</div>
+
+<!-- TEST -->
+<div style="margin-bottom:20px;padding:18px;background:#1a1418;border:1px solid #c9a84c44;border-radius:8px;">
+  <h3 style="color:#c9a84c;margin-bottom:10px;">Test Reward</h3>
+  <label style="color:#888;font-size:12px;">NFT Contract Address</label>
+  <input id="testNft" placeholder="0x..." style="width:100%;padding:8px;background:#0a0608;color:#e8d5b0;border:1px solid #c9a84c44;border-radius:4px;font-family:monospace;font-size:13px;margin-bottom:8px;" />
+  <button onclick="testReward()" style="background:#4ade80;color:#0a0608;border:none;padding:10px 25px;font-size:14px;font-weight:bold;border-radius:6px;cursor:pointer;font-family:Georgia;">Send Reward</button>
+  <p id="testStatus" style="margin-top:8px;font-size:13px;color:#888;"></p>
+</div>
+
+<script>
+const FAUCET_BYTECODE = '0x6080604052620151806003553480156015575f5ffd5b506040516109e73803806109e78339810160408190526032916067565b5f8054336001600160a01b031991821617909155600180549091166001600160a01b039390931692909217909155600255609c565b5f5f604083850312156077575f5ffd5b82516001600160a01b0381168114608c575f5ffd5b6020939093015192949293505050565b61093e806100a95f395ff3fe608060405234801561000f575f5ffd5b50600436106100e5575f3560e01c80638da5cb5b11610088578063b2158cd311610063578063b2158cd3146101d9578063b69ef8a8146101f8578063b881504614610200578063f7b2a7be14610213575f5ffd5b80638da5cb5b146101a15780639d82190f146101b3578063a8a65a78146101c6575f5ffd5b80636555c174116100c35780636555c174146101415780636a678a9c14610164578063787a08a6146101775780637a4e4ecf1461018e575f5ffd5b80632e1a7d4d146100e95780634fc3f41a146100fe5780635fcbd28514610111575b5f5ffd5b6100fc6100f7366004610802565b61021c565b005b6100fc61010c366004610802565b6102c7565b600154610124906001600160a01b031681565b6040516001600160a01b0390911681526020015b60405180910390f35b61015461014f366004610834565b6102f5565b6040519015158152602001610138565b6100fc610172366004610834565b61039b565b61018060035481565b604051908152602001610138565b6100fc61019c36600461084d565b610419565b5f54610124906001600160a01b031681565b6101806101c1366004610834565b6104ba565b6100fc6101d4366004610802565b610505565b6101806101e7366004610834565b60046020525f908152604090205481565b610180610563565b6100fc61020e366004610834565b6105d2565b61018060025481565b5f546001600160a01b0316331461024e5760405162461bcd60e51b815260040161024590610875565b60405180910390fd5b6001545f5460405163a9059cbb60e01b81526001600160a01b0391821660048201526024810184905291169063a9059cbb906044016020604051808303815f875af115801561029f573d5f5f3e3d5ffd5b505050506040513d601f19601f820116820180604052508101906102c39190610898565b5050565b5f546001600160a01b031633146102f05760405162461bcd60e51b815260040161024590610875565b600355565b6003546001600160a01b0382165f90815260046020526040812054909161031b916108cb565b421015801561039557506002546001546040516370a0823160e01b81523060048201526001600160a01b03909116906370a0823190602401602060405180830381865afa15801561036e573d5f5f3e3d5ffd5b505050506040513d601f19601f8201168201806040525081019061039291906108de565b10155b92915050565b5f546001600160a01b031633146103c45760405162461bcd60e51b815260040161024590610875565b600180546001600160a01b0319166001600160a01b0383169081179091556040519081527ff9d1c90c609623055381582a51735b38df3243eb09629a9170b15c2ab6bc0739906020015b60405180910390a150565b5f546001600160a01b031633146104425760405162461bcd60e51b815260040161024590610875565b5f5460405163a9059cbb60e01b81526001600160a01b039182166004820152602481018390529083169063a9059cbb906044016020604051808303815f875af1158015610491573d5f5f3e3d5ffd5b505050506040513d601f19601f820116820180604052508101906104b59190610898565b505050565b6003546001600160a01b0382165f90815260046020526040812054909182916104e391906108cb565b90508042106104f457505f92915050565b6104fe42826108f5565b9392505050565b5f546001600160a01b0316331461052e5760405162461bcd60e51b815260040161024590610875565b60028190556040518181527f9639dea65e74b72b1b86ccf3e4f9b6d23b88d2aad2f103d0b3afe394e67edade9060200161040e565b6001546040516370a0823160e01b81523060048201525f916001600160a01b0316906370a0823190602401602060405180830381865afa1580156105a9573d5f5f3e3d5ffd5b505050506040513d601f19601f820116820180604052508101906105cd91906108de565b905090565b6001600160a01b0381166106175760405162461bcd60e51b815260206004820152600c60248201526b5a65726f206164647265737360a01b6044820152606401610245565b6002546001546040516370a0823160e01b81523060048201526001600160a01b03909116906370a0823190602401602060405180830381865afa158015610660573d5f5f3e3d5ffd5b505050506040513d601f19601f8201168201806040525081019061068491906108de565b10156106c15760405162461bcd60e51b815260206004820152600c60248201526b46617563657420656d70747960a01b6044820152606401610245565b6003546001600160a01b0382165f908152600460205260409020546106e691906108cb565b4210156107235760405162461bcd60e51b815260206004820152600b60248201526a27b71031b7b7b63237bbb760a91b6044820152606401610245565b6001600160a01b038181165f81815260046020819052604091829020429055600154600254925163a9059cbb60e01b815291820193909352602481019190915291169063a9059cbb906044016020604051808303815f875af115801561078b573d5f5f3e3d5ffd5b505050506040513d601f19601f820116820180604052508101906107af9190610898565b50336001600160a01b0316816001600160a01b03167f2543d687e53cd3a24aea2c315f6c7e326e8b80d140825a96ad41044fcb21233d6002546040516107f791815260200190565b60405180910390a350565b5f60208284031215610812575f5ffd5b5035919050565b80356001600160a01b038116811461082f575f5ffd5b919050565b5f60208284031215610844575f5ffd5b6104fe82610819565b5f5f6040838503121561085e575f5ffd5b61086783610819565b946020939093013593505050565b6020808252600990820152682737ba1037bbb732b960b91b604082015260600190565b5f602082840312156108a8575f5ffd5b815180151581146104fe575f5ffd5b634e487b7160e01b5f52601160045260245ffd5b80820180821115610395576103956108b7565b5f602082840312156108ee575f5ffd5b5051919050565b81810381811115610395576103956108b756fea26469706673582212206e22ebdf68ed496c43cd0cbb6efd9268679ad1f9748d167381e9864b36c8545064736f6c63430008220033';
+const FAUCET_ABI = [{"inputs":[{"internalType":"address","name":"_lpToken","type":"address"},{"internalType":"uint256","name":"_rewardAmount","type":"uint256"}],"stateMutability":"nonpayable","type":"constructor"},{"inputs":[],"name":"balance","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"nftContract","type":"address"}],"name":"canReward","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"cooldown","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"nftContract","type":"address"}],"name":"cooldownRemaining","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"","type":"address"}],"name":"lastReward","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"lpToken","outputs":[{"internalType":"contract IERC20","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"owner","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"token","type":"address"},{"internalType":"uint256","name":"amount","type":"uint256"}],"name":"rescue","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"rewardAmount","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"nftContract","type":"address"}],"name":"rewardHero","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint256","name":"_cooldown","type":"uint256"}],"name":"setCooldown","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"_token","type":"address"}],"name":"setLPToken","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint256","name":"_amount","type":"uint256"}],"name":"setRewardAmount","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint256","name":"amount","type":"uint256"}],"name":"withdraw","outputs":[],"stateMutability":"nonpayable","type":"function"}];
+const ERC20_ABI = [{"inputs":[{"name":"spender","type":"address"},{"name":"amount","type":"uint256"}],"name":"approve","outputs":[{"type":"bool"}],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"name":"to","type":"address"},{"name":"amount","type":"uint256"}],"name":"transfer","outputs":[{"type":"bool"}],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"name":"account","type":"address"}],"name":"balanceOf","outputs":[{"type":"uint256"}],"stateMutability":"view","type":"function"}];
+
+const BASE_CHAIN = "0x2105";
+let provider, signer, faucetContract, faucetAddr, lpAddr;
+
+function findProvider() {
+  if (window.ethereum) return window.ethereum;
+  if (window.rabby) return window.rabby;
+  return null;
+}
+
+async function connect() {
+  const eth = findProvider();
+  if (!eth) { document.getElementById('walletStatus').innerHTML = '<span style="color:#f87171">No wallet found</span>'; return; }
+  try {
+    await eth.request({ method: 'eth_requestAccounts' });
+    try { await eth.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: BASE_CHAIN }] }); } catch(e) {
+      if (e.code === 4902) await eth.request({ method: 'wallet_addEthereumChain', params: [{ chainId: BASE_CHAIN, chainName: 'Base', rpcUrls: ['https://mainnet.base.org'], nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 }, blockExplorerUrls: ['https://basescan.org'] }] });
+    }
+    provider = new ethers.BrowserProvider(eth);
+    signer = await provider.getSigner();
+    const addr = await signer.getAddress();
+    const bal = await provider.getBalance(addr);
+    document.getElementById('walletStatus').innerHTML = '<span style="color:#4ade80">' + addr.slice(0,6) + '...' + addr.slice(-4) + ' | ' + parseFloat(ethers.formatEther(bal)).toFixed(4) + ' ETH</span>';
+    document.getElementById('connectBtn').textContent = 'Connected';
+    document.getElementById('connectBtn').disabled = true;
+    document.getElementById('deployBtn').disabled = false;
+    document.getElementById('deployBtn').style.opacity = '1';
+  } catch(e) { document.getElementById('walletStatus').innerHTML = '<span style="color:#f87171">' + e.message + '</span>'; }
+}
+
+async function deploy() {
+  if (!signer) return;
+  lpAddr = document.getElementById('lpTokenAddr').value.trim();
+  const reward = document.getElementById('rewardAmt').value.trim();
+  if (!lpAddr) { alert('Enter LP token address'); return; }
+  document.getElementById('deployBtn').disabled = true;
+  document.getElementById('deployStatus').innerHTML = '<span style="color:#c9a84c">Deploying... confirm in wallet</span>';
+  try {
+    const factory = new ethers.ContractFactory(FAUCET_ABI, FAUCET_BYTECODE, signer);
+    const c = await factory.deploy(lpAddr, reward);
+    document.getElementById('deployStatus').innerHTML = '<span style="color:#c9a84c">Tx sent, waiting...</span>';
+    await c.waitForDeployment();
+    faucetAddr = await c.getAddress();
+    faucetContract = new ethers.Contract(faucetAddr, FAUCET_ABI, signer);
+    document.getElementById('faucetAddr').textContent = faucetAddr;
+    document.getElementById('deployStatus').innerHTML = '<span style="color:#4ade80">Deployed!</span>';
+    refreshInfo();
+  } catch(e) {
+    document.getElementById('deployStatus').innerHTML = '<span style="color:#f87171">' + e.message + '</span>';
+    document.getElementById('deployBtn').disabled = false;
+  }
+}
+
+function loadExisting() {
+  faucetAddr = document.getElementById('existingAddr').value.trim();
+  if (!faucetAddr || !signer) { alert('Connect wallet and enter address'); return; }
+  faucetContract = new ethers.Contract(faucetAddr, FAUCET_ABI, signer);
+  document.getElementById('faucetAddr').textContent = faucetAddr;
+  document.getElementById('deployStatus').innerHTML = '<span style="color:#4ade80">Loaded</span>';
+  refreshInfo();
+}
+
+async function refreshInfo() {
+  if (!faucetContract) return;
+  try {
+    const bal = await faucetContract.balance();
+    const reward = await faucetContract.rewardAmount();
+    lpAddr = await faucetContract.lpToken();
+    const balF = parseFloat(ethers.formatEther(bal));
+    const rewF = parseFloat(ethers.formatEther(reward));
+    const wins = rewF > 0 ? Math.floor(balF / rewF) : 0;
+    document.getElementById('faucetBal').textContent = balF.toFixed(6) + ' LP';
+    document.getElementById('rewardDisplay').textContent = rewF.toFixed(6) + ' LP';
+    document.getElementById('winsLeft').textContent = wins.toLocaleString() + ' wins';
+  } catch(e) { document.getElementById('manageStatus').innerHTML = '<span style="color:#f87171">' + e.message + '</span>'; }
+}
+
+async function approveLp() {
+  if (!faucetAddr || !lpAddr || !signer) return;
+  const amt = document.getElementById('depositAmt').value.trim();
+  document.getElementById('manageStatus').innerHTML = '<span style="color:#c9a84c">Approving...</span>';
+  try {
+    const lp = new ethers.Contract(lpAddr, ERC20_ABI, signer);
+    const tx = await lp.approve(faucetAddr, ethers.parseEther(amt));
+    await tx.wait();
+    document.getElementById('manageStatus').innerHTML = '<span style="color:#4ade80">Approved!</span>';
+  } catch(e) { document.getElementById('manageStatus').innerHTML = '<span style="color:#f87171">' + e.message + '</span>'; }
+}
+
+async function depositLp() {
+  if (!faucetAddr || !lpAddr || !signer) return;
+  const amt = document.getElementById('depositAmt').value.trim();
+  document.getElementById('manageStatus').innerHTML = '<span style="color:#c9a84c">Depositing...</span>';
+  try {
+    const lp = new ethers.Contract(lpAddr, ERC20_ABI, signer);
+    const tx = await lp.transfer(faucetAddr, ethers.parseEther(amt));
+    await tx.wait();
+    document.getElementById('manageStatus').innerHTML = '<span style="color:#4ade80">Deposited!</span>';
+    refreshInfo();
+  } catch(e) { document.getElementById('manageStatus').innerHTML = '<span style="color:#f87171">' + e.message + '</span>'; }
+}
+
+async function testReward() {
+  if (!faucetContract) return;
+  const nft = document.getElementById('testNft').value.trim();
+  if (!nft) { alert('Enter NFT address'); return; }
+  document.getElementById('testStatus').innerHTML = '<span style="color:#c9a84c">Sending reward...</span>';
+  try {
+    const tx = await faucetContract.rewardHero(nft);
+    await tx.wait();
+    document.getElementById('testStatus').innerHTML = '<span style="color:#4ade80">Reward sent!</span>';
+    refreshInfo();
+  } catch(e) { document.getElementById('testStatus').innerHTML = '<span style="color:#f87171">' + e.message + '</span>'; }
+}
+
+window.addEventListener('load', () => {
+  setTimeout(() => {
+    if (findProvider()) document.getElementById('walletStatus').textContent = 'Wallet detected — click Connect';
+  }, 500);
+});
+</script>
+</body></html>
