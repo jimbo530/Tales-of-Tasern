@@ -17,7 +17,7 @@ export type AdventureState = {
 const STORAGE_KEY = "tot-adventure";
 const INTRO_KEY = "tot-adventure-intro-seen";
 
-const COOLDOWN_MS = 20 * 60 * 1000; // 20 minutes
+const COOLDOWN_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 function defaultState(): AdventureState {
   return {
