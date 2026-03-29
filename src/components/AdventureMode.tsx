@@ -591,25 +591,26 @@ export function AdventureMode({ characters, onExit }: Props) {
   // Map screen — winding path
   if (state.phase === "map") {
     return (
-      <div className="flex flex-col items-center gap-4 max-w-md mx-auto mt-6 relative">
+      <div className="flex flex-col items-center gap-4 max-w-md mx-auto mt-6 relative" style={{ isolation: 'isolate' }}>
         {floatingBack}
 
-        {/* World map background */}
-        <div className="absolute inset-0 rounded-2xl overflow-hidden" style={{ top: 60, zIndex: 0, pointerEvents: 'none' }}>
+        {/* World map — full view background */}
+        <div className="fixed inset-0" style={{ zIndex: 0, pointerEvents: 'none' }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/world-map.jpg" alt="Tasern" className="w-full h-full object-cover" style={{ opacity: 0.15, filter: 'blur(1px)' }} />
+          <img src="/world-map.jpg" alt="Tasern" className="w-full h-full object-contain" style={{ opacity: 0.85 }} />
+          <div className="absolute inset-0" style={{ background: 'radial-gradient(ellipse at center, transparent 30%, #0a0608 85%)' }} />
         </div>
 
-        <h2 className="text-2xl font-black tracking-widest text-gold-shimmer uppercase"
-          style={{ fontFamily: "'Cinzel Decorative', 'Cinzel', serif" }}>
+        <h2 className="text-2xl font-black tracking-widest text-gold-shimmer uppercase relative"
+          style={{ fontFamily: "'Cinzel Decorative', 'Cinzel', serif", zIndex: 1, textShadow: '0 2px 8px rgba(0,0,0,0.9)' }}>
           ⚜ Adventure ⚜
         </h2>
-        <span className="text-sm font-bold" style={{ color: 'rgba(201,168,76,0.8)' }}>
+        <span className="text-sm font-bold relative" style={{ color: 'rgba(201,168,76,0.8)', zIndex: 1, textShadow: '0 1px 4px rgba(0,0,0,0.9)' }}>
           💰 {state.mftEarned.toLocaleString()} MfT earned
         </span>
 
         {/* Winding path */}
-        <div className="w-full relative" style={{ minHeight: chapters.length * 100 + 40 }}>
+        <div className="w-full relative" style={{ minHeight: chapters.length * 100 + 40, zIndex: 1 }}>
           {/* SVG path connecting nodes */}
           <svg className="absolute inset-0 w-full h-full" viewBox={`0 0 300 ${chapters.length * 100 + 40}`} preserveAspectRatio="xMidYMid meet">
             {chapters.map((_, i) => {
@@ -647,8 +648,8 @@ export function AdventureMode({ characters, onExit }: Props) {
 
             return (
               <div key={ch.id}
-                className="absolute flex items-center gap-3 transition-all"
-                style={{ top: i * 100 + 20, left: xPct, width: '45%' }}>
+                className="absolute flex items-center gap-3 transition-all rounded-xl px-2 py-1.5"
+                style={{ top: i * 100 + 20, left: xPct, width: '45%', background: 'rgba(10,6,8,0.75)', backdropFilter: 'blur(4px)' }}>
                 {/* Node circle */}
                 <div
                   onClick={() => canClick && (() => { startChapter(i); setPickingParty(true); })()}
@@ -723,8 +724,8 @@ export function AdventureMode({ characters, onExit }: Props) {
         </div>
 
         {state.mftEarned > 0 && (
-          <button onClick={resetAdventure} className="px-4 py-2 rounded text-xs font-bold uppercase tracking-widest mt-4"
-            style={{ background: 'rgba(220,38,38,0.1)', color: 'rgba(220,38,38,0.5)', border: '1px solid rgba(220,38,38,0.2)' }}>
+          <button onClick={resetAdventure} className="px-4 py-2 rounded text-xs font-bold uppercase tracking-widest mt-4 relative"
+            style={{ background: 'rgba(220,38,38,0.2)', color: 'rgba(220,38,38,0.7)', border: '1px solid rgba(220,38,38,0.3)', zIndex: 1 }}>
             Reset Progress
           </button>
         )}
