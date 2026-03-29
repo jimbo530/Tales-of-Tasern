@@ -48,6 +48,26 @@ async function main() {
         zeros.forEach(c => console.log(`  ${c.name} (${c.chain}) ${c.contractAddress.slice(0, 10)}`));
       }
 
+      // Merge image data into stats
+      try {
+        const imgUrl = API_URL.replace("/api/stats", "/api/images");
+        const imgRes = await fetch(imgUrl);
+        if (imgRes.ok) {
+          const imgData = await imgRes.json();
+          let merged = 0;
+          for (const c of data.characters) {
+            const img = imgData[c.contractAddress.toLowerCase()];
+            if (img) {
+              c.metadataUri = img.metadataUri ?? c.metadataUri;
+              c.imageUrl = img.imageUrl ?? c.imageUrl;
+              if (img.chain) c.chain = img.chain;
+              merged++;
+            }
+          }
+          console.log(`Merged images for ${merged} characters`);
+        }
+      } catch (e) { console.log("Image merge skipped:", e.message); }
+
       // Save regardless — better to have some data than none
       fs.writeFileSync(STATS_FILE, JSON.stringify(data, null, 2));
       fs.writeFileSync(META_FILE, JSON.stringify({
