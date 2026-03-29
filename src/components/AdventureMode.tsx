@@ -589,10 +589,102 @@ export function AdventureMode({ characters, onExit }: Props) {
   }
 
   // Map screen — winding path
+  const [mapOpen, setMapOpen] = useState(false);
+  const [mapZoom, setMapZoom] = useState(1);
+  const [mapPos, setMapPos] = useState({ x: 0, y: 0 });
+  const [dragging, setDragging] = useState(false);
+  const dragStart = useRef({ x: 0, y: 0, mx: 0, my: 0 });
+
+  function handleMapWheel(e: React.WheelEvent) {
+    e.preventDefault();
+    setMapZoom(z => Math.min(5, Math.max(0.5, z - e.deltaY * 0.002)));
+  }
+  function handleMapPointerDown(e: React.PointerEvent) {
+    setDragging(true);
+    dragStart.current = { x: mapPos.x, y: mapPos.y, mx: e.clientX, my: e.clientY };
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+  }
+  function handleMapPointerMove(e: React.PointerEvent) {
+    if (!dragging) return;
+    setMapPos({
+      x: dragStart.current.x + (e.clientX - dragStart.current.mx),
+      y: dragStart.current.y + (e.clientY - dragStart.current.my),
+    });
+  }
+  function handleMapPointerUp() { setDragging(false); }
+
   if (state.phase === "map") {
     return (
       <div className="flex flex-col items-center gap-4 max-w-md mx-auto mt-6 relative" style={{ isolation: 'isolate' }}>
         {floatingBack}
+
+        {/* Zoomable map overlay */}
+        {mapOpen && (
+          <div className="fixed inset-0" style={{ zIndex: 100, background: '#0a0608' }}>
+            <div className="absolute inset-0 overflow-hidden touch-none"
+              onWheel={handleMapWheel}
+              onPointerDown={handleMapPointerDown}
+              onPointerMove={handleMapPointerMove}
+              onPointerUp={handleMapPointerUp}
+              style={{ cursor: dragging ? 'grabbing' : 'grab' }}>
+              <div style={{
+                  position: 'absolute',
+                  left: '50%', top: '50%',
+                  transform: `translate(calc(-50% + ${mapPos.x}px), calc(-50% + ${mapPos.y}px)) scale(${mapZoom})`,
+                  transition: dragging ? 'none' : 'transform 0.1s ease-out',
+                  width: '90vmin',
+                }}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/world-map.jpg" alt="Tasern" draggable={false}
+                  style={{ width: '100%', display: 'block' }} />
+                {/* Meta marker on Londa */}
+                <button onClick={(e) => { e.stopPropagation(); setMapOpen(false); setMapZoom(1); setMapPos({ x: 0, y: 0 }); startChapter(0); setPickingParty(true); }}
+                  className="absolute animate-pulse"
+                  style={{
+                    left: '52%', top: '68%',
+                    transform: 'translate(-50%, -50%)',
+                    width: 28, height: 28,
+                    borderRadius: '50%',
+                    background: 'rgba(201,168,76,0.9)',
+                    border: '3px solid #f0d070',
+                    boxShadow: '0 0 15px rgba(201,168,76,0.6), 0 0 30px rgba(201,168,76,0.3)',
+                    cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: '0.5rem', fontWeight: 900, color: '#0a0608',
+                  }}>
+                  W1
+                </button>
+                <span className="absolute font-black uppercase"
+                  style={{
+                    left: '52%', top: '73%',
+                    transform: 'translateX(-50%)',
+                    fontSize: '0.6rem', color: '#f0d070',
+                    textShadow: '0 1px 4px rgba(0,0,0,0.9)',
+                    pointerEvents: 'none',
+                  }}>
+                  Meta
+                </span>
+              </div>
+            </div>
+            <div className="absolute top-4 right-4 flex gap-2" style={{ zIndex: 101 }}>
+              <button onClick={() => setMapZoom(z => Math.min(5, z + 0.5))}
+                className="px-3 py-2 rounded-lg font-black text-lg"
+                style={{ background: 'rgba(10,6,8,0.9)', color: '#f0d070', border: '1px solid rgba(201,168,76,0.5)' }}>+</button>
+              <button onClick={() => setMapZoom(z => Math.max(0.5, z - 0.5))}
+                className="px-3 py-2 rounded-lg font-black text-lg"
+                style={{ background: 'rgba(10,6,8,0.9)', color: '#f0d070', border: '1px solid rgba(201,168,76,0.5)' }}>−</button>
+              <button onClick={() => { setMapZoom(1); setMapPos({ x: 0, y: 0 }); }}
+                className="px-3 py-2 rounded-lg font-bold text-xs"
+                style={{ background: 'rgba(10,6,8,0.9)', color: '#f0d070', border: '1px solid rgba(201,168,76,0.5)' }}>Reset</button>
+              <button onClick={() => { setMapOpen(false); setMapZoom(1); setMapPos({ x: 0, y: 0 }); }}
+                className="px-3 py-2 rounded-lg font-black text-lg"
+                style={{ background: 'rgba(220,38,38,0.8)', color: '#fff', border: '1px solid rgba(220,38,38,0.9)' }}>✕</button>
+            </div>
+            <p className="absolute bottom-4 left-1/2 -translate-x-1/2 text-xs" style={{ zIndex: 101, color: 'rgba(201,168,76,0.5)', textShadow: '0 1px 4px rgba(0,0,0,0.9)' }}>
+              Scroll or pinch to zoom · Drag to pan
+            </p>
+          </div>
+        )}
 
         {/* World map — full view background */}
         <div className="fixed inset-0" style={{ zIndex: 0, pointerEvents: 'none' }}>
@@ -605,9 +697,16 @@ export function AdventureMode({ characters, onExit }: Props) {
           style={{ fontFamily: "'Cinzel Decorative', 'Cinzel', serif", zIndex: 1, textShadow: '0 2px 8px rgba(0,0,0,0.9)' }}>
           ⚜ Adventure ⚜
         </h2>
-        <span className="text-sm font-bold relative" style={{ color: 'rgba(201,168,76,0.8)', zIndex: 1, textShadow: '0 1px 4px rgba(0,0,0,0.9)' }}>
-          💰 {state.mftEarned.toLocaleString()} MfT earned
-        </span>
+        <div className="flex items-center gap-3 relative" style={{ zIndex: 1 }}>
+          <span className="text-sm font-bold" style={{ color: 'rgba(201,168,76,0.8)', textShadow: '0 1px 4px rgba(0,0,0,0.9)' }}>
+            💰 {state.mftEarned.toLocaleString()} MfT earned
+          </span>
+          <button onClick={() => setMapOpen(true)}
+            className="px-3 py-1 rounded-lg text-xs font-bold uppercase tracking-widest"
+            style={{ background: 'rgba(10,6,8,0.8)', color: '#f0d070', border: '1px solid rgba(201,168,76,0.5)' }}>
+            🗺 View Map
+          </button>
+        </div>
 
         {/* Winding path */}
         <div className="w-full relative" style={{ minHeight: chapters.length * 100 + 40, zIndex: 1 }}>
