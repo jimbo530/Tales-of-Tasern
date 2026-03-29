@@ -639,7 +639,7 @@ export function AdventureMode({ characters, onExit }: Props) {
             <button onClick={(e) => { e.stopPropagation(); startChapter(0); setPickingParty(true); }}
               className="absolute animate-pulse"
               style={{
-                left: '52%', top: '76%',
+                left: '65%', top: '65%',
                 transform: 'translate(-50%, -50%)',
                 width: 24, height: 24,
                 borderRadius: '50%',
@@ -654,7 +654,7 @@ export function AdventureMode({ characters, onExit }: Props) {
             </button>
             <span className="absolute font-black uppercase pointer-events-none"
               style={{
-                left: '52%', top: '80%',
+                left: '65%', top: '69%',
                 transform: 'translateX(-50%)',
                 fontSize: '0.5rem', color: '#f0d070',
                 textShadow: '0 1px 4px rgba(0,0,0,0.9)',
