@@ -26,6 +26,10 @@ const BASE_CONTRACTS: Record<string, { address: `0x${string}`; abi: readonly any
     address: "0xD7C584D40216576f1d8651Eab8bEF9DE69497666",
     abi: [{ name: "powerUp", type: "function", stateMutability: "payable", inputs: [{ name: "nftContract", type: "address" }], outputs: [] }] as const,
   },
+  egp: {
+    address: "0x0000000000000000000000000000000000000000" as `0x${string}`, // UPDATE after deploying
+    abi: [{ name: "powerUp", type: "function", stateMutability: "payable", inputs: [{ name: "nftContract", type: "address" }], outputs: [] }] as const,
+  },
 };
 
 type StatOption = {
@@ -42,6 +46,7 @@ const STAT_OPTIONS: StatOption[] = [
   { key: "attack", label: "⚔️🛡️❤️ USDGLO", desc: "ATK + DEF + HP via stablecoin", tokens: "USDGLO + MfT LP", color: "rgba(251,191,36,0.8)", chain: "base", deployed: true },
   { key: "hp", label: "❤️ HP", desc: "Hit points via TGN", tokens: "TGN + MfT LP", color: "rgba(251,113,133,0.8)", chain: "base", deployed: true },
   { key: "azos", label: "⚔️🛡️❤️ AZOS", desc: "ATK + DEF + HP via stablecoin", tokens: "AZOS + MfT LP", color: "rgba(74,222,128,0.8)", chain: "base", deployed: true },
+  { key: "egp", label: "🌿 EGP", desc: "HP via impact token", tokens: "EGP + MfT LP", color: "rgba(34,197,94,0.8)", chain: "base", deployed: false },
   { key: "def", label: "🛡️ DEF", desc: "Physical defense", tokens: "TB01 + DDD LP", color: "rgba(148,163,184,0.8)", chain: "polygon", deployed: false },
   { key: "mAtk", label: "⚡ EATK", desc: "Electric attack", tokens: "JLT-F24 + DDD LP", color: "rgba(192,132,252,0.8)", chain: "polygon", deployed: false },
   { key: "fAtk", label: "🔥 FATK", desc: "Fire attack", tokens: "LANTERN + DDD LP", color: "rgba(251,146,60,0.8)", chain: "polygon", deployed: false },
