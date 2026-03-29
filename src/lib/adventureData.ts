@@ -45,7 +45,7 @@ export const ADVENTURE_CHAPTERS: Chapter[] = [
       },
       {
         name: "The Lost Explorer",
-        description: "A stocky figure stumbles out of the undergrowth near the village edge, wild-eyed and breathing hard. \"Don't — don't go that way,\" he gasps, gripping a battered axe. \"Name's Dag. Been lost in these woods for three days. Something's out there — something big.\" He squints at you suspiciously. \"How do I know you're not bandits? Prove you can handle yourselves and maybe we travel together. Strength in numbers, yeah?\"",
+        description: "A stocky figure sits on a stump near the village edge, sharpening an axe with practiced hands. \"Name's Dag,\" he says without looking up. \"Been here a while. Helped Pippin fix the well, cleared some brush, ate too much of Maren's soup.\" He finally meets your eyes. \"But I'm itching to move on. Problem is, the road's no place for a solo traveler anymore.\" He stands, testing the weight of his axe. \"Tell you what — prove you're worth traveling with and I'll join up. I'd rather know you can fight before I trust you with my back.\"",
         aiDeckBias: "balanced",
         aiStrength: 0.25,
         mftReward: 400,
@@ -62,7 +62,7 @@ export const ADVENTURE_CHAPTERS: Chapter[] = [
       },
       {
         name: "Guards of Kardov's Gate",
-        description: "A patrol of nine armored guards marches into the village clearing, shields locked and spears leveled. Their captain steps forward. \"We heard there were adventurers here. The road to Kardov's Gate is closed — by order of the garrison.\" Torven the blacksmith spits into the fire. \"They don't fight fair,\" he mutters. \"They outnumber you, they flank, they use reserves. When one falls, another takes their place. That's what you'll face out there — enemies who don't care about honor. Learn to deal with it now, or don't bother leaving this village.\"",
+        description: "Nine guards from the Kardov garrison are passing through the village on patrol. Their captain nods at Torven. \"Heard you've got fresh recruits. Mind if we help?\" Torven grins. \"Show them what flanking looks like.\"\n\nThe captain turns to you. \"Lesson time. When your column is open — no one standing between you and the enemy — they'll come at you from the side for extra damage. That's flanking. We're going to surround you, and when one of us drops, another steps in from reserve. Out on the real road, nobody fights fair. Better you learn that here.\"",
         aiDeckBias: "balanced",
         aiStrength: 0.3,
         mftReward: 600,
