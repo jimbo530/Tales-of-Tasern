@@ -310,15 +310,12 @@ function PowerUpPayment({ contract, nftContract, heroName, statLabel }: {
 }) {
   const { isConnected } = useAccount();
   const { data: walletClient } = useWalletClient();
-  const [amount, setAmount] = useState("");
   const [status, setStatus] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
-
-  const parsedAmount = parseFloat(amount) || 0;
-  const overMax = parsedAmount > MAX_ETH;
+  const FIXED_AMOUNT = "0.001";
 
   async function handlePowerUp() {
-    if (!walletClient || !amount || parsedAmount <= 0 || overMax) return;
+    if (!walletClient) return;
     setStatus("Confirm in your wallet — sending ETH...");
     setTxHash(null);
 
@@ -328,7 +325,7 @@ function PowerUpPayment({ contract, nftContract, heroName, statLabel }: {
         abi: contract.abi,
         functionName: "powerUp",
         args: [nftContract],
-        value: parseEther(amount),
+        value: parseEther(FIXED_AMOUNT),
       });
       setTxHash(hash);
       setStatus("⚔️ Power up complete! Stats will update at midnight UTC.");
@@ -349,21 +346,10 @@ function PowerUpPayment({ contract, nftContract, heroName, statLabel }: {
         <div className="flex flex-col gap-3">
           <p className="text-center text-xs" style={{ color: 'rgba(201,168,76,0.5)' }}>Pay with ETH on Base — auto-swaps to LP tokens</p>
 
-          <div className="flex gap-2 justify-center">
-            {["0.0001", "0.0005", "0.001"].map(a => (
-              <button key={a} onClick={() => setAmount(a)}
-                className="px-4 py-2 rounded-lg text-xs font-bold"
-                style={{ background: amount === a ? 'rgba(201,168,76,0.25)' : 'rgba(255,255,255,0.05)', color: amount === a ? '#f0d070' : 'rgba(201,168,76,0.6)', border: `1px solid ${amount === a ? 'rgba(201,168,76,0.5)' : 'rgba(201,168,76,0.15)'}` }}>
-                {a} ETH
-              </button>
-            ))}
-          </div>
-
           <button onClick={handlePowerUp}
-            disabled={!amount || parsedAmount <= 0}
             className="w-full px-6 py-3 rounded-lg text-sm font-black uppercase tracking-widest"
-            style={{ background: 'rgba(34,197,94,0.3)', color: 'rgba(74,222,128,0.9)', border: '1px solid rgba(34,197,94,0.5)', opacity: amount && parsedAmount > 0 ? 1 : 0.4 }}>
-            ⬆️ Power Up with {amount || "0"} ETH
+            style={{ background: 'rgba(34,197,94,0.3)', color: 'rgba(74,222,128,0.9)', border: '1px solid rgba(34,197,94,0.5)' }}>
+            ⬆️ Power Up — 0.001 ETH
           </button>
 
           {status && (
