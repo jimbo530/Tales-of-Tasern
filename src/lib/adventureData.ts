@@ -5,6 +5,8 @@ export const STORY_NPCS: Set<string> = new Set(
     "0x2685Bb66e8e45e386D3E816726De64d5001317fd", // Dag
     "0x6AD5621f5719A6b32d0Ea9dd4493ca6Ac0639D4B", // Rainbow Lily
     "0x212626D66E64C9C293A845687dB700c16466586e", // Glowing Geranium
+    "0x7F55796f79352Ab707e7FC41dD0B317Be6CBd165", // Electric Bird
+    "0x716AdcbEd9Ef58CCf11434Aa7962b0f200A030af", // Captain Blackfeather
   ].map(a => a.toLowerCase())
 );
 
@@ -67,26 +69,24 @@ export const ADVENTURE_CHAPTERS: Chapter[] = [
         aiStrength: 0.3,
         mftReward: 600,
         npcAddresses: [
-          "0x98ACF6F032E254BE6F9D46407077F9e7e896Db7b", // Thistlebeard
-          "0x20876b539Df03415c9c11B8B35D371FbaC7e03dD", // Granite Thornefoot
-          "0x6271989f518Ea0010dd478665ED9547E226DB7E8", // Eldric Greenleaf
-          "0x749AB1afa0cAaCb6f8b8E75F87cB79a97E43315B", // Zogthar
-          "0xE0D994881f5cf5Af0Dd855778AEF710fCF3348ae", // Amanthar
-          "0x8003e3d06309c6D332A7eD2a62285cb06cb5f08d", // Farlok
-          "0xB2C386Cc2cfe12e2733B4b8bb0cCCc60f49750A8", // Tharok
-          "0x5fba5ADf77EE9eA40D43C97C12A72dEE3a0B0FBA", // Orcala
-          "0x22ffB7ef5772B702071cF77238bfe2138BB4262E", // Korak
-          "0x65bcb623C4d9EA9A5Bdea8984ce857d117BE1606", // Thalindor (reserve)
-          "0xbF50dD7eEACB02838085085De26C17c598F14d03", // Wolverine Stormrunner (reserve)
-          "0xad56aF3Fc6d06A6DC50BfF752c485c2481CDcb93", // Reginald Featherstone (reserve)
+          "0x234b58EcdB0026B2AAF829cc46e91895F609f6d1", // Guards of Kardov's Gate
+          "0x234b58EcdB0026B2AAF829cc46e91895F609f6d1", // Guards of Kardov's Gate
+          "0x234b58EcdB0026B2AAF829cc46e91895F609f6d1", // Guards of Kardov's Gate
+          "0x234b58EcdB0026B2AAF829cc46e91895F609f6d1", // Guards of Kardov's Gate
+          "0x234b58EcdB0026B2AAF829cc46e91895F609f6d1", // Guards of Kardov's Gate
+          "0x234b58EcdB0026B2AAF829cc46e91895F609f6d1", // Guards of Kardov's Gate
+          "0x234b58EcdB0026B2AAF829cc46e91895F609f6d1", // Guards of Kardov's Gate
+          "0x234b58EcdB0026B2AAF829cc46e91895F609f6d1", // Guards of Kardov's Gate
+          "0x234b58EcdB0026B2AAF829cc46e91895F609f6d1", // Guards of Kardov's Gate
         ],
       },
       {
         name: "The Scout's Challenge",
-        description: "Kael drops from a low branch, silent as a shadow. \"Speed kills,\" she says simply. \"Not yours — theirs. Everything out there is faster than it looks. If you can't match aggression with aggression, you'll be overwhelmed before you draw your blade.\" She pulls two short daggers and beckons. \"Come on. Fast as you can.\"",
+        description: "Kael drops from a low branch, pointing toward two crackling shapes perched in the canopy. \"Electric Birds. They hit with lightning — and it doesn't just hurt the one it strikes. It splashes to anyone standing in the next column over.\" She crosses her arms. \"Spread your heroes out. Don't cluster them side by side or one bolt takes down two. That's your lesson — positioning matters.\"",
         aiDeckBias: "aggressive",
         aiStrength: 0.4,
         mftReward: 600,
+        npcAddresses: ["0x7F55796f79352Ab707e7FC41dD0B317Be6CBd165", "0x7F55796f79352Ab707e7FC41dD0B317Be6CBd165"],
       },
       {
         name: "The Elder's Wisdom",

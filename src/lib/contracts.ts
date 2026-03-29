@@ -189,6 +189,8 @@ export const GAME_NFTS: GameNft[] = [
   { name: "Kira Emberstep",               contractAddress: "0x26CE8466eC418b7D42d8789476642cdFbB5e8aab", chain: "base" },
   { name: "Tharion Rootkeeper",          contractAddress: "0x76D50Fbc46a31aC21855b2b8218F4F642991c25e", chain: "base" },
   { name: "Rook Highbranch",            contractAddress: "0xB9c37Ce29A0966f83B29c905c434905301435D9d", chain: "base" },
+  { name: "Captain Blackfeather",      contractAddress: "0x716AdcbEd9Ef58CCf11434Aa7962b0f200A030af", chain: "base" },
+  { name: "Yellectric Frog",          contractAddress: "0x9CF5CcAe7ca8Ca68BE185121401ec201D9AD02ad", chain: "polygon" },
 ];
 
 // ─── Known LP Pairs (add more as the game expands) ────────────────────────────

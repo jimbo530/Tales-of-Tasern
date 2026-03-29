@@ -912,6 +912,32 @@ export function AdventureMode({ characters, onExit, onStatsRefresh }: Props) {
                   }}>
                   The Crossroads Village
                 </span>
+
+                {/* World 1-2 — castle east of village (coming soon) */}
+                <button onClick={(e) => { e.stopPropagation(); /* TODO: open castle local map when image ready */ }}
+                  className="absolute"
+                  style={{
+                    left: '35%', top: '60%',
+                    transform: 'translate(-50%, -50%)',
+                    width: 22, height: 22,
+                    borderRadius: '50%',
+                    background: 'rgba(100,100,100,0.6)',
+                    border: '3px solid rgba(150,150,150,0.5)',
+                    cursor: 'not-allowed',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: '0.4rem', fontWeight: 900, color: 'rgba(150,150,150,0.5)',
+                  }}>
+                  2
+                </button>
+                <span className="absolute font-black uppercase pointer-events-none"
+                  style={{
+                    left: '35%', top: '64%',
+                    transform: 'translateX(-50%)',
+                    fontSize: '0.45rem', color: 'rgba(150,150,150,0.4)',
+                    textShadow: '0 1px 4px rgba(0,0,0,0.9)',
+                  }}>
+                  Kardov&apos;s Gate
+                </span>
               </div>
             </div>
 

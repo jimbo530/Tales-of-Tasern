@@ -22,8 +22,8 @@ function formatUsd(n: number): string {
   return "$0";
 }
 
-function MarketCard({ character, isOwner, isListed, onList, onCancel }: {
-  character: NftCharacter; isOwner: boolean; isListed: boolean;
+function MarketCard({ character, isOwner, isListed, isStory, isSellerOwned, isPlayerListed, onList, onCancel }: {
+  character: NftCharacter; isOwner: boolean; isListed: boolean; isStory: boolean; isSellerOwned: boolean; isPlayerListed: boolean;
   onList: () => void; onCancel: () => void;
 }) {
   const { imageUrl, imgFailed, setImgFailed } = useNftImage(character.metadataUri);
@@ -44,7 +44,13 @@ function MarketCard({ character, isOwner, isListed, onList, onCancel }: {
         )}
       </div>
       <div className="p-3">
-        <h3 className="font-black text-xs tracking-widest uppercase truncate text-gold-shimmer">{character.name}</h3>
+        <div className="flex items-center gap-1">
+          {isStory && <span title="Story Character — not for sale" style={{ fontSize: '0.6rem', color: '#f0d070' }}>⭐</span>}
+          {!isStory && isSellerOwned && <span title="For sale by Tales of Tasern" style={{ fontSize: '0.6rem', color: '#4ade80' }}>⭐</span>}
+          {!isStory && !isSellerOwned && isPlayerListed && <span title="Listed for sale by player" style={{ fontSize: '0.6rem', color: '#f87171' }}>⭐</span>}
+          {!isStory && !isSellerOwned && !isPlayerListed && isOwner && <span title="Owned by player" style={{ fontSize: '0.6rem', color: '#60a5fa' }}>⭐</span>}
+          <h3 className="font-black text-xs tracking-widest uppercase truncate text-gold-shimmer">{character.name}</h3>
+        </div>
         {hasStats && (
           <div className="flex flex-wrap gap-1 mt-1" style={{ fontSize: '0.45rem', color: 'rgba(232,213,176,0.5)' }}>
             {s.attack > 0 && <span>⚔️{s.attack.toFixed(1)}</span>}
@@ -237,6 +243,9 @@ export function Marketplace({ characters, onBack }: Props) {
           return (
             <MarketCard key={c.contractAddress} character={c}
               isOwner={isOwner} isListed={isListed}
+              isStory={STORY_NPCS.has(c.contractAddress.toLowerCase())}
+              isSellerOwned={c.forSale}
+              isPlayerListed={listedAddrs.has(c.contractAddress.toLowerCase()) && !c.forSale}
               onList={() => handleList(c.contractAddress)}
               onCancel={() => handleCancel(c.contractAddress)} />
           );
