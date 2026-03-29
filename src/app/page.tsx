@@ -95,15 +95,17 @@ export default function Home() {
 
   // Sub-page wrapper with consistent header
   const subPage = (subtitle: string, content: React.ReactNode) => (
-    <main className="flex flex-col min-h-screen fantasy-bg relative">
-      <div className="fixed inset-0 -z-10" style={{
+    <main className="flex flex-col min-h-screen fantasy-bg relative" style={{ isolation: 'isolate' }}>
+      <div className="fixed inset-0" style={{
         backgroundImage: `url(${BG_IMAGES[bgIndex]})`,
         backgroundSize: 'cover',
         backgroundPosition: 'center',
         opacity: 0.12,
         filter: 'blur(2px)',
+        zIndex: 0,
+        pointerEvents: 'none',
       }} />
-      <header className="header-fantasy flex items-center justify-between px-6 py-4">
+      <header className="header-fantasy flex items-center justify-between px-6 py-4 relative" style={{ zIndex: 1 }}>
         <div className="flex items-center gap-3 cursor-pointer" onClick={() => cycleView("menu")}>
           <span className="text-2xl">⚔️</span>
           <div>

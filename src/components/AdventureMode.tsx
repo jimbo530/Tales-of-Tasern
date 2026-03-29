@@ -595,7 +595,7 @@ export function AdventureMode({ characters, onExit }: Props) {
         {floatingBack}
 
         {/* World map background */}
-        <div className="absolute inset-0 -z-10 rounded-2xl overflow-hidden" style={{ top: 60 }}>
+        <div className="absolute inset-0 rounded-2xl overflow-hidden" style={{ top: 60, zIndex: 0, pointerEvents: 'none' }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/world-map.jpg" alt="Tasern" className="w-full h-full object-cover" style={{ opacity: 0.15, filter: 'blur(1px)' }} />
         </div>
