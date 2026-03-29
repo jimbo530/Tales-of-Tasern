@@ -89,7 +89,7 @@ export default function Home() {
   const { switchChain } = useSwitchChain();
   const { characters, assetTotals, tokenBreakdown, loading, error, refreshStats } = useNftStats();
   const [pieCategory, setPieCategory] = useState<"traditional" | "game" | "impact" | null>(null);
-  const wrongChain = isConnected && chainId !== base.id;
+  // Chain check only needed for power-up payments, not for viewing heroes
   const [page, setPage] = useState(0);
   const [search, setSearch] = useState("");
 
@@ -591,17 +591,6 @@ export default function Home() {
         </div>
       </header>
 
-      {wrongChain && (
-        <div className="flex items-center justify-center gap-4 px-6 py-3 text-sm relative z-10"
-          style={{ background: 'rgba(139,26,26,0.4)', borderBottom: '1px solid rgba(139,26,26,0.6)' }}>
-          <span style={{ color: '#fca5a5' }}>Switch to Base to see your champions</span>
-          <button onClick={() => switchChain({ chainId: base.id })}
-            className="px-3 py-1 rounded text-xs font-bold uppercase tracking-widest"
-            style={{ background: 'rgba(201,168,76,0.2)', color: '#f0d070', border: '1px solid rgba(201,168,76,0.4)' }}>
-            Switch to Base
-          </button>
-        </div>
-      )}
 
       <div className="flex flex-col items-center flex-1 px-6 py-10 gap-8 relative z-10">
         {/* Locked liquidity summary */}
