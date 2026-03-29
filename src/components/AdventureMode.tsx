@@ -611,220 +611,93 @@ export function AdventureMode({ characters, onExit }: Props) {
     );
   }
 
-  // Map screen — winding path
+  // Map screen — world map with location markers
   if (state.phase === "map") {
     return (
-      <div className="flex flex-col items-center gap-4 max-w-md mx-auto mt-6 relative" style={{ isolation: 'isolate' }}>
+      <div className="fixed inset-0" style={{ background: '#0a0608' }}>
         {floatingBack}
 
-        {/* Zoomable map overlay */}
-        {mapOpen && (
-          <div className="fixed inset-0" style={{ zIndex: 100, background: '#0a0608' }}>
-            <div className="absolute inset-0 overflow-hidden touch-none"
-              onWheel={handleMapWheel}
-              onPointerDown={handleMapPointerDown}
-              onPointerMove={handleMapPointerMove}
-              onPointerUp={handleMapPointerUp}
-              style={{ cursor: dragging ? 'grabbing' : 'grab' }}>
-              <div style={{
-                  position: 'absolute',
-                  left: '50%', top: '50%',
-                  transform: `translate(calc(-50% + ${mapPos.x}px), calc(-50% + ${mapPos.y}px)) scale(${mapZoom})`,
-                  transition: dragging ? 'none' : 'transform 0.1s ease-out',
-                  width: '90vmin',
-                }}>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/world-map.jpg" alt="Tasern" draggable={false}
-                  style={{ width: '100%', display: 'block' }} />
-                {/* Meta marker on Londa */}
-                <button onClick={(e) => { e.stopPropagation(); setMapOpen(false); setMapZoom(1); setMapPos({ x: 0, y: 0 }); startChapter(0); setPickingParty(true); }}
-                  className="absolute animate-pulse"
-                  style={{
-                    left: '52%', top: '68%',
-                    transform: 'translate(-50%, -50%)',
-                    width: 28, height: 28,
-                    borderRadius: '50%',
-                    background: 'rgba(201,168,76,0.9)',
-                    border: '3px solid #f0d070',
-                    boxShadow: '0 0 15px rgba(201,168,76,0.6), 0 0 30px rgba(201,168,76,0.3)',
-                    cursor: 'pointer',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: '0.5rem', fontWeight: 900, color: '#0a0608',
-                  }}>
-                  W1
-                </button>
-                <span className="absolute font-black uppercase"
-                  style={{
-                    left: '52%', top: '73%',
-                    transform: 'translateX(-50%)',
-                    fontSize: '0.6rem', color: '#f0d070',
-                    textShadow: '0 1px 4px rgba(0,0,0,0.9)',
-                    pointerEvents: 'none',
-                  }}>
-                  Meta
-                </span>
-              </div>
-            </div>
-            <div className="absolute top-4 right-4 flex gap-2" style={{ zIndex: 101 }}>
-              <button onClick={() => setMapZoom(z => Math.min(5, z + 0.5))}
-                className="px-3 py-2 rounded-lg font-black text-lg"
-                style={{ background: 'rgba(10,6,8,0.9)', color: '#f0d070', border: '1px solid rgba(201,168,76,0.5)' }}>+</button>
-              <button onClick={() => setMapZoom(z => Math.max(0.5, z - 0.5))}
-                className="px-3 py-2 rounded-lg font-black text-lg"
-                style={{ background: 'rgba(10,6,8,0.9)', color: '#f0d070', border: '1px solid rgba(201,168,76,0.5)' }}>−</button>
-              <button onClick={() => { setMapZoom(1); setMapPos({ x: 0, y: 0 }); }}
-                className="px-3 py-2 rounded-lg font-bold text-xs"
-                style={{ background: 'rgba(10,6,8,0.9)', color: '#f0d070', border: '1px solid rgba(201,168,76,0.5)' }}>Reset</button>
-              <button onClick={() => { setMapOpen(false); setMapZoom(1); setMapPos({ x: 0, y: 0 }); }}
-                className="px-3 py-2 rounded-lg font-black text-lg"
-                style={{ background: 'rgba(220,38,38,0.8)', color: '#fff', border: '1px solid rgba(220,38,38,0.9)' }}>✕</button>
-            </div>
-            <p className="absolute bottom-4 left-1/2 -translate-x-1/2 text-xs" style={{ zIndex: 101, color: 'rgba(201,168,76,0.5)', textShadow: '0 1px 4px rgba(0,0,0,0.9)' }}>
-              Scroll or pinch to zoom · Drag to pan
-            </p>
+        {/* Zoomable world map */}
+        <div className="absolute inset-0 overflow-hidden touch-none"
+          onWheel={handleMapWheel}
+          onPointerDown={handleMapPointerDown}
+          onPointerMove={handleMapPointerMove}
+          onPointerUp={handleMapPointerUp}
+          style={{ cursor: dragging ? 'grabbing' : 'grab' }}>
+          <div style={{
+            position: 'absolute',
+            left: '50%', top: '50%',
+            transform: `translate(calc(-50% + ${mapPos.x}px), calc(-50% + ${mapPos.y}px)) scale(${mapZoom})`,
+            transition: dragging ? 'none' : 'transform 0.1s ease-out',
+            width: '90vmin',
+          }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/world-map.jpg" alt="Tasern" draggable={false}
+              style={{ width: '100%', display: 'block' }} />
+
+            {/* Meta marker — World 1 */}
+            <button onClick={(e) => { e.stopPropagation(); startChapter(0); setPickingParty(true); }}
+              className="absolute animate-pulse"
+              style={{
+                left: '52%', top: '68%',
+                transform: 'translate(-50%, -50%)',
+                width: 24, height: 24,
+                borderRadius: '50%',
+                background: 'rgba(201,168,76,0.9)',
+                border: '3px solid #f0d070',
+                boxShadow: '0 0 15px rgba(201,168,76,0.6), 0 0 30px rgba(201,168,76,0.3)',
+                cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: '0.4rem', fontWeight: 900, color: '#0a0608',
+              }}>
+              1
+            </button>
+            <span className="absolute font-black uppercase pointer-events-none"
+              style={{
+                left: '52%', top: '72%',
+                transform: 'translateX(-50%)',
+                fontSize: '0.5rem', color: '#f0d070',
+                textShadow: '0 1px 4px rgba(0,0,0,0.9)',
+              }}>
+              Meta
+            </span>
           </div>
-        )}
-
-        {/* World map — full view background */}
-        <div className="fixed inset-0" style={{ zIndex: 0, pointerEvents: 'none' }}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/world-map.jpg" alt="Tasern" className="w-full h-full object-contain" style={{ opacity: 0.85 }} />
-          <div className="absolute inset-0" style={{ background: 'radial-gradient(ellipse at center, transparent 30%, #0a0608 85%)' }} />
         </div>
 
-        <h2 className="text-2xl font-black tracking-widest text-gold-shimmer uppercase relative"
-          style={{ fontFamily: "'Cinzel Decorative', 'Cinzel', serif", zIndex: 1, textShadow: '0 2px 8px rgba(0,0,0,0.9)' }}>
-          ⚜ Adventure ⚜
-        </h2>
-        <div className="flex items-center gap-3 relative" style={{ zIndex: 1 }}>
-          <span className="text-sm font-bold" style={{ color: 'rgba(201,168,76,0.8)', textShadow: '0 1px 4px rgba(0,0,0,0.9)' }}>
-            💰 {state.mftEarned.toLocaleString()} MfT earned
+        {/* Top bar */}
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 flex items-center gap-4" style={{ zIndex: 10 }}>
+          <h2 className="text-lg font-black tracking-widest text-gold-shimmer uppercase"
+            style={{ fontFamily: "'Cinzel Decorative', 'Cinzel', serif", textShadow: '0 2px 8px rgba(0,0,0,0.9)' }}>
+            ⚜ Tasern ⚜
+          </h2>
+          <span className="text-xs font-bold px-2 py-1 rounded"
+            style={{ color: 'rgba(201,168,76,0.8)', background: 'rgba(10,6,8,0.8)', textShadow: '0 1px 4px rgba(0,0,0,0.9)' }}>
+            💰 {state.mftEarned.toLocaleString()} MfT
           </span>
-          <button onClick={() => setMapOpen(true)}
-            className="px-3 py-1 rounded-lg text-xs font-bold uppercase tracking-widest"
-            style={{ background: 'rgba(10,6,8,0.8)', color: '#f0d070', border: '1px solid rgba(201,168,76,0.5)' }}>
-            🗺 View Map
-          </button>
         </div>
 
-        {/* Winding path */}
-        <div className="w-full relative" style={{ minHeight: chapters.length * 100 + 40, zIndex: 1 }}>
-          {/* SVG path connecting nodes */}
-          <svg className="absolute inset-0 w-full h-full" viewBox={`0 0 300 ${chapters.length * 100 + 40}`} preserveAspectRatio="xMidYMid meet">
-            {chapters.map((_, i) => {
-              if (i === chapters.length - 1) return null;
-              const x1 = i % 2 === 0 ? 90 : 210;
-              const x2 = (i + 1) % 2 === 0 ? 90 : 210;
-              const y1 = i * 100 + 50;
-              const y2 = (i + 1) * 100 + 50;
-              const mx = 150;
-              const completed = state.completedChapters.includes(chapters[i].id);
-              return (
-                <path key={i}
-                  d={`M${x1},${y1} Q${mx},${(y1 + y2) / 2} ${x2},${y2}`}
-                  fill="none"
-                  stroke={completed ? 'rgba(74,222,128,0.4)' : 'rgba(201,168,76,0.15)'}
-                  strokeWidth="3"
-                  strokeDasharray={completed ? "none" : "8 6"}
-                />
-              );
-            })}
-          </svg>
-
-          {/* Level nodes */}
-          {chapters.map((ch, i) => {
-            const completed = state.completedChapters.includes(ch.id);
-            const locked = i > 0 && !state.completedChapters.includes(chapters[i - 1].id);
-            const isCurrent = i === playerPos;
-            const onCooldown = completed && isOnCooldown(ch.id);
-            const canReplay = completed && !onCooldown;
-            const cdMs = cooldownRemaining(ch.id);
-            const cdHours = Math.floor(cdMs / (1000 * 60 * 60));
-            const cdMins = Math.floor((cdMs % (1000 * 60 * 60)) / (1000 * 60));
-            const canClick = !locked && (!completed || canReplay);
-            const xPct = i % 2 === 0 ? '15%' : '55%';
-
-            return (
-              <div key={ch.id}
-                className="absolute flex items-center gap-3 transition-all rounded-xl px-2 py-1.5"
-                style={{ top: i * 100 + 20, left: xPct, width: '45%', background: 'rgba(10,6,8,0.75)', backdropFilter: 'blur(4px)' }}>
-                {/* Node circle */}
-                <div
-                  onClick={() => canClick && (() => { startChapter(i); setPickingParty(true); })()}
-                  className="relative flex-shrink-0 rounded-full flex items-center justify-center transition-all"
-                  style={{
-                    width: 56, height: 56,
-                    background: onCooldown ? 'rgba(100,100,100,0.2)' : canReplay ? 'rgba(96,165,250,0.2)' : completed ? 'rgba(34,197,94,0.25)' : isCurrent ? 'rgba(201,168,76,0.2)' : 'rgba(255,255,255,0.05)',
-                    border: `3px solid ${onCooldown ? 'rgba(100,100,100,0.4)' : canReplay ? 'rgba(96,165,250,0.7)' : completed ? 'rgba(74,222,128,0.7)' : isCurrent ? 'rgba(201,168,76,0.8)' : 'rgba(255,255,255,0.1)'}`,
-                    cursor: canClick ? 'pointer' : 'not-allowed',
-                    opacity: locked ? 0.35 : onCooldown ? 0.5 : 1,
-                    boxShadow: canReplay ? '0 0 15px rgba(96,165,250,0.3)' : isCurrent ? '0 0 20px rgba(201,168,76,0.4)' : completed ? '0 0 10px rgba(34,197,94,0.2)' : 'none',
-                  }}>
-                  {ch.image ? (
-                    /* eslint-disable-next-line @next/next/no-img-element */
-                    <img src={ch.image} alt={ch.title} className="w-full h-full rounded-full object-cover"
-                      style={{ filter: locked ? 'saturate(0) brightness(0.3)' : onCooldown ? 'saturate(0) brightness(0.5)' : completed ? 'saturate(0.5) brightness(0.7)' : 'none' }} />
-                  ) : (
-                    <span className="text-xl">
-                      {onCooldown ? '⏳' : canReplay ? '🔄' : completed ? '✅' : locked ? '🔒' : '⚔️'}
-                    </span>
-                  )}
-                  {isCurrent && (
-                    <span className="absolute -top-2 -right-2 text-lg animate-bounce">🏰</span>
-                  )}
-                  <span className="absolute -bottom-1 -left-1 px-1.5 rounded-full text-xs font-black"
-                    style={{ background: onCooldown ? 'rgba(100,100,100,0.6)' : canReplay ? 'rgba(96,165,250,0.8)' : completed ? 'rgba(34,197,94,0.8)' : 'rgba(201,168,76,0.8)', color: '#0a0608', fontSize: '0.6rem' }}>
-                    {i + 1}
-                  </span>
-                </div>
-
-                {/* Level info */}
-                <div className="flex-1">
-                  <div onClick={() => canClick && (() => { startChapter(i); setPickingParty(true); })()}
-                    style={{ cursor: canClick ? 'pointer' : 'not-allowed' }}>
-                    <h3 className="font-black tracking-widest uppercase"
-                      style={{ color: onCooldown ? 'rgba(150,150,150,0.6)' : canReplay ? 'rgba(96,165,250,0.9)' : completed ? 'rgba(74,222,128,0.9)' : isCurrent ? 'rgba(201,168,76,0.9)' : 'rgba(201,168,76,0.4)', fontSize: '0.6rem' }}>
-                      {ch.title}
-                    </h3>
-                    <p style={{ color: 'rgba(232,213,176,0.4)', fontSize: '0.5rem' }}>
-                      {ch.encounters.length} fights · {ch.encounters.reduce((s, e) => s + e.mftReward, 0) + ch.completionBonus} MfT
-                    </p>
-                    {onCooldown && (
-                      <p style={{ color: 'rgba(150,150,150,0.6)', fontSize: '0.45rem' }}>
-                        ⏳ Replay in {cdHours}h {cdMins}m
-                      </p>
-                    )}
-                    {canReplay && (
-                      <p style={{ color: 'rgba(96,165,250,0.7)', fontSize: '0.45rem' }}>
-                        🔄 Ready to replay!
-                      </p>
-                    )}
-                  </div>
-                  {isAdmin && !completed && (
-                    <button onClick={(ev) => { ev.stopPropagation(); skipLevel(i); }}
-                      className="mt-1 px-2 py-0.5 rounded text-white font-bold"
-                      style={{ fontSize: '0.4rem', background: 'rgba(139,92,246,0.5)', border: '1px solid rgba(139,92,246,0.6)' }}>
-                      SKIP
-                    </button>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-
-          {/* Victory marker at end */}
-          {playerPos >= chapters.length && (
-            <div className="absolute flex items-center justify-center"
-              style={{ top: chapters.length * 100 + 20, left: '50%', transform: 'translateX(-50%)' }}>
-              <span className="text-2xl animate-pulse">👑</span>
-            </div>
-          )}
+        {/* Zoom controls */}
+        <div className="absolute top-4 right-4 flex gap-2" style={{ zIndex: 10 }}>
+          <button onClick={() => setMapZoom(z => Math.min(5, z + 0.5))}
+            className="px-3 py-2 rounded-lg font-black text-lg"
+            style={{ background: 'rgba(10,6,8,0.9)', color: '#f0d070', border: '1px solid rgba(201,168,76,0.5)' }}>+</button>
+          <button onClick={() => setMapZoom(z => Math.max(0.5, z - 0.5))}
+            className="px-3 py-2 rounded-lg font-black text-lg"
+            style={{ background: 'rgba(10,6,8,0.9)', color: '#f0d070', border: '1px solid rgba(201,168,76,0.5)' }}>−</button>
+          <button onClick={() => { setMapZoom(1); setMapPos({ x: 0, y: 0 }); }}
+            className="px-3 py-2 rounded-lg font-bold text-xs"
+            style={{ background: 'rgba(10,6,8,0.9)', color: '#f0d070', border: '1px solid rgba(201,168,76,0.5)' }}>Reset</button>
         </div>
+
+        {/* Bottom hint */}
+        <p className="absolute bottom-4 left-1/2 -translate-x-1/2 text-xs" style={{ zIndex: 10, color: 'rgba(201,168,76,0.4)', textShadow: '0 1px 4px rgba(0,0,0,0.9)' }}>
+          Pinch or scroll to zoom · Drag to pan · Tap a location to begin
+        </p>
 
         {state.mftEarned > 0 && (
-          <button onClick={resetAdventure} className="px-4 py-2 rounded text-xs font-bold uppercase tracking-widest mt-4 relative"
-            style={{ background: 'rgba(220,38,38,0.2)', color: 'rgba(220,38,38,0.7)', border: '1px solid rgba(220,38,38,0.3)', zIndex: 1 }}>
-            Reset Progress
+          <button onClick={resetAdventure} className="absolute bottom-4 right-4 px-3 py-1 rounded text-xs font-bold"
+            style={{ background: 'rgba(220,38,38,0.2)', color: 'rgba(220,38,38,0.5)', border: '1px solid rgba(220,38,38,0.2)', zIndex: 10 }}>
+            Reset
           </button>
         )}
       </div>
