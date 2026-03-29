@@ -212,7 +212,7 @@ export function PowerUp({ characters, onBack }: Props) {
       <div className="w-full rounded-xl p-4" style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(201,168,76,0.15)' }}>
         <p className="text-center text-xs tracking-widest uppercase mb-3" style={{ color: 'rgba(201,168,76,0.4)' }}>Current Stats</p>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-          {STAT_OPTIONS.map(s => {
+          {STAT_OPTIONS.filter(s => s.key !== "azos" && s.key !== "attack").map(s => {
             const val = (selectedHero.stats as any)[s.key] ?? 0;
             return (
               <div key={s.key} className="text-center px-2 py-1.5 rounded"
