@@ -9,7 +9,7 @@ export const maxDuration = 300; // Allow up to 5 minutes for RPC calls
 const TOKEN_ID = BigInt(1);
 
 const baseClient = createPublicClient({ chain: base, transport: http(process.env.NEXT_PUBLIC_ALCHEMY_BASE_URL ?? undefined) });
-const polygonClient = createPublicClient({ chain: polygon, transport: http() }); // Public RPC — works better than shared Alchemy rate limit
+const polygonClient = createPublicClient({ chain: polygon, transport: http(process.env.NEXT_PUBLIC_ALCHEMY_POLYGON_URL ?? undefined) });
 
 type McResult = { status: string; result?: unknown };
 
