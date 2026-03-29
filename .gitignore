@@ -38,6 +38,7 @@ yarn-error.log*
 
 # local stats cache (run: node scripts/refresh-stats.js)
 /public/stats-cache.json
+/public/cache-meta.json
 
 # typescript
 *.tsbuildinfo

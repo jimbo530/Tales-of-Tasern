@@ -88,22 +88,37 @@ export function useNftStats() {
       setError(null);
 
       try {
-        // Use locally cached stats if fresh enough, otherwise fetch
+        // Load stats: localStorage cache → local file → API (in that order)
         let data: any;
         const cached = getCachedStats();
         if (cached && (Date.now() - cached.timestamp) < STATS_CACHE_TTL) {
           data = cached.data;
-          console.log("[ToT] Using cached stats (age:", Math.round((Date.now() - cached.timestamp) / 60000), "min)");
+          console.log("[ToT] Using localStorage cache (age:", Math.round((Date.now() - cached.timestamp) / 60000), "min)");
         } else {
-          // In dev mode, try local file first (run: node scripts/refresh-stats.js)
+          // Try local file first (survives browser cache clears)
           let fetched = false;
-          if (process.env.NODE_ENV === "development") {
+          try {
+            const metaRes = await fetch("/cache-meta.json");
+            if (metaRes.ok) {
+              const meta = await metaRes.json();
+              if (meta.timestamp && (Date.now() - meta.timestamp) < STATS_CACHE_TTL) {
+                const localRes = await fetch("/stats-cache.json");
+                if (localRes.ok) {
+                  data = await localRes.json();
+                  fetched = true;
+                  console.log("[ToT] Loaded from local file cache (age:", Math.round((Date.now() - meta.timestamp) / 60000), "min)");
+                }
+              }
+            }
+          } catch {}
+          if (!fetched) {
+            // Try local file without freshness check (better than nothing after cache clear)
             try {
               const localRes = await fetch("/stats-cache.json");
               if (localRes.ok) {
                 data = await localRes.json();
                 fetched = true;
-                console.log("[ToT] Loaded stats from local cache file");
+                console.log("[ToT] Loaded from local file cache (no meta, may be stale)");
               }
             } catch {}
           }
