@@ -686,6 +686,9 @@ export default function Home() {
           </button>
         </div>
 
+        {/* Download game assets */}
+        <DownloadImages characters={characters} />
+
         {/* Connect prompt */}
         {!isConnected && (
           <div className="flex items-center gap-4 px-5 py-3 rounded-lg text-sm"
