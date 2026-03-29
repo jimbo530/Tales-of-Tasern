@@ -348,40 +348,22 @@ function PowerUpPayment({ contract, nftContract, heroName, statLabel }: {
       ) : (
         <div className="flex flex-col gap-3">
           <p className="text-center text-xs" style={{ color: 'rgba(201,168,76,0.5)' }}>Pay with ETH on Base — auto-swaps to LP tokens</p>
-          <p className="text-center text-xs" style={{ color: 'rgba(251,191,36,0.5)' }}>Max {MAX_ETH} ETH per power-up (low liquidity)</p>
-
-          <input
-            type="number"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            placeholder="Amount of ETH to spend"
-            max={MAX_ETH}
-            step="0.0001"
-            className="w-full px-4 py-2 rounded-lg text-sm text-center"
-            style={{ background: 'rgba(255,255,255,0.05)', color: overMax ? '#f87171' : '#f0d070', border: `1px solid ${overMax ? 'rgba(248,113,113,0.5)' : 'rgba(201,168,76,0.3)'}`, outline: 'none' }}
-          />
-
-          {overMax && (
-            <p className="text-center text-xs" style={{ color: '#f87171' }}>
-              Exceeds max — slippage will eat your funds. Use {MAX_ETH} ETH or less.
-            </p>
-          )}
 
           <div className="flex gap-2 justify-center">
             {["0.0001", "0.0005", "0.001"].map(a => (
               <button key={a} onClick={() => setAmount(a)}
-                className="px-3 py-1 rounded text-xs"
-                style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(201,168,76,0.6)', border: '1px solid rgba(201,168,76,0.15)' }}>
+                className="px-4 py-2 rounded-lg text-xs font-bold"
+                style={{ background: amount === a ? 'rgba(201,168,76,0.25)' : 'rgba(255,255,255,0.05)', color: amount === a ? '#f0d070' : 'rgba(201,168,76,0.6)', border: `1px solid ${amount === a ? 'rgba(201,168,76,0.5)' : 'rgba(201,168,76,0.15)'}` }}>
                 {a} ETH
               </button>
             ))}
           </div>
 
           <button onClick={handlePowerUp}
-            disabled={!amount || parsedAmount <= 0 || overMax}
+            disabled={!amount || parsedAmount <= 0}
             className="w-full px-6 py-3 rounded-lg text-sm font-black uppercase tracking-widest"
-            style={{ background: overMax ? 'rgba(248,113,113,0.15)' : 'rgba(34,197,94,0.3)', color: overMax ? 'rgba(248,113,113,0.6)' : 'rgba(74,222,128,0.9)', border: `1px solid ${overMax ? 'rgba(248,113,113,0.3)' : 'rgba(34,197,94,0.5)'}`, opacity: amount && parsedAmount > 0 && !overMax ? 1 : 0.4 }}>
-            {overMax ? 'Amount too high' : `⬆️ Power Up with ${amount || "0"} ETH`}
+            style={{ background: 'rgba(34,197,94,0.3)', color: 'rgba(74,222,128,0.9)', border: '1px solid rgba(34,197,94,0.5)', opacity: amount && parsedAmount > 0 ? 1 : 0.4 }}>
+            ⬆️ Power Up with {amount || "0"} ETH
           </button>
 
           {status && (
