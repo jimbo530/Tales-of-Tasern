@@ -365,8 +365,8 @@ export function generateEnemies(
     }
   }
 
-  // Enemy count scales with player count
-  const enemyCount = Math.max(1, Math.min(playerCount + 1, 5));
+  // Fixed enemy count — not scaled by player count (encourages owning more/stronger NFTs)
+  const enemyCount = Math.max(1, Math.min(5, Math.ceil(allCharacters.length * 0.03)));
 
   let pool = [...allCharacters];
   if (aiDeckBias === "aggressive") {
@@ -377,13 +377,10 @@ export function generateEnemies(
     pool.sort((a, b) => (b.stats.mAtk + b.stats.mana) - (a.stats.mAtk + a.stats.mana));
   }
 
-  // Strength scales with player count too
-  const scaledStrength = aiStrength * (1 + (playerCount - 1) * 0.3);
-
   // Place enemies on grid: fill front row first, then mid
   const enemyPositions = [1, 0, 2, 4, 3, 5, 7, 6, 8]; // center-first placement
   return pool.slice(0, enemyCount).map((char, i) => {
-    const unit = makeUnit(char, false, i, scaledStrength);
+    const unit = makeUnit(char, false, i, aiStrength);
     unit.gridPos = enemyPositions[i] ?? i;
     return unit;
   });
