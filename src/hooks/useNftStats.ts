@@ -7,6 +7,26 @@ import { ERC1155_ABI, GAME_NFTS } from "@/lib/contracts";
 
 const TOKEN_ID = BigInt(1);
 const MAX_TOKEN_ID = 200;
+const STATS_CACHE_KEY = "tot-stats-cache";
+const STATS_CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
+
+function getCachedStats(): { data: any; timestamp: number } | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(STATS_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed && parsed.data && parsed.timestamp) return parsed;
+  } catch {}
+  return null;
+}
+
+function setCachedStats(data: any) {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(STATS_CACHE_KEY, JSON.stringify({ data, timestamp: Date.now() }));
+  } catch {}
+}
 
 export type TokenAmount = {
   symbol: string;
@@ -46,11 +66,19 @@ export function useNftStats() {
       setError(null);
 
       try {
-        // Fetch pre-computed stats from API (cached 24h)
-        const res = await fetch("/api/stats");
-        if (!res.ok) throw new Error(`API error: ${res.status}`);
-        const data = await res.json();
-        console.log("[ToT] Loaded stats from API:", data.characters?.length, "NFTs, updated:", data.updatedAt);
+        // Use locally cached stats if fresh enough, otherwise fetch from API
+        let data: any;
+        const cached = getCachedStats();
+        if (cached && (Date.now() - cached.timestamp) < STATS_CACHE_TTL) {
+          data = cached.data;
+          console.log("[ToT] Using cached stats (age:", Math.round((Date.now() - cached.timestamp) / 60000), "min)");
+        } else {
+          const res = await fetch("/api/stats");
+          if (!res.ok) throw new Error(`API error: ${res.status}`);
+          data = await res.json();
+          setCachedStats(data);
+          console.log("[ToT] Fetched fresh stats from API:", data.characters?.length, "NFTs");
+        }
 
         // Check ownership if wallet connected — checks token IDs 1-200 per contract
         let ownershipMap = new Map<string, number>();
@@ -158,6 +186,7 @@ export function useNftStats() {
       const res = await fetch(`/api/stats?t=${Date.now()}`);
       if (!res.ok) return;
       const data = await res.json();
+      setCachedStats(data); // update local cache with fresh data
 
       let ownershipMap = new Map<string, number>();
       async function checkOwnership(client: any, nfts: typeof GAME_NFTS, chainName: string) {
