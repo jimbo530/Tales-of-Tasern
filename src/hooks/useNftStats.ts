@@ -51,49 +51,54 @@ export function useNftStats() {
         const data = await res.json();
         console.log("[ToT] Loaded stats from API:", data.characters?.length, "NFTs, updated:", data.updatedAt);
 
-        // Check ownership if wallet connected
+        // Check ownership if wallet connected — checks token IDs 1-200 per contract
+        const MAX_TOKEN_ID = 200;
         let ownershipMap = new Map<string, number>();
+
+        async function checkOwnership(client: any, nfts: typeof GAME_NFTS, chainName: string) {
+          if (!client || nfts.length === 0) return;
+          // Build balanceOfBatch calls: one per contract, checking IDs 1-MAX_TOKEN_ID
+          const accounts = Array(MAX_TOKEN_ID).fill(address) as `0x${string}`[];
+          const ids = Array.from({ length: MAX_TOKEN_ID }, (_, i) => BigInt(i + 1));
+          const calls = nfts.map((nft) => ({
+            address: nft.contractAddress,
+            abi: ERC1155_ABI,
+            functionName: "balanceOfBatch" as const,
+            args: [accounts, ids] as [readonly `0x${string}`[], readonly bigint[]],
+          }));
+          try {
+            const results = await client.multicall({ contracts: calls, allowFailure: true });
+            nfts.forEach((nft, i) => {
+              const r = results[i];
+              if (r.status === "success" && Array.isArray(r.result)) {
+                const total = (r.result as bigint[]).reduce((sum: number, b: bigint) => sum + Number(b), 0);
+                ownershipMap.set(nft.contractAddress.toLowerCase(), total);
+              } else {
+                ownershipMap.set(nft.contractAddress.toLowerCase(), 0);
+              }
+            });
+          } catch (e) {
+            console.warn(`[ToT] ${chainName} batch ownership check failed, falling back to ID 1:`, e);
+            // Fallback: just check token ID 1
+            try {
+              const fallbackCalls = nfts.map((nft) => ({
+                address: nft.contractAddress,
+                abi: ERC1155_ABI,
+                functionName: "balanceOf" as const,
+                args: [address, BigInt(1)] as [`0x${string}`, bigint],
+              }));
+              const fallbackResults = await client.multicall({ contracts: fallbackCalls, allowFailure: true });
+              nfts.forEach((nft, i) => {
+                const r = fallbackResults[i];
+                ownershipMap.set(nft.contractAddress.toLowerCase(), r.status === "success" ? Number(r.result as bigint) : 0);
+              });
+            } catch {}
+          }
+        }
+
         if (isConnected && address) {
-          const baseNfts = GAME_NFTS.filter(n => n.chain === "base");
-          const polyNfts = GAME_NFTS.filter(n => n.chain === "polygon");
-
-          // Check Base NFT ownership
-          if (baseClient && baseNfts.length > 0) {
-            try {
-              const calls = baseNfts.map((nft) => ({
-                address: nft.contractAddress,
-                abi: ERC1155_ABI,
-                functionName: "balanceOf" as const,
-                args: [address, TOKEN_ID] as [`0x${string}`, bigint],
-              }));
-              const results = await baseClient.multicall({ contracts: calls, allowFailure: true });
-              baseNfts.forEach((nft, i) => {
-                const r = results[i];
-                ownershipMap.set(nft.contractAddress.toLowerCase(), r.status === "success" ? Number(r.result as bigint) : 0);
-              });
-            } catch (e) {
-              console.warn("[ToT] Base ownership check failed:", e);
-            }
-          }
-
-          // Check Polygon NFT ownership
-          if (polygonClient && polyNfts.length > 0) {
-            try {
-              const calls = polyNfts.map((nft) => ({
-                address: nft.contractAddress,
-                abi: ERC1155_ABI,
-                functionName: "balanceOf" as const,
-                args: [address, TOKEN_ID] as [`0x${string}`, bigint],
-              }));
-              const results = await polygonClient.multicall({ contracts: calls, allowFailure: true });
-              polyNfts.forEach((nft, i) => {
-                const r = results[i];
-                ownershipMap.set(nft.contractAddress.toLowerCase(), r.status === "success" ? Number(r.result as bigint) : 0);
-              });
-            } catch (e) {
-              console.warn("[ToT] Polygon ownership check failed:", e);
-            }
-          }
+          await checkOwnership(baseClient, GAME_NFTS.filter(n => n.chain === "base"), "Base");
+          await checkOwnership(polygonClient, GAME_NFTS.filter(n => n.chain === "polygon"), "Polygon");
         }
 
         // Merge API data with ownership + seller info
