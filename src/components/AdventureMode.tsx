@@ -518,6 +518,29 @@ export function AdventureMode({ characters, onExit }: Props) {
   const [partyGrid, setPartyGrid] = useState<Map<string, number>>(new Map());
   const [pickingParty, setPickingParty] = useState(false);
   const [lpStatus, setLpStatus] = useState<string | null>(null);
+  const [mapOpen, setMapOpen] = useState(false);
+  const [mapZoom, setMapZoom] = useState(1);
+  const [mapPos, setMapPos] = useState({ x: 0, y: 0 });
+  const [dragging, setDragging] = useState(false);
+  const dragStart = useRef({ x: 0, y: 0, mx: 0, my: 0 });
+
+  function handleMapWheel(e: React.WheelEvent) {
+    e.preventDefault();
+    setMapZoom(z => Math.min(5, Math.max(0.5, z - e.deltaY * 0.002)));
+  }
+  function handleMapPointerDown(e: React.PointerEvent) {
+    setDragging(true);
+    dragStart.current = { x: mapPos.x, y: mapPos.y, mx: e.clientX, my: e.clientY };
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+  }
+  function handleMapPointerMove(e: React.PointerEvent) {
+    if (!dragging) return;
+    setMapPos({
+      x: dragStart.current.x + (e.clientX - dragStart.current.mx),
+      y: dragStart.current.y + (e.clientY - dragStart.current.my),
+    });
+  }
+  function handleMapPointerUp() { setDragging(false); }
 
   // Send LP reward to each party member's NFT via faucet (player pays gas only)
   async function sendLpRewards() {
@@ -589,30 +612,6 @@ export function AdventureMode({ characters, onExit }: Props) {
   }
 
   // Map screen — winding path
-  const [mapOpen, setMapOpen] = useState(false);
-  const [mapZoom, setMapZoom] = useState(1);
-  const [mapPos, setMapPos] = useState({ x: 0, y: 0 });
-  const [dragging, setDragging] = useState(false);
-  const dragStart = useRef({ x: 0, y: 0, mx: 0, my: 0 });
-
-  function handleMapWheel(e: React.WheelEvent) {
-    e.preventDefault();
-    setMapZoom(z => Math.min(5, Math.max(0.5, z - e.deltaY * 0.002)));
-  }
-  function handleMapPointerDown(e: React.PointerEvent) {
-    setDragging(true);
-    dragStart.current = { x: mapPos.x, y: mapPos.y, mx: e.clientX, my: e.clientY };
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
-  }
-  function handleMapPointerMove(e: React.PointerEvent) {
-    if (!dragging) return;
-    setMapPos({
-      x: dragStart.current.x + (e.clientX - dragStart.current.mx),
-      y: dragStart.current.y + (e.clientY - dragStart.current.my),
-    });
-  }
-  function handleMapPointerUp() { setDragging(false); }
-
   if (state.phase === "map") {
     return (
       <div className="flex flex-col items-center gap-4 max-w-md mx-auto mt-6 relative" style={{ isolation: 'isolate' }}>
