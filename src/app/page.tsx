@@ -177,7 +177,7 @@ export default function Home() {
         </div>
         <Wallet>
           <ConnectWallet><Avatar className="h-6 w-6" /><Name /></ConnectWallet>
-          <WalletDropdown><Address /><WalletDropdownDisconnect /></WalletDropdown>
+          <WalletDropdown>{isConnected && <Address />}<WalletDropdownDisconnect /></WalletDropdown>
         </Wallet>
       </header>
       <div className="flex-1 px-4 py-6">{content}</div>
@@ -586,7 +586,7 @@ export default function Home() {
           </button>
           <Wallet>
             <ConnectWallet><Avatar className="h-6 w-6" /><Name /></ConnectWallet>
-            <WalletDropdown><Address /><WalletDropdownDisconnect /></WalletDropdown>
+            <WalletDropdown>{isConnected && <Address />}<WalletDropdownDisconnect /></WalletDropdown>
           </Wallet>
         </div>
       </header>
@@ -693,7 +693,7 @@ export default function Home() {
             <span style={{ color: 'rgba(201,168,76,0.7)' }}>Connect wallet to see your champions</span>
             <Wallet>
               <ConnectWallet><Avatar className="h-6 w-6" /><Name /></ConnectWallet>
-              <WalletDropdown><Address /><WalletDropdownDisconnect /></WalletDropdown>
+              <WalletDropdown>{isConnected && <Address />}<WalletDropdownDisconnect /></WalletDropdown>
             </Wallet>
           </div>
         )}
