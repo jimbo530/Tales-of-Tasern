@@ -235,7 +235,7 @@ export function CharacterCard({ character, maxStats, selectable, selected, onSel
           </div>
 
           {/* Stats */}
-          <div className="px-3 pb-3 flex flex-col gap-1.5 flex-shrink-0 overflow-auto" style={{ maxHeight: '200px' }}>
+          <div className="px-3 pb-3 flex flex-col gap-1.5 flex-shrink-0">
             {stats.charMultiplier > 0 && (
               <div className="flex items-center justify-between px-2 py-0.5 rounded"
                 style={{ background: 'rgba(139,92,246,0.1)', border: '1px solid rgba(139,92,246,0.25)' }}>
@@ -293,7 +293,7 @@ export function CharacterCard({ character, maxStats, selectable, selected, onSel
           </div>
 
           {/* Token list */}
-          <div className="flex-1 overflow-y-auto px-3 flex flex-col gap-1.5">
+          <div className="flex-1 px-3 flex flex-col gap-1.5">
             {tokenAmounts.length === 0 ? (
               <p className="text-center text-xs mt-6" style={{ color: 'rgba(200,190,210,0.3)' }}>
                 No LP positions found
