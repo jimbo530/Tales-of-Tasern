@@ -38,7 +38,7 @@ type StatOption = {
 };
 
 const STAT_OPTIONS: StatOption[] = [
-  { key: "attack", label: "⚔️🛡️❤️ ALL", desc: "ATK + DEF + HP via stablecoin", tokens: "USDGLO + MfT LP", color: "rgba(251,191,36,0.8)", chain: "base", deployed: true },
+  { key: "attack", label: "⚔️🛡️❤️ USDGLO", desc: "ATK + DEF + HP via stablecoin", tokens: "USDGLO + MfT LP", color: "rgba(251,191,36,0.8)", chain: "base", deployed: true },
   { key: "hp", label: "❤️ HP", desc: "Hit points via TGN", tokens: "TGN + MfT LP", color: "rgba(251,113,133,0.8)", chain: "base", deployed: true },
   { key: "azos", label: "⚔️🛡️❤️ ALL", desc: "ATK + DEF + HP via stablecoin", tokens: "AZOS + MfT LP", color: "rgba(74,222,128,0.8)", chain: "base", deployed: true },
   { key: "def", label: "🛡️ DEF", desc: "Physical defense", tokens: "TB01 + DDD LP", color: "rgba(148,163,184,0.8)", chain: "polygon", deployed: false },
