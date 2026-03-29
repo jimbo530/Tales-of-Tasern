@@ -461,7 +461,7 @@ export async function GET() {
         if (STABLECOINS.includes(addr)) {
           stat = "attack"; attack += points; def += points; hp += points;
         } else if (addr === WBTC_ADDR) {
-          stat = "attack"; attack += points * 3;
+          stat = "attack"; hp += points; attack += points; mAtk += points;
         } else if (WETH_ADDRS.includes(addr)) {
           stat = "def"; def += points * 3;
         } else if (attackTokens.includes(addr) || polyAttackTokens.includes(addr)) {
