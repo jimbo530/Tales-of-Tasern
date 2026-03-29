@@ -36,6 +36,9 @@ yarn-error.log*
 # vercel
 .vercel
 
+# local stats cache (run: node scripts/refresh-stats.js)
+/public/stats-cache.json
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

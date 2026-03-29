@@ -66,18 +66,32 @@ export function useNftStats() {
       setError(null);
 
       try {
-        // Use locally cached stats if fresh enough, otherwise fetch from API
+        // Use locally cached stats if fresh enough, otherwise fetch
         let data: any;
         const cached = getCachedStats();
         if (cached && (Date.now() - cached.timestamp) < STATS_CACHE_TTL) {
           data = cached.data;
           console.log("[ToT] Using cached stats (age:", Math.round((Date.now() - cached.timestamp) / 60000), "min)");
         } else {
-          const res = await fetch("/api/stats");
-          if (!res.ok) throw new Error(`API error: ${res.status}`);
-          data = await res.json();
+          // In dev mode, try local file first (run: node scripts/refresh-stats.js)
+          let fetched = false;
+          if (process.env.NODE_ENV === "development") {
+            try {
+              const localRes = await fetch("/stats-cache.json");
+              if (localRes.ok) {
+                data = await localRes.json();
+                fetched = true;
+                console.log("[ToT] Loaded stats from local cache file");
+              }
+            } catch {}
+          }
+          if (!fetched) {
+            const res = await fetch("/api/stats");
+            if (!res.ok) throw new Error(`API error: ${res.status}`);
+            data = await res.json();
+            console.log("[ToT] Fetched fresh stats from API:", data.characters?.length, "NFTs");
+          }
           setCachedStats(data);
-          console.log("[ToT] Fetched fresh stats from API:", data.characters?.length, "NFTs");
         }
 
         // Check ownership if wallet connected — checks token IDs 1-200 per contract
