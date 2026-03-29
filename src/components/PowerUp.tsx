@@ -10,6 +10,7 @@ import { useNftImage } from "@/hooks/useNftImage";
 type Props = {
   characters: NftCharacter[];
   onBack: () => void;
+  onStatsRefresh?: () => Promise<void>;
 };
 
 // Deployed contracts on Base
@@ -91,7 +92,7 @@ function HeroPortrait({ character }: { character: NftCharacter }) {
   );
 }
 
-export function PowerUp({ characters, onBack }: Props) {
+export function PowerUp({ characters, onBack, onStatsRefresh }: Props) {
   const [search, setSearch] = useState("");
   const [selectedHero, setSelectedHero] = useState<NftCharacter | null>(null);
   const [selectedStat, setSelectedStat] = useState<string | null>(null);
@@ -294,6 +295,7 @@ export function PowerUp({ characters, onBack }: Props) {
           nftContract={selectedHero.contractAddress as `0x${string}`}
           heroName={selectedHero.name}
           statLabel={STAT_OPTIONS.find(s => s.key === selectedStat)?.label ?? ""}
+          onStatsRefresh={onStatsRefresh}
         />
       )}
 
@@ -308,11 +310,12 @@ export function PowerUp({ characters, onBack }: Props) {
 
 const MAX_ETH = 0.001;
 
-function PowerUpPayment({ contract, nftContract, heroName, statLabel }: {
+function PowerUpPayment({ contract, nftContract, heroName, statLabel, onStatsRefresh }: {
   contract: { address: `0x${string}`; abi: readonly any[] };
   nftContract: `0x${string}`;
   heroName: string;
   statLabel: string;
+  onStatsRefresh?: () => Promise<void>;
 }) {
   const { isConnected } = useAccount();
   const { data: client, isLoading: walletLoading } = useWalletClient();
@@ -335,7 +338,13 @@ function PowerUpPayment({ contract, nftContract, heroName, statLabel }: {
         value: parseEther(amt),
       });
       setTxHash(hash);
-      setStatus("⚔️ Power up complete! Stats will update at midnight UTC.");
+      setStatus("⚔️ Power up complete! Refreshing stats...");
+      if (onStatsRefresh) {
+        await onStatsRefresh();
+        setStatus("⚔️ Power up complete! Stats updated.");
+      } else {
+        setStatus("⚔️ Power up complete! Stats will update at midnight UTC.");
+      }
     } catch (e: any) {
       setStatus("Failed: " + (e.shortMessage ?? e.message));
     }

@@ -184,7 +184,7 @@ export default function Home() {
     </main>
   );
 
-  if (view === "powerUp") return subPage("Power Up", <PowerUp characters={characters} onBack={() => cycleView("menu")} />);
+  if (view === "powerUp") return subPage("Power Up", <PowerUp characters={characters} onBack={() => cycleView("menu")} onStatsRefresh={refreshStats} />);
   if (view === "marketplace") return subPage("Marketplace", <Marketplace characters={characters} onBack={() => cycleView("menu")} />);
   if (view === "adventure") return subPage("Adventure", <AdventureMode characters={characters} onExit={() => cycleView("menu")} onStatsRefresh={refreshStats} />);
 
