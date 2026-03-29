@@ -318,10 +318,11 @@ function PowerUpPayment({ contract, nftContract, heroName, statLabel }: {
   const { data: client, isLoading: walletLoading } = useWalletClient();
   const [status, setStatus] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
-  const FIXED_AMOUNT = "0.0005";
+  const [amount, setAmount] = useState("0.0005");
 
-  async function handlePowerUp() {
+  async function handlePowerUp(amt: string) {
     if (!client) { setStatus("Wallet loading — try again in a moment"); return; }
+    setAmount(amt);
     setStatus("Confirm in your wallet — sending ETH...");
     setTxHash(null);
 
@@ -331,7 +332,7 @@ function PowerUpPayment({ contract, nftContract, heroName, statLabel }: {
         abi: contract.abi as any,
         functionName: "powerUp",
         args: [nftContract],
-        value: parseEther(FIXED_AMOUNT),
+        value: parseEther(amt),
       });
       setTxHash(hash);
       setStatus("⚔️ Power up complete! Stats will update at midnight UTC.");
@@ -352,11 +353,16 @@ function PowerUpPayment({ contract, nftContract, heroName, statLabel }: {
         <div className="flex flex-col gap-3">
           <p className="text-center text-xs" style={{ color: 'rgba(201,168,76,0.5)' }}>Pay with ETH on Base — auto-swaps to LP tokens</p>
 
-          <button onClick={handlePowerUp} disabled={walletLoading || !client}
-            className="w-full px-6 py-3 rounded-lg text-sm font-black uppercase tracking-widest"
-            style={{ background: walletLoading ? 'rgba(100,100,100,0.2)' : 'rgba(34,197,94,0.3)', color: walletLoading ? 'rgba(150,150,150,0.5)' : 'rgba(74,222,128,0.9)', border: `1px solid ${walletLoading ? 'rgba(100,100,100,0.3)' : 'rgba(34,197,94,0.5)'}` }}>
-            {walletLoading ? '⏳ Loading wallet...' : '⬆️ Power Up — 0.0005 ETH'}
-          </button>
+          <div className="flex gap-2 w-full">
+            {["0.0005", "0.001", "0.0025"].map(amt => (
+              <button key={amt} onClick={() => handlePowerUp(amt)} disabled={walletLoading || !client}
+                className="flex-1 px-3 py-3 rounded-lg text-xs font-black uppercase tracking-widest"
+                style={{ background: walletLoading ? 'rgba(100,100,100,0.2)' : 'rgba(34,197,94,0.3)', color: walletLoading ? 'rgba(150,150,150,0.5)' : 'rgba(74,222,128,0.9)', border: `1px solid ${walletLoading ? 'rgba(100,100,100,0.3)' : 'rgba(34,197,94,0.5)'}` }}>
+                {walletLoading ? '⏳' : `⬆️ ${amt}`}
+              </button>
+            ))}
+          </div>
+          <p className="text-center" style={{ fontSize: '0.45rem', color: 'rgba(201,168,76,0.4)' }}>ETH amounts · lower = less slippage</p>
 
           {status && (
             <p className="text-center text-xs" style={{ color: status.includes("Failed") ? '#f87171' : status.includes("complete") ? '#4ade80' : 'rgba(201,168,76,0.7)' }}>
