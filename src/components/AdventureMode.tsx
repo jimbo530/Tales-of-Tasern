@@ -523,6 +523,11 @@ export function AdventureMode({ characters, onExit }: Props) {
   const [mapPos, setMapPos] = useState({ x: 0, y: 0 });
   const [dragging, setDragging] = useState(false);
   const dragStart = useRef({ x: 0, y: 0, mx: 0, my: 0 });
+  const [regionMap, setRegionMap] = useState<string | null>(null); // which region map is open
+  const [regionZoom, setRegionZoom] = useState(1);
+  const [regionPos, setRegionPos] = useState({ x: 0, y: 0 });
+  const [regionDragging, setRegionDragging] = useState(false);
+  const regionDragStart = useRef({ x: 0, y: 0, mx: 0, my: 0 });
 
   function handleMapWheel(e: React.WheelEvent) {
     e.preventDefault();
@@ -541,6 +546,24 @@ export function AdventureMode({ characters, onExit }: Props) {
     });
   }
   function handleMapPointerUp() { setDragging(false); }
+
+  function handleRegionWheel(e: React.WheelEvent) {
+    e.preventDefault();
+    setRegionZoom(z => Math.min(5, Math.max(0.5, z - e.deltaY * 0.002)));
+  }
+  function handleRegionPointerDown(e: React.PointerEvent) {
+    setRegionDragging(true);
+    regionDragStart.current = { x: regionPos.x, y: regionPos.y, mx: e.clientX, my: e.clientY };
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+  }
+  function handleRegionPointerMove(e: React.PointerEvent) {
+    if (!regionDragging) return;
+    setRegionPos({
+      x: regionDragStart.current.x + (e.clientX - regionDragStart.current.mx),
+      y: regionDragStart.current.y + (e.clientY - regionDragStart.current.my),
+    });
+  }
+  function handleRegionPointerUp() { setRegionDragging(false); }
 
   // Send LP reward to each party member's NFT via faucet (player pays gas only)
   async function sendLpRewards() {
@@ -635,8 +658,8 @@ export function AdventureMode({ characters, onExit }: Props) {
             <img src="/world-map.jpg" alt="Tasern" draggable={false}
               style={{ width: '100%', display: 'block' }} />
 
-            {/* Meta marker — World 1 */}
-            <button onClick={(e) => { e.stopPropagation(); startChapter(0); setPickingParty(true); }}
+            {/* Meta marker — opens Londa regional map */}
+            <button onClick={(e) => { e.stopPropagation(); setRegionMap("londa"); setRegionZoom(1); setRegionPos({ x: 0, y: 0 }); }}
               className="absolute animate-pulse"
               style={{
                 left: '65%', top: '65%',
@@ -699,6 +722,85 @@ export function AdventureMode({ characters, onExit }: Props) {
             style={{ background: 'rgba(220,38,38,0.2)', color: 'rgba(220,38,38,0.5)', border: '1px solid rgba(220,38,38,0.2)', zIndex: 10 }}>
             Reset
           </button>
+        )}
+
+        {/* Londa regional map overlay */}
+        {regionMap === "londa" && (
+          <div className="fixed inset-0" style={{ zIndex: 50, background: '#0a0608' }}>
+            <div className="absolute inset-0 overflow-hidden touch-none"
+              onWheel={handleRegionWheel}
+              onPointerDown={handleRegionPointerDown}
+              onPointerMove={handleRegionPointerMove}
+              onPointerUp={handleRegionPointerUp}
+              style={{ cursor: regionDragging ? 'grabbing' : 'grab' }}>
+              <div style={{
+                position: 'absolute',
+                left: '50%', top: '50%',
+                transform: `translate(calc(-50% + ${regionPos.x}px), calc(-50% + ${regionPos.y}px)) scale(${regionZoom})`,
+                transition: regionDragging ? 'none' : 'transform 0.1s ease-out',
+                width: '90vmin',
+              }}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/londa-map.jpg" alt="Londa" draggable={false}
+                  style={{ width: '100%', display: 'block' }} />
+
+                {/* World 1 — The Crossroads Village (Meta) — south of central mountains */}
+                <button onClick={(e) => { e.stopPropagation(); setRegionMap(null); startChapter(0); setPickingParty(true); }}
+                  className="absolute animate-pulse"
+                  style={{
+                    left: '55%', top: '72%',
+                    transform: 'translate(-50%, -50%)',
+                    width: 22, height: 22,
+                    borderRadius: '50%',
+                    background: 'rgba(201,168,76,0.9)',
+                    border: '3px solid #f0d070',
+                    boxShadow: '0 0 12px rgba(201,168,76,0.6), 0 0 25px rgba(201,168,76,0.3)',
+                    cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: '0.4rem', fontWeight: 900, color: '#0a0608',
+                  }}>
+                  1
+                </button>
+                <span className="absolute font-black uppercase pointer-events-none"
+                  style={{
+                    left: '55%', top: '76%',
+                    transform: 'translateX(-50%)',
+                    fontSize: '0.45rem', color: '#f0d070',
+                    textShadow: '0 1px 4px rgba(0,0,0,0.9)',
+                  }}>
+                  The Crossroads Village
+                </span>
+              </div>
+            </div>
+
+            {/* Top bar */}
+            <div className="absolute top-4 left-1/2 -translate-x-1/2 flex items-center gap-3" style={{ zIndex: 51 }}>
+              <h2 className="text-lg font-black tracking-widest text-gold-shimmer uppercase"
+                style={{ fontFamily: "'Cinzel Decorative', 'Cinzel', serif", textShadow: '0 2px 8px rgba(0,0,0,0.9)' }}>
+                ⚜ Londa ⚜
+              </h2>
+            </div>
+
+            {/* Controls */}
+            <div className="absolute top-4 right-4 flex gap-2" style={{ zIndex: 51 }}>
+              <button onClick={() => setRegionZoom(z => Math.min(5, z + 0.5))}
+                className="px-3 py-2 rounded-lg font-black text-lg"
+                style={{ background: 'rgba(10,6,8,0.9)', color: '#f0d070', border: '1px solid rgba(201,168,76,0.5)' }}>+</button>
+              <button onClick={() => setRegionZoom(z => Math.max(0.5, z - 0.5))}
+                className="px-3 py-2 rounded-lg font-black text-lg"
+                style={{ background: 'rgba(10,6,8,0.9)', color: '#f0d070', border: '1px solid rgba(201,168,76,0.5)' }}>−</button>
+              <button onClick={() => { setRegionZoom(1); setRegionPos({ x: 0, y: 0 }); }}
+                className="px-3 py-2 rounded-lg font-bold text-xs"
+                style={{ background: 'rgba(10,6,8,0.9)', color: '#f0d070', border: '1px solid rgba(201,168,76,0.5)' }}>Reset</button>
+              <button onClick={() => setRegionMap(null)}
+                className="px-3 py-2 rounded-lg font-black text-lg"
+                style={{ background: 'rgba(220,38,38,0.8)', color: '#fff', border: '1px solid rgba(220,38,38,0.9)' }}>✕</button>
+            </div>
+
+            <p className="absolute bottom-4 left-1/2 -translate-x-1/2 text-xs" style={{ zIndex: 51, color: 'rgba(201,168,76,0.4)', textShadow: '0 1px 4px rgba(0,0,0,0.9)' }}>
+              Tap a location to begin · Pinch to zoom · Drag to pan
+            </p>
+          </div>
         )}
       </div>
     );
