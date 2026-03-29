@@ -15,6 +15,7 @@ const FAUCET_ABI = [{ name: "rewardHero", type: "function", stateMutability: "no
 type Props = {
   characters: NftCharacter[];
   onExit: () => void;
+  onStatsRefresh?: () => Promise<void>;
 };
 
 function UnitPortrait({ unit, small }: { unit: CombatUnit; small?: boolean }) {
@@ -503,7 +504,7 @@ function PartyPicker({ characters, onStart, onBack, isAdmin }: {
 
 const INTRO_TEXT = "At the heart of a quiet crossroads village, where warm lanternlight spills across worn cobblestones and every path seems to lead somewhere important, your journey begins. Six humble homes ring the central well\u2014each belonging to a friend who has walked a different road, learned a different truth, and now waits to share what they know. Here, among creaking wood, soft laughter, and the scent of earth and fire, you will gather the pieces of what you need\u2014not just tools or directions, but perspective. For beyond this circle, the world grows wider, stranger, and far less forgiving\u2014and only by listening to those who know you best will you be ready to take your first real step into it.";
 
-export function AdventureMode({ characters, onExit }: Props) {
+export function AdventureMode({ characters, onExit, onStatsRefresh }: Props) {
   const { address } = useAccount();
   const { data: walletClient } = useWalletClient();
   const { state, loaded, introSeen, chapter, encounter, chapters, markIntroSeen, startChapter, startBattle, winBattle, loseBattle, nextEncounter, backToMap, resetAdventure, skipLevel, skipEncounter, isOnCooldown, cooldownRemaining, encounterOnCooldown, encounterCooldownRemaining } = useAdventure(address);
@@ -586,7 +587,17 @@ export function AdventureMode({ characters, onExit }: Props) {
         console.warn("LP deposit failed for", hero.name, e.message);
       }
     }
-    setLpStatus(sent > 0 ? `${sent} hero${sent > 1 ? "es" : ""} received LP! Stats will increase.` : "LP deposit skipped — heroes on cooldown or faucet empty");
+    if (sent > 0) {
+      setLpStatus(`${sent} hero${sent > 1 ? "es" : ""} received LP! Refreshing stats...`);
+      if (onStatsRefresh) {
+        await onStatsRefresh();
+        setLpStatus(`${sent} hero${sent > 1 ? "es" : ""} leveled up!`);
+      } else {
+        setLpStatus(`${sent} hero${sent > 1 ? "es" : ""} received LP! Stats update at midnight UTC.`);
+      }
+    } else {
+      setLpStatus("LP deposit skipped — heroes on cooldown or faucet empty");
+    }
     setTimeout(() => setLpStatus(null), 5000);
   }
 

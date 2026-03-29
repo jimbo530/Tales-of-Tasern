@@ -87,7 +87,7 @@ export default function Home() {
   const { isConnected } = useAccount();
   const chainId = useChainId();
   const { switchChain } = useSwitchChain();
-  const { characters, assetTotals, tokenBreakdown, loading, error } = useNftStats();
+  const { characters, assetTotals, tokenBreakdown, loading, error, refreshStats } = useNftStats();
   const [pieCategory, setPieCategory] = useState<"traditional" | "game" | "impact" | null>(null);
   const wrongChain = isConnected && chainId !== base.id;
   const [page, setPage] = useState(0);
@@ -186,7 +186,7 @@ export default function Home() {
 
   if (view === "powerUp") return subPage("Power Up", <PowerUp characters={characters} onBack={() => cycleView("menu")} />);
   if (view === "marketplace") return subPage("Marketplace", <Marketplace characters={characters} onBack={() => cycleView("menu")} />);
-  if (view === "adventure") return subPage("Adventure", <AdventureMode characters={characters} onExit={() => cycleView("menu")} />);
+  if (view === "adventure") return subPage("Adventure", <AdventureMode characters={characters} onExit={() => cycleView("menu")} onStatsRefresh={refreshStats} />);
 
   // My Army page
   if (view === "army") {

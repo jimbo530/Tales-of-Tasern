@@ -6,6 +6,7 @@ import { base, polygon } from "viem/chains";
 import { ERC1155_ABI, GAME_NFTS } from "@/lib/contracts";
 
 const TOKEN_ID = BigInt(1);
+const MAX_TOKEN_ID = 200;
 
 export type TokenAmount = {
   symbol: string;
@@ -52,7 +53,6 @@ export function useNftStats() {
         console.log("[ToT] Loaded stats from API:", data.characters?.length, "NFTs, updated:", data.updatedAt);
 
         // Check ownership if wallet connected — checks token IDs 1-200 per contract
-        const MAX_TOKEN_ID = 200;
         let ownershipMap = new Map<string, number>();
 
         async function checkOwnership(client: any, nfts: typeof GAME_NFTS, chainName: string) {
@@ -151,5 +151,54 @@ export function useNftStats() {
     load();
   }, [address, isConnected, baseClient]);
 
-  return { characters, assetTotals, tokenBreakdown, loading, error };
+  // Refresh stats on demand (cache-busting) — use after LP deposits for instant level-up
+  async function refreshStats() {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/stats?t=${Date.now()}`);
+      if (!res.ok) return;
+      const data = await res.json();
+
+      let ownershipMap = new Map<string, number>();
+      async function checkOwnership(client: any, nfts: typeof GAME_NFTS, chainName: string) {
+        if (!client || nfts.length === 0) return;
+        const accounts = Array(MAX_TOKEN_ID).fill(address) as `0x${string}`[];
+        const ids = Array.from({ length: MAX_TOKEN_ID }, (_, i) => BigInt(i + 1));
+        const calls = nfts.map((nft) => ({
+          address: nft.contractAddress, abi: ERC1155_ABI,
+          functionName: "balanceOfBatch" as const,
+          args: [accounts, ids] as [readonly `0x${string}`[], readonly bigint[]],
+        }));
+        try {
+          const results = await client.multicall({ contracts: calls, allowFailure: true });
+          nfts.forEach((nft, i) => {
+            const r = results[i];
+            if (r.status === "success" && Array.isArray(r.result)) {
+              ownershipMap.set(nft.contractAddress.toLowerCase(), (r.result as bigint[]).reduce((sum: number, b: bigint) => sum + Number(b), 0));
+            }
+          });
+        } catch {}
+      }
+      if (isConnected && address) {
+        await checkOwnership(baseClient, GAME_NFTS.filter(n => n.chain === "base"), "Base");
+        await checkOwnership(polygonClient, GAME_NFTS.filter(n => n.chain === "polygon"), "Polygon");
+      }
+
+      const sellerOwnedSet = new Set((data.sellerOwned ?? []).map((a: string) => a.toLowerCase()));
+      const updated: NftCharacter[] = data.characters.map((c: any) => ({
+        name: c.name, contractAddress: c.contractAddress, chain: c.chain ?? "base",
+        tokenId: TOKEN_ID, metadataUri: c.metadataUri, imageUrl: c.imageUrl,
+        owned: (ownershipMap.get(c.contractAddress.toLowerCase()) ?? 0) > 0,
+        ownedCount: ownershipMap.get(c.contractAddress.toLowerCase()) ?? 0,
+        stats: c.stats, tokenAmounts: c.tokenAmounts ?? [], usdBacking: c.usdBacking ?? 0,
+        forSale: sellerOwnedSet.has(c.contractAddress.toLowerCase()),
+      }));
+      setCharacters(updated);
+      if (data.assetTotals) setAssetTotals(data.assetTotals);
+      if (data.tokenBreakdown) setTokenBreakdown(data.tokenBreakdown);
+    } catch (e) { console.warn("[ToT] Refresh failed:", e); }
+    setLoading(false);
+  }
+
+  return { characters, assetTotals, tokenBreakdown, loading, error, refreshStats };
 }
