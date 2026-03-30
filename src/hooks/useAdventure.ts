@@ -4,6 +4,16 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { ADVENTURE_CHAPTERS, type Chapter, type Encounter } from "@/lib/adventureData";
 import { loadAdventureSave, saveAdventure } from "@/lib/supabase";
 
+// Items the party can carry
+export type InventoryItem = {
+  id: string;        // e.g. "wood", "food-bread", "lumber"
+  name: string;
+  category: "food" | "resource" | "crafted" | "equipment";
+  quantity: number;
+  weight: number;    // per unit — total weight = quantity * weight
+  icon: string;      // emoji
+};
+
 export type AdventureState = {
   currentChapter: number;
   currentEncounter: number;
@@ -13,6 +23,9 @@ export type AdventureState = {
   encounterCooldowns: Record<string, number>;
   unlockedNpcs: string[]; // contract addresses of NPCs unlocked via joinsParty
   phase: "map" | "story" | "battle" | "reward" | "chapterComplete" | "victory";
+  mapPosition: string; // current node id on the Londa map
+  inventory: InventoryItem[];
+  carryCapacity: number; // max total weight the party can carry
 };
 
 const STORAGE_KEY = "tot-adventure";
@@ -30,6 +43,9 @@ function defaultState(): AdventureState {
     encounterCooldowns: {},
     unlockedNpcs: [],
     phase: "map",
+    mapPosition: "village",
+    inventory: [],
+    carryCapacity: 50, // base carry capacity (weight units)
   };
 }
 
@@ -175,13 +191,17 @@ export function useAdventure(wallet?: string) {
   function encounterOnCooldown(chapterId: string, encounterIdx: number): boolean {
     const last = (state.encounterCooldowns ?? {})[`${chapterId}-${encounterIdx}`];
     if (!last) return false;
-    return Date.now() - last < COOLDOWN_MS;
+    const ch = ADVENTURE_CHAPTERS.find(c => c.id === chapterId);
+    const cd = ch?.cooldownMs ?? COOLDOWN_MS;
+    return Date.now() - last < cd;
   }
 
   function encounterCooldownRemaining(chapterId: string, encounterIdx: number): number {
     const last = (state.encounterCooldowns ?? {})[`${chapterId}-${encounterIdx}`];
     if (!last) return 0;
-    return Math.max(0, COOLDOWN_MS - (Date.now() - last));
+    const ch = ADVENTURE_CHAPTERS.find(c => c.id === chapterId);
+    const cd = ch?.cooldownMs ?? COOLDOWN_MS;
+    return Math.max(0, cd - (Date.now() - last));
   }
 
   function loseBattle() {
@@ -213,6 +233,49 @@ export function useAdventure(wallet?: string) {
       completedChapters: [...new Set([...s.completedChapters, ch.id])],
       phase: "map",
     }));
+  }
+
+  function setMapPosition(pos: string) {
+    update(s => ({ ...s, mapPosition: pos }));
+  }
+
+  // Inventory helpers
+  function currentWeight(): number {
+    return (state.inventory ?? []).reduce((sum, item) => sum + item.quantity * item.weight, 0);
+  }
+
+  function addItem(item: Omit<InventoryItem, "quantity"> & { quantity?: number }, qty = 1): boolean {
+    const amount = item.quantity ?? qty;
+    const itemWeight = amount * item.weight;
+    if (currentWeight() + itemWeight > state.carryCapacity) return false; // over capacity
+    update(s => {
+      const inv = [...(s.inventory ?? [])];
+      const existing = inv.find(i => i.id === item.id);
+      if (existing) {
+        existing.quantity += amount;
+      } else {
+        inv.push({ ...item, quantity: amount } as InventoryItem);
+      }
+      return { ...s, inventory: inv };
+    });
+    return true;
+  }
+
+  function removeItem(itemId: string, qty = 1): boolean {
+    const existing = (state.inventory ?? []).find(i => i.id === itemId);
+    if (!existing || existing.quantity < qty) return false;
+    update(s => {
+      const inv = (s.inventory ?? []).map(i =>
+        i.id === itemId ? { ...i, quantity: i.quantity - qty } : i
+      ).filter(i => i.quantity > 0);
+      return { ...s, inventory: inv };
+    });
+    return true;
+  }
+
+  function hasItem(itemId: string, qty = 1): boolean {
+    const item = (state.inventory ?? []).find(i => i.id === itemId);
+    return !!item && item.quantity >= qty;
   }
 
   function skipEncounter() {
@@ -252,5 +315,10 @@ export function useAdventure(wallet?: string) {
     cooldownRemaining,
     encounterOnCooldown,
     encounterCooldownRemaining,
+    setMapPosition,
+    addItem,
+    removeItem,
+    hasItem,
+    currentWeight,
   };
 }

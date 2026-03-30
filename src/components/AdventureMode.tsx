@@ -511,12 +511,54 @@ function PartyPicker({ characters, onStart, onBack, isAdmin, unlockedNpcs }: {
   );
 }
 
+// World map — walkable path of region nodes
+const WORLD_NODES = [
+  { id: 'frostpeak', x: 22, y: 25, label: 'Frostpeak', active: false },
+  { id: 'ashara', x: 35, y: 38, label: 'Ashara Desert', active: false },
+  { id: 'starwatch', x: 50, y: 48, label: 'The Starwatch', active: false },
+  { id: 'londa', x: 65, y: 65, label: 'Londa', active: true },
+  { id: 'duskhollow', x: 78, y: 52, label: 'Duskhollow', active: false },
+  { id: 'ember', x: 85, y: 35, label: 'Ember Coast', active: false },
+];
+const WORLD_PATH = WORLD_NODES.map(n => n.id);
+const WORLD_LONDA_IDX = WORLD_NODES.findIndex(n => n.id === 'londa');
+
+// Londa regional map — linear path of nodes
+const LONDA_NODES = [
+  { id: 'village', x: 25, y: 60, label: 'The Crossroads Village', type: 'chapter' as const, chapterIdx: 0 },
+  { id: 'goblin', x: 28, y: 60, label: '', type: 'encounter' as const, chapterIdx: 1, encounterIdx: 0 },
+  { id: 'bandits', x: 31, y: 60, label: '', type: 'encounter' as const, chapterIdx: 1, encounterIdx: 1 },
+  { id: 'wolves', x: 34, y: 60, label: '', type: 'encounter' as const, chapterIdx: 1, encounterIdx: 2 },
+  { id: 'newbsberd', x: 38, y: 60, label: 'Newbsberd', type: 'destination' as const },
+  { id: 'south-road', x: 40, y: 68, label: '', type: 'travel' as const },
+  { id: 'southfort', x: 43, y: 76, label: 'Southfort', type: 'destination' as const },
+];
+const LONDA_PATH = LONDA_NODES.map(n => n.id);
+
+// Per-chapter encounter positions on local maps
+const CHAPTER_NODE_MAP: Record<number, { x: number; y: number; label: string }[]> = {
+  0: [
+    { x: 50, y: 85, label: "1" },  // A Friendly Face — bottom center
+    { x: 18, y: 70, label: "2" },  // The Lost Explorer — bottom-left shack
+    { x: 8,  y: 40, label: "3" },  // Maren's Warning — left shack
+    { x: 20, y: 12, label: "4" },  // Guards of Newbsberd — top-left shack
+    { x: 55, y: 8,  label: "5" },  // The Scout's Challenge — top-right shack
+    { x: 85, y: 35, label: "6" },  // The Elder's Wisdom — right shack
+    { x: 78, y: 68, label: "7" },  // The Village Farewell — bottom-right shack
+  ],
+  1: [
+    { x: 12, y: 70, label: "1" },  // Goblin Ambush — leaving the village
+    { x: 50, y: 30, label: "2" },  // Highwaymen's Toll — deep in the forest
+    { x: 88, y: 60, label: "3" },  // The Wolf Pack — approaching Newbsberd
+  ],
+};
+
 const INTRO_TEXT = "At the heart of a quiet crossroads village, where warm lanternlight spills across worn cobblestones and every path seems to lead somewhere important, your journey begins. Six humble homes ring the central well\u2014each belonging to a friend who has walked a different road, learned a different truth, and now waits to share what they know. Here, among creaking wood, soft laughter, and the scent of earth and fire, you will gather the pieces of what you need\u2014not just tools or directions, but perspective. For beyond this circle, the world grows wider, stranger, and far less forgiving\u2014and only by listening to those who know you best will you be ready to take your first real step into it.";
 
 export function AdventureMode({ characters, onExit, onStatsRefresh }: Props) {
   const { address } = useAccount();
   const { data: walletClient } = useWalletClient();
-  const { state, loaded, introSeen, chapter, encounter, chapters, markIntroSeen, startChapter, startEncounter, startBattle, winBattle, loseBattle, nextEncounter, backToMap, resetAdventure, skipLevel, skipEncounter, isOnCooldown, cooldownRemaining, encounterOnCooldown, encounterCooldownRemaining } = useAdventure(address);
+  const { state, loaded, introSeen, chapter, encounter, chapters, markIntroSeen, startChapter, startEncounter, startBattle, winBattle, loseBattle, nextEncounter, backToMap, resetAdventure, skipLevel, skipEncounter, isOnCooldown, cooldownRemaining, encounterOnCooldown, encounterCooldownRemaining, setMapPosition, addItem, removeItem, hasItem, currentWeight } = useAdventure(address);
   const [, forceUpdate] = useState(0);
   // Tick timer every second for live countdown
   useEffect(() => {
@@ -527,6 +569,7 @@ export function AdventureMode({ characters, onExit, onStatsRefresh }: Props) {
   const [party, setParty] = useState<NftCharacter[]>([]);
   const [partyGrid, setPartyGrid] = useState<Map<string, number>>(new Map());
   const [pickingParty, setPickingParty] = useState(false);
+  const [inventoryOpen, setInventoryOpen] = useState(false);
   const [lpStatus, setLpStatus] = useState<string | null>(null);
   const [mapOpen, setMapOpen] = useState(false);
   const [chapterSelect, setChapterSelect] = useState<number | null>(null);
@@ -539,6 +582,19 @@ export function AdventureMode({ characters, onExit, onStatsRefresh }: Props) {
   const [regionPos, setRegionPos] = useState({ x: 0, y: 0 });
   const [regionDragging, setRegionDragging] = useState(false);
   const regionDragStart = useRef({ x: 0, y: 0, mx: 0, my: 0 });
+
+  // Center world map on hero's starting node (Londa) on initial load
+  const worldCentered = useRef(false);
+  useEffect(() => {
+    if (worldCentered.current || typeof window === 'undefined') return;
+    worldCentered.current = true;
+    const node = WORLD_NODES[WORLD_LONDA_IDX];
+    if (node) {
+      const vmin = Math.min(window.innerWidth, window.innerHeight);
+      const mapSize = vmin * 0.9;
+      setMapPos({ x: -(node.x - 50) * mapSize / 100, y: -(node.y - 50) * mapSize / 100 });
+    }
+  }, []);
 
   function handleMapWheel(e: React.WheelEvent) {
     e.preventDefault();
@@ -575,6 +631,202 @@ export function AdventureMode({ characters, onExit, onStatsRefresh }: Props) {
     });
   }
   function handleRegionPointerUp() { setRegionDragging(false); }
+
+  // Center map on a node (for auto-panning when opening a region)
+  const mapContainerRef = useRef<HTMLDivElement>(null);
+  function centerOnNode(nodes: { x: number; y: number }[], nodeId: string | number, setter: (pos: { x: number; y: number }) => void) {
+    const node = typeof nodeId === 'number' ? nodes[nodeId] : nodes.find((n: any) => n.id === nodeId);
+    if (!node) return;
+    // Map is 90vmin. Node at x% means offset from center = (x - 50)% * mapWidth.
+    const vmin = Math.min(window.innerWidth, window.innerHeight);
+    const mapSize = vmin * 0.9;
+    setter({ x: -(node.x - 50) * mapSize / 100, y: -(node.y - 50) * mapSize / 100 });
+  }
+
+  // Open Londa map centered on party position
+  function openLondaCentered() {
+    setRegionMap("londa");
+    setRegionZoom(1);
+    const node = LONDA_NODES.find(n => n.id === partyPosRef.current);
+    if (node) {
+      const vmin = Math.min(window.innerWidth, window.innerHeight);
+      const mapSize = vmin * 0.9;
+      setRegionPos({ x: -(node.x - 50) * mapSize / 100, y: -(node.y - 50) * mapSize / 100 });
+    } else {
+      setRegionPos({ x: 0, y: 0 });
+    }
+  }
+
+  // World map node tracking
+  const [worldNodeIdx, setWorldNodeIdx] = useState(WORLD_LONDA_IDX);
+  const worldNodeIdxRef = useRef(worldNodeIdx);
+  worldNodeIdxRef.current = worldNodeIdx;
+
+  // Village local map node tracking
+  const [villageNodeIdx, setVillageNodeIdx] = useState(0);
+  const villageNodeIdxRef = useRef(villageNodeIdx);
+  villageNodeIdxRef.current = villageNodeIdx;
+
+  // Ref to state for reading inside key handler
+  const stateRef = useRef(state);
+  stateRef.current = state;
+
+  // Londa map movement
+  const partyPos = state.mapPosition ?? "village";
+  const partyPosRef = useRef(partyPos);
+  partyPosRef.current = partyPos;
+
+  // Reusable party token element
+  const partyToken = (leftPct: number, topPct: number) => (
+    <div className="absolute pointer-events-none" style={{
+      left: `${leftPct}%`, top: `${topPct}%`,
+      transform: 'translate(-50%, -50%)',
+      transition: 'left 0.4s ease-out, top 0.4s ease-out',
+      zIndex: 10,
+    }}>
+      <div className="flex flex-col items-center">
+        <span style={{ fontSize: '1rem', filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.8))' }}>⚔️</span>
+        <span className="font-black uppercase" style={{
+          fontSize: '0.35rem', color: '#f0d070',
+          textShadow: '0 1px 4px rgba(0,0,0,0.9)',
+          background: 'rgba(10,6,8,0.8)', padding: '1px 4px', borderRadius: 4,
+          border: '1px solid rgba(201,168,76,0.4)',
+        }}>
+          Your Party
+        </span>
+      </div>
+    </div>
+  );
+
+  function getAdjacentNodes(nodeId: string): string[] {
+    const idx = LONDA_PATH.indexOf(nodeId);
+    if (idx === -1) return [];
+    const adj: string[] = [];
+    if (idx > 0) adj.push(LONDA_PATH[idx - 1]);
+    if (idx < LONDA_PATH.length - 1) adj.push(LONDA_PATH[idx + 1]);
+    return adj;
+  }
+
+  function moveToNode(targetId: string) {
+    const adj = getAdjacentNodes(partyPosRef.current);
+    if (!adj.includes(targetId)) return;
+    setMapPosition(targetId);
+    const node = LONDA_NODES.find(n => n.id === targetId);
+    if (!node) return;
+    // Landing on uncleared encounter → start fight
+    if (node.type === 'encounter' && node.chapterIdx !== undefined && node.encounterIdx !== undefined) {
+      const ch = chapters[node.chapterIdx];
+      if (ch && !encounterOnCooldown(ch.id, node.encounterIdx)) {
+        startEncounter(node.chapterIdx, node.encounterIdx);
+        setRegionMap(null);
+        setPickingParty(true);
+      }
+    }
+  }
+
+  // Arrow keys follow paths, transitioning between map layers when at an edge
+  const chapterSelectRef = useRef(chapterSelect);
+  chapterSelectRef.current = chapterSelect;
+  const regionMapRef = useRef(regionMap);
+  regionMapRef.current = regionMap;
+
+  useEffect(() => {
+    function handleKey(e: KeyboardEvent) {
+      const isRight = e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D';
+      const isLeft = e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A';
+      const isEnter = e.key === 'Enter' || e.key === ' ';
+      if (!isRight && !isLeft && !isEnter) return;
+      e.preventDefault();
+
+      // === LAYER 3: Village local map — move along encounter nodes ===
+      if (chapterSelectRef.current !== null) {
+        const chIdx = chapterSelectRef.current;
+        const ch = chapters[chIdx];
+        const nodes = CHAPTER_NODE_MAP[chIdx] ?? [];
+        if (!ch) return;
+        const maxNode = Math.min(nodes.length, ch.encounters.length) - 1;
+
+        if (isRight && villageNodeIdxRef.current < maxNode) {
+          setVillageNodeIdx(villageNodeIdxRef.current + 1);
+        } else if (isLeft && villageNodeIdxRef.current > 0) {
+          setVillageNodeIdx(villageNodeIdxRef.current - 1);
+        } else if (isLeft && villageNodeIdxRef.current === 0) {
+          setChapterSelect(null); // back to Londa
+        }
+
+        if (isEnter) {
+          const nodeIdx = villageNodeIdxRef.current;
+          const s = stateRef.current;
+          const encCooldowns = s.encounterCooldowns ?? {};
+          const beaten = ch.encounters.map((_, i) => !!encCooldowns[`${ch.id}-${i}`]);
+          const highestBeaten = beaten.lastIndexOf(true);
+          const locked = nodeIdx > highestBeaten + 1;
+          const lastTime = encCooldowns[`${ch.id}-${nodeIdx}`];
+          const cdDuration = ch.cooldownMs ?? 20 * 60 * 1000;
+          const onCd = lastTime ? Date.now() - lastTime < cdDuration : false;
+          if (!locked && !onCd) {
+            startEncounter(chIdx, nodeIdx);
+            setChapterSelect(null);
+            setPickingParty(true);
+          }
+        }
+        return;
+      }
+
+      // === LAYER 2: Londa regional map — follow LONDA_PATH ===
+      if (regionMapRef.current === "londa") {
+        const idx = LONDA_PATH.indexOf(partyPosRef.current);
+        if (idx === -1) return;
+
+        if (isEnter) {
+          const node = LONDA_NODES[idx];
+          if (node.type === 'chapter' && node.chapterIdx !== undefined) {
+            // Open village local map, start at first unbeaten encounter
+            const ch = chapters[node.chapterIdx];
+            if (ch) {
+              const encCooldowns = stateRef.current.encounterCooldowns ?? {};
+              const beaten = ch.encounters.map((_, i) => !!encCooldowns[`${ch.id}-${i}`]);
+              const nextIdx = beaten.indexOf(false);
+              const nodeCount = (CHAPTER_NODE_MAP[node.chapterIdx] ?? []).length;
+              const maxIdx = Math.min(nodeCount, ch.encounters.length) - 1;
+              setVillageNodeIdx(nextIdx === -1 ? 0 : Math.min(nextIdx, maxIdx));
+            }
+            setChapterSelect(node.chapterIdx);
+          } else if (node.type === 'encounter' && node.chapterIdx !== undefined && node.encounterIdx !== undefined) {
+            const ch = chapters[node.chapterIdx];
+            if (ch && !encounterOnCooldown(ch.id, node.encounterIdx)) {
+              startEncounter(node.chapterIdx, node.encounterIdx);
+              setPickingParty(true);
+            }
+          }
+          return;
+        }
+
+        if (isRight && idx < LONDA_PATH.length - 1) moveToNode(LONDA_PATH[idx + 1]);
+        else if (isLeft && idx > 0) moveToNode(LONDA_PATH[idx - 1]);
+        else if (isLeft && idx === 0) { setRegionMap(null); setWorldNodeIdx(WORLD_LONDA_IDX); }
+        return;
+      }
+
+      // === LAYER 1: World map — follow WORLD_PATH ===
+      if (state.phase === "map") {
+        if (isRight && worldNodeIdxRef.current < WORLD_PATH.length - 1) {
+          setWorldNodeIdx(worldNodeIdxRef.current + 1);
+        } else if (isLeft && worldNodeIdxRef.current > 0) {
+          setWorldNodeIdx(worldNodeIdxRef.current - 1);
+        }
+        if (isEnter) {
+          const node = WORLD_NODES[worldNodeIdxRef.current];
+          if (node?.active && node.id === 'londa') {
+            openLondaCentered();
+          }
+        }
+      }
+    }
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.phase]);
 
   // Send LP reward to each party member's NFT via faucet (player pays gas only)
   async function sendLpRewards() {
@@ -624,6 +876,82 @@ export function AdventureMode({ characters, onExit, onStatsRefresh }: Props) {
     </button>
   );
 
+  const inventory = state.inventory ?? [];
+  const weight = currentWeight();
+  const capacity = state.carryCapacity ?? 50;
+
+  const inventoryButton = (
+    <button onClick={() => setInventoryOpen(o => !o)}
+      className="fixed top-20 right-4 z-50 px-3 py-2 rounded-lg text-sm font-black"
+      style={{ background: 'rgba(10,6,8,0.95)', color: '#f0d070', border: '1px solid rgba(201,168,76,0.5)', boxShadow: '0 0 15px rgba(0,0,0,0.5)' }}>
+      <span style={{ fontSize: '1rem' }}>🎒</span>
+      {inventory.length > 0 && (
+        <span className="absolute -top-1 -right-1 rounded-full text-xs font-black px-1"
+          style={{ background: '#f0d070', color: '#0a0608', fontSize: '0.5rem', minWidth: 14, textAlign: 'center' }}>
+          {inventory.reduce((s, i) => s + i.quantity, 0)}
+        </span>
+      )}
+    </button>
+  );
+
+  const inventoryPanel = inventoryOpen && (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.7)' }}
+      onClick={() => setInventoryOpen(false)}>
+      <div className="rounded-xl p-5 max-w-sm w-full mx-4" onClick={e => e.stopPropagation()}
+        style={{ background: 'rgba(10,6,8,0.98)', border: '1px solid rgba(201,168,76,0.4)', boxShadow: '0 0 40px rgba(0,0,0,0.8)' }}>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-black uppercase tracking-widest" style={{ color: '#f0d070', fontFamily: "'Cinzel Decorative', 'Cinzel', serif", fontSize: '0.85rem' }}>
+            Party Inventory
+          </h3>
+          <button onClick={() => setInventoryOpen(false)} className="text-sm font-bold" style={{ color: 'rgba(201,168,76,0.5)' }}>✕</button>
+        </div>
+
+        {/* Weight bar */}
+        <div className="mb-4">
+          <div className="flex justify-between text-xs mb-1" style={{ color: 'rgba(232,213,176,0.6)' }}>
+            <span>Weight</span>
+            <span style={{ color: weight > capacity * 0.8 ? '#f87171' : 'rgba(232,213,176,0.6)' }}>
+              {weight.toFixed(0)} / {capacity}
+            </span>
+          </div>
+          <div className="rounded-full overflow-hidden" style={{ height: 6, background: 'rgba(255,255,255,0.08)' }}>
+            <div className="h-full rounded-full transition-all duration-300"
+              style={{ width: `${Math.min(100, (weight / capacity) * 100)}%`, background: weight > capacity * 0.8 ? '#dc2626' : '#c9a84c' }} />
+          </div>
+        </div>
+
+        {/* Items */}
+        {inventory.length === 0 ? (
+          <p className="text-center py-6 text-xs" style={{ color: 'rgba(150,150,150,0.5)' }}>
+            Your pack is empty. Visit vendors or complete encounters to find items.
+          </p>
+        ) : (
+          <div className="flex flex-col gap-2 max-h-60 overflow-y-auto">
+            {inventory.map(item => (
+              <div key={item.id} className="flex items-center gap-3 px-3 py-2 rounded-lg"
+                style={{ background: 'rgba(201,168,76,0.06)', border: '1px solid rgba(201,168,76,0.12)' }}>
+                <span style={{ fontSize: '1.2rem' }}>{item.icon}</span>
+                <div className="flex-1 min-w-0">
+                  <p className="font-bold text-xs truncate" style={{ color: 'rgba(232,213,176,0.9)' }}>{item.name}</p>
+                  <p className="text-xs" style={{ color: 'rgba(150,150,150,0.5)' }}>
+                    {item.category} · {item.weight}/ea
+                  </p>
+                </div>
+                <span className="font-black text-sm" style={{ color: '#f0d070' }}>×{item.quantity}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Totals */}
+        <div className="mt-4 pt-3 flex justify-between text-xs" style={{ borderTop: '1px solid rgba(201,168,76,0.15)', color: 'rgba(232,213,176,0.5)' }}>
+          <span>{inventory.reduce((s, i) => s + i.quantity, 0)} items</span>
+          <span>Capacity: {capacity - weight > 0 ? (capacity - weight).toFixed(0) : 0} remaining</span>
+        </div>
+      </div>
+    </div>
+  );
+
   // Loading cloud save
   if (!loaded) {
     return (
@@ -656,17 +984,8 @@ export function AdventureMode({ characters, onExit, onStatsRefresh }: Props) {
     );
   }
 
-  // Chapter select — show encounters as nodes on the local village map
-  // Encounter positions — clockwise circle stopping at each shack
-  const encounterNodes = [
-    { x: 50, y: 85, label: "1" },  // A Friendly Face — bottom center
-    { x: 18, y: 70, label: "2" },  // The Lost Explorer — bottom-left shack
-    { x: 8,  y: 40, label: "3" },  // Maren's Warning — left shack
-    { x: 20, y: 12, label: "4" },  // The Blacksmith's Guard — top-left shack
-    { x: 55, y: 8,  label: "5" },  // The Scout's Challenge — top-right shack
-    { x: 85, y: 35, label: "6" },  // The Elder's Wisdom — right shack
-    { x: 78, y: 68, label: "7" },  // The Village Farewell — bottom-right shack
-  ];
+  // Chapter select — show encounters as nodes on the local map
+  const encounterNodes = CHAPTER_NODE_MAP[chapterSelect ?? 0] ?? CHAPTER_NODE_MAP[0];
 
   if (chapterSelect !== null) {
     const ch = chapters[chapterSelect];
@@ -678,11 +997,11 @@ export function AdventureMode({ characters, onExit, onStatsRefresh }: Props) {
 
       return (
         <div className="fixed inset-0" style={{ background: '#0a0608' }}>
-          {floatingBack}
+          {floatingBack}{inventoryButton}{inventoryPanel}
           <button onClick={() => setChapterSelect(null)}
             className="fixed top-32 left-4 z-50 px-3 py-1 rounded-lg text-xs font-bold"
             style={{ background: 'rgba(10,6,8,0.95)', color: 'rgba(201,168,76,0.7)', border: '1px solid rgba(201,168,76,0.3)' }}>
-            ← Map
+            ← {regionMap ? 'Londa' : 'Map'}
           </button>
 
           {/* Londa map with encounter nodes */}
@@ -698,19 +1017,31 @@ export function AdventureMode({ characters, onExit, onStatsRefresh }: Props) {
               transition: regionDragging ? 'none' : 'transform 0.1s ease-out',
               width: '90vmin',
             }}>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/adventure-level1.webp" alt="The Crossroads Village" draggable={false} style={{ width: '100%', display: 'block' }} />
+              {ch.image ? (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img src={ch.image} alt={ch.title} draggable={false} style={{ width: '100%', display: 'block' }} />
+              ) : (
+                <div style={{ width: '100%', aspectRatio: '1', background: 'linear-gradient(135deg, #1a1520 0%, #12101a 40%, #0d0a10 100%)' }} />
+              )}
 
               {/* Path lines between nodes */}
               <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none" style={{ pointerEvents: 'none' }}>
+                {!ch.image && encounterNodes.map((node, i) => {
+                  if (i >= ch.encounters.length - 1 || i >= encounterNodes.length - 1) return null;
+                  const next = encounterNodes[i + 1];
+                  return (
+                    <line key={`road-${i}`} x1={node.x} y1={node.y} x2={next.x} y2={next.y}
+                      stroke="rgba(139,119,79,0.15)" strokeWidth="3" strokeLinecap="round" />
+                  );
+                })}
                 {encounterNodes.map((node, i) => {
                   if (i >= ch.encounters.length - 1 || i >= encounterNodes.length - 1) return null;
                   const next = encounterNodes[i + 1];
                   const beaten = beatenEncounters[i];
                   return (
                     <line key={i} x1={node.x} y1={node.y} x2={next.x} y2={next.y}
-                      stroke={beaten ? 'rgba(74,222,128,0.6)' : 'rgba(201,168,76,0.2)'}
-                      strokeWidth="0.4" strokeDasharray={beaten ? 'none' : '1 0.5'} />
+                      stroke={beaten ? 'rgba(74,222,128,0.6)' : 'rgba(201,168,76,0.3)'}
+                      strokeWidth={ch.image ? "0.4" : "1"} strokeDasharray={beaten ? 'none' : '1 0.5'} />
                   );
                 })}
               </svg>
@@ -763,6 +1094,12 @@ export function AdventureMode({ characters, onExit, onStatsRefresh }: Props) {
                   </div>
                 );
               })}
+
+              {/* Party token — follows villageNodeIdx */}
+              {(() => {
+                const node = encounterNodes[villageNodeIdx];
+                return node ? partyToken(node.x, node.y - 4) : null;
+              })()}
             </div>
           </div>
 
@@ -792,7 +1129,7 @@ export function AdventureMode({ characters, onExit, onStatsRefresh }: Props) {
   if (state.phase === "map") {
     return (
       <div className="fixed inset-0" style={{ background: '#0a0608' }}>
-        {floatingBack}
+        {floatingBack}{inventoryButton}{inventoryPanel}
 
         {/* Zoomable world map */}
         <div className="absolute inset-0 overflow-hidden touch-none"
@@ -807,37 +1144,90 @@ export function AdventureMode({ characters, onExit, onStatsRefresh }: Props) {
             transform: `translate(calc(-50% + ${mapPos.x}px), calc(-50% + ${mapPos.y}px)) scale(${mapZoom})`,
             transition: dragging ? 'none' : 'transform 0.1s ease-out',
             width: '90vmin',
+            aspectRatio: '1 / 1',
+            backgroundImage: 'url(/world-map.jpg)',
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
           }}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/world-map.jpg" alt="Tasern" draggable={false}
-              style={{ width: '100%', display: 'block' }} />
 
-            {/* Meta marker — opens Londa regional map */}
-            <button onClick={(e) => { e.stopPropagation(); setRegionMap("londa"); setRegionZoom(1); setRegionPos({ x: 0, y: 0 }); }}
-              className="absolute animate-pulse"
-              style={{
-                left: '65%', top: '65%',
-                transform: 'translate(-50%, -50%)',
-                width: 24, height: 24,
-                borderRadius: '50%',
-                background: 'rgba(201,168,76,0.9)',
-                border: '3px solid #f0d070',
-                boxShadow: '0 0 15px rgba(201,168,76,0.6), 0 0 30px rgba(201,168,76,0.3)',
-                cursor: 'pointer',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: '0.4rem', fontWeight: 900, color: '#0a0608',
-              }}>
-              1
-            </button>
-            <span className="absolute font-black uppercase pointer-events-none"
-              style={{
-                left: '65%', top: '69%',
-                transform: 'translateX(-50%)',
-                fontSize: '0.5rem', color: '#f0d070',
-                textShadow: '0 1px 4px rgba(0,0,0,0.9)',
-              }}>
-              Meta
-            </span>
+            {/* Road path connecting world nodes */}
+            <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none" style={{ pointerEvents: 'none' }}>
+              {WORLD_NODES.map((node, i) => {
+                if (i >= WORLD_NODES.length - 1) return null;
+                const next = WORLD_NODES[i + 1];
+                return <line key={i} x1={node.x} y1={node.y} x2={next.x} y2={next.y}
+                  stroke="rgba(139,119,79,0.3)" strokeWidth="0.5" strokeDasharray="1 0.5" strokeLinecap="round" />;
+              })}
+            </svg>
+
+            {/* All world nodes */}
+            {WORLD_NODES.map((node, i) => {
+              const isHere = worldNodeIdx === i;
+              const isAdj = Math.abs(worldNodeIdx - i) === 1;
+              const bg = node.active ? 'rgba(201,168,76,0.9)' : 'rgba(80,80,80,0.6)';
+              const border = node.active ? '#f0d070' : 'rgba(120,120,120,0.5)';
+              const textColor = node.active ? '#f0d070' : 'rgba(150,150,150,0.4)';
+              const adjGlow = isAdj ? '0 0 14px rgba(201,168,76,0.5)' : '';
+
+              return (
+                <div key={node.id}>
+                  <button onClick={(e) => {
+                      e.stopPropagation();
+                      if (isHere && node.active && node.id === 'londa') {
+                        openLondaCentered();
+                      } else if (isAdj) {
+                        setWorldNodeIdx(i);
+                      }
+                    }}
+                    className={`absolute ${node.active && !isHere ? 'animate-pulse' : ''}`}
+                    style={{
+                      left: `${node.x}%`, top: `${node.y}%`,
+                      transform: 'translate(-50%, -50%)',
+                      width: node.active ? 24 : 20, height: node.active ? 24 : 20,
+                      borderRadius: '50%',
+                      background: bg,
+                      border: `${isAdj ? '3px' : '2px'} solid ${isAdj ? '#f0d070' : border}`,
+                      boxShadow: node.active ? '0 0 15px rgba(201,168,76,0.6), 0 0 30px rgba(201,168,76,0.3)' : adjGlow,
+                      cursor: isAdj || (isHere && node.active) ? 'pointer' : 'default',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: '0.35rem', fontWeight: 900,
+                      color: node.active ? '#0a0608' : 'rgba(150,150,150,0.5)',
+                      transition: 'box-shadow 0.3s, border 0.3s',
+                    }}>
+                    {node.active ? '1' : '?'}
+                  </button>
+                  <span className="absolute font-bold pointer-events-none"
+                    style={{
+                      left: `${node.x}%`, top: `${node.y + 4}%`,
+                      transform: 'translateX(-50%)',
+                      fontSize: node.active ? '0.5rem' : '0.4rem',
+                      fontWeight: node.active ? 900 : 700,
+                      color: textColor,
+                      textShadow: '0 1px 4px rgba(0,0,0,0.9)',
+                      whiteSpace: 'nowrap',
+                    }}>
+                    {node.label}
+                  </span>
+                  {!node.active && (
+                    <span className="absolute pointer-events-none"
+                      style={{
+                        left: `${node.x}%`, top: `${node.y + 7}%`,
+                        transform: 'translateX(-50%)',
+                        fontSize: '0.3rem', color: 'rgba(100,100,100,0.4)',
+                        whiteSpace: 'nowrap',
+                      }}>
+                      Coming Soon
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+
+            {/* Party token — follows worldNodeIdx */}
+            {(() => {
+              const node = WORLD_NODES[worldNodeIdx];
+              return node ? partyToken(node.x, node.y - 4) : null;
+            })()}
           </div>
         </div>
 
@@ -893,63 +1283,132 @@ export function AdventureMode({ characters, onExit, onStatsRefresh }: Props) {
                 transform: `translate(calc(-50% + ${regionPos.x}px), calc(-50% + ${regionPos.y}px)) scale(${regionZoom})`,
                 transition: regionDragging ? 'none' : 'transform 0.1s ease-out',
                 width: '90vmin',
+                aspectRatio: '1 / 1',
+                backgroundImage: 'url(/londa-map.jpg)',
+                backgroundSize: 'cover',
+                backgroundPosition: 'center',
               }}>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/londa-map.jpg" alt="Londa" draggable={false}
-                  style={{ width: '100%', display: 'block' }} />
 
-                {/* World 1 — opens local village map */}
-                <button onClick={(e) => { e.stopPropagation(); setRegionMap(null); setChapterSelect(0); setRegionZoom(1); setRegionPos({ x: 0, y: 0 }); }}
-                  className="absolute animate-pulse"
-                  style={{
-                    left: '25%', top: '60%',
-                    transform: 'translate(-50%, -50%)',
-                    width: 22, height: 22,
-                    borderRadius: '50%',
-                    background: 'rgba(201,168,76,0.9)',
-                    border: '3px solid #f0d070',
-                    boxShadow: '0 0 12px rgba(201,168,76,0.6), 0 0 25px rgba(201,168,76,0.3)',
-                    cursor: 'pointer',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: '0.4rem', fontWeight: 900, color: '#0a0608',
-                  }}>
-                  1
-                </button>
-                <span className="absolute font-black uppercase pointer-events-none"
-                  style={{
-                    left: '25%', top: '64%',
-                    transform: 'translateX(-50%)',
-                    fontSize: '0.45rem', color: '#f0d070',
-                    textShadow: '0 1px 4px rgba(0,0,0,0.9)',
-                  }}>
-                  The Crossroads Village
-                </span>
+                {/* Road path connecting all nodes */}
+                <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none" style={{ pointerEvents: 'none' }}>
+                  {LONDA_NODES.map((node, i) => {
+                    if (i >= LONDA_NODES.length - 1) return null;
+                    const next = LONDA_NODES[i + 1];
+                    return <line key={i} x1={node.x} y1={node.y} x2={next.x} y2={next.y}
+                      stroke="rgba(139,119,79,0.4)" strokeWidth="0.5" strokeDasharray="1 0.5" strokeLinecap="round" />;
+                  })}
+                </svg>
 
-                {/* World 1-2 — castle east of village (coming soon) */}
-                <button onClick={(e) => { e.stopPropagation(); /* TODO: open castle local map when image ready */ }}
-                  className="absolute"
-                  style={{
-                    left: '35%', top: '60%',
-                    transform: 'translate(-50%, -50%)',
-                    width: 22, height: 22,
-                    borderRadius: '50%',
-                    background: 'rgba(100,100,100,0.6)',
-                    border: '3px solid rgba(150,150,150,0.5)',
-                    cursor: 'not-allowed',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: '0.4rem', fontWeight: 900, color: 'rgba(150,150,150,0.5)',
-                  }}>
-                  2
-                </button>
-                <span className="absolute font-black uppercase pointer-events-none"
-                  style={{
-                    left: '35%', top: '64%',
-                    transform: 'translateX(-50%)',
-                    fontSize: '0.45rem', color: 'rgba(150,150,150,0.4)',
-                    textShadow: '0 1px 4px rgba(0,0,0,0.9)',
-                  }}>
-                  Newbsberd
-                </span>
+                {/* All map nodes */}
+                {LONDA_NODES.map((node) => {
+                  const isHere = partyPos === node.id;
+                  const adjacent = getAdjacentNodes(partyPos);
+                  const isAdj = adjacent.includes(node.id);
+                  const roadCh = chapters[1];
+
+                  // Node appearance by type
+                  let bg = 'rgba(100,100,100,0.6)';
+                  let border = 'rgba(150,150,150,0.5)';
+                  let textColor = 'rgba(150,150,150,0.4)';
+                  let icon = '';
+                  let subtitle = '';
+                  let pulse = false;
+                  let size = 20;
+
+                  if (node.type === 'chapter') {
+                    bg = 'rgba(201,168,76,0.9)'; border = '#f0d070'; textColor = '#f0d070';
+                    icon = '1'; size = 22;
+                  } else if (node.type === 'encounter' && roadCh) {
+                    const cleared = encounterOnCooldown(roadCh.id, node.encounterIdx!);
+                    const cdMs = encounterCooldownRemaining(roadCh.id, node.encounterIdx!);
+                    const cdD = Math.floor(cdMs / 86400000);
+                    const cdH = Math.floor((cdMs % 86400000) / 3600000);
+                    if (cleared) {
+                      bg = 'rgba(34,197,94,0.8)'; border = '#4ade80'; textColor = 'rgba(74,222,128,0.7)';
+                      icon = '✓'; subtitle = `Resets ${cdD}d ${cdH}h`;
+                    } else {
+                      bg = 'rgba(220,38,38,0.8)'; border = '#f87171'; textColor = 'rgba(248,113,113,0.8)';
+                      icon = '⚔'; pulse = !isHere;
+                    }
+                    size = 12;
+                  } else if (node.type === 'travel') {
+                    bg = 'rgba(80,80,80,0.5)'; border = 'rgba(120,120,120,0.4)'; textColor = 'rgba(120,120,120,0.4)';
+                    icon = '·'; size = 10;
+                  } else {
+                    // destination (Newbsberd, Southfort, etc.)
+                    bg = 'rgba(100,100,100,0.6)'; border = 'rgba(150,150,150,0.5)'; textColor = 'rgba(150,150,150,0.4)';
+                    icon = '?'; size = 20;
+                  }
+
+                  // Adjacent nodes glow to invite movement
+                  const adjGlow = isAdj ? '0 0 14px rgba(201,168,76,0.7)' : '';
+
+                  return (
+                    <div key={node.id}>
+                      <button onClick={(e) => {
+                          e.stopPropagation();
+                          if (isHere) {
+                            // Already here — if chapter node, open its local map (keep regionMap so back returns here)
+                            if (node.type === 'chapter' && node.chapterIdx !== undefined) {
+                              setChapterSelect(node.chapterIdx);
+                              setRegionZoom(1); setRegionPos({ x: 0, y: 0 });
+                            }
+                            return;
+                          }
+                          if (isAdj) moveToNode(node.id);
+                        }}
+                        className={`absolute ${pulse ? 'animate-pulse' : ''}`}
+                        style={{
+                          left: `${node.x}%`, top: `${node.y}%`,
+                          transform: 'translate(-50%, -50%)',
+                          width: size, height: size,
+                          borderRadius: '50%',
+                          background: bg,
+                          border: `${isAdj ? '3px' : '2px'} solid ${isAdj ? '#f0d070' : border}`,
+                          boxShadow: adjGlow,
+                          cursor: isAdj || (isHere && node.type === 'chapter') ? 'pointer' : 'default',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          fontSize: '0.35rem', fontWeight: 900,
+                          color: node.type === 'chapter' ? '#0a0608' : '#fff',
+                          transition: 'box-shadow 0.3s, border 0.3s',
+                        }}>
+                        {icon}
+                      </button>
+                      {node.label && (
+                        <span className="absolute font-bold pointer-events-none"
+                          style={{
+                            left: `${node.x}%`, top: `${node.y + (node.type === 'chapter' || node.type === 'destination' ? 4 : 3)}%`,
+                            transform: 'translateX(-50%)',
+                            fontSize: node.type === 'chapter' || node.type === 'destination' ? '0.45rem' : '0.35rem',
+                            fontWeight: node.type === 'chapter' || node.type === 'destination' ? 900 : 700,
+                            color: textColor,
+                            textShadow: '0 1px 4px rgba(0,0,0,0.9)',
+                            whiteSpace: 'nowrap',
+                          }}>
+                          {node.label}
+                        </span>
+                      )}
+                      {subtitle && (
+                        <span className="absolute pointer-events-none"
+                          style={{
+                            left: `${node.x}%`, top: `${node.y + 5}%`,
+                            transform: 'translateX(-50%)',
+                            fontSize: '0.3rem', color: 'rgba(150,150,150,0.5)',
+                            whiteSpace: 'nowrap',
+                          }}>
+                          {subtitle}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+
+                {/* Party token — shows current position */}
+                {(() => {
+                  const partyNode = LONDA_NODES.find(n => n.id === partyPos);
+                  if (!partyNode) return null;
+                  return partyToken(partyNode.x, partyNode.y - 4);
+                })()}
               </div>
             </div>
 
@@ -1140,9 +1599,7 @@ export function AdventureMode({ characters, onExit, onStatsRefresh }: Props) {
             }
           }
           // LP drip to all heroes — player pays gas, gets LP
-          if (state.currentChapter === 0) {
-            sendLpRewards();
-          }
+          sendLpRewards();
           winBattle();
         }}
         onLose={loseBattle}

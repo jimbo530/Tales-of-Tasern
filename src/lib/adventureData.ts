@@ -28,6 +28,7 @@ export type Chapter = {
   image?: string; // background image path
   encounters: Encounter[];
   completionBonus: number; // MfT bonus for finishing the chapter
+  cooldownMs?: number; // per-encounter cooldown override (default 20 min)
 };
 
 export const ADVENTURE_CHAPTERS: Chapter[] = [
@@ -123,32 +124,52 @@ export const ADVENTURE_CHAPTERS: Chapter[] = [
   },
   {
     id: "lv2",
-    title: "The Road to Kardov's Gate",
-    intro: "The grateful villagers point you toward Kardov's Gate, where dark forces gather. The forest road is treacherous and grows darker with every mile.",
+    title: "The Road to Newbsberd",
+    intro: "The village gate closes behind you with a heavy thud. Ahead, the east road stretches through dense forest — a narrow dirt track worn by merchant caravans and wandering souls. The trees grow taller and closer with every mile, their canopy blotting out the sky. Somewhere at the end of this road lies Newbsberd, but between here and there, the wilds have teeth.",
     encounters: [
       {
         name: "Goblin Ambush",
-        description: "A ragged band of goblin warriors leaps from the undergrowth. They've been emboldened by the growing darkness.",
+        description: "You haven't been walking an hour when a shrill whistle cuts through the trees. Green-skinned figures drop from the branches and scramble up from ditches on both sides of the road. Goblins — a raiding party, armed with crude spears and stolen daggers. Their leader, barely taller than the others, jabs a crooked finger at you and shrieks a command. They fan out to surround you, quick and vicious. There's no negotiating with hunger like theirs.",
         aiDeckBias: "aggressive",
         aiStrength: 0.6,
-        mftReward: 1000,
+        mftReward: 800,
+        npcAddresses: [
+          "0x99b772412C0D6E0fB31f227eCFf4E92B98379Fa8", // Goblin
+          "0x99b772412C0D6E0fB31f227eCFf4E92B98379Fa8", // Goblin
+          "0x99b772412C0D6E0fB31f227eCFf4E92B98379Fa8", // Goblin
+          "0x99b772412C0D6E0fB31f227eCFf4E92B98379Fa8", // Goblin
+          "0x99b772412C0D6E0fB31f227eCFf4E92B98379Fa8", // Goblin
+          "0x99b772412C0D6E0fB31f227eCFf4E92B98379Fa8", // Goblin
+        ],
       },
       {
-        name: "The Troll Bridge",
-        description: "A massive stone bridge spans a raging river. Beneath it, a troll demands payment — or blood.",
-        aiDeckBias: "defensive",
+        name: "Highwaymen's Toll",
+        description: "A fallen tree blocks the road — too cleanly cut to be natural. Before you can turn back, figures step out from the tree line on both sides. Bandits. Their leader, a broad-shouldered woman in patched leather armor, plants her sword in the dirt and leans on the pommel. \"Road tax,\" she says flatly. \"Everything you've got, and we let you walk. Or...\" She draws the blade free and the others raise their weapons. The toll isn't optional.",
+        aiDeckBias: "balanced",
         aiStrength: 0.7,
-        mftReward: 1500,
+        mftReward: 1000,
+        // npcAddresses: [], // TODO: add bandit NFT addresses once minted
       },
       {
-        name: "Wolves of the Darkwood",
-        description: "As night falls, glowing eyes surround your camp. A pack of shadow wolves attacks from all sides.",
+        name: "The Wolf Pack",
+        description: "Dusk falls fast under the canopy. You smell them before you see them — wet fur and old blood. The first wolf appears on the road ahead, head low, yellow eyes fixed on you. Then another emerges from the brush to your left. And another to your right. The pack has been tracking you for miles, waiting for the light to fade. The alpha lets out a low growl that vibrates in your chest. They don't charge — not yet. They circle, testing, probing for weakness. When they come, they'll come all at once.",
         aiDeckBias: "aggressive",
         aiStrength: 0.8,
-        mftReward: 2000,
+        mftReward: 1200,
+        npcAddresses: [
+          "0xaF92bc25a44bf43eC4100cAd6eA3620523C7DAce", // Wolf
+          "0xaF92bc25a44bf43eC4100cAd6eA3620523C7DAce", // Wolf
+          "0xaF92bc25a44bf43eC4100cAd6eA3620523C7DAce", // Wolf
+          "0xaF92bc25a44bf43eC4100cAd6eA3620523C7DAce", // Wolf
+          "0xaF92bc25a44bf43eC4100cAd6eA3620523C7DAce", // Wolf
+          "0x212626D66E64C9C293A845687dB700c16466586e", // Glowing Geranium
+          "0x42CE5e89D0D5f841E668E63310b96ABE159f5761", // Gemstone Geranium
+          "0x212626D66E64C9C293A845687dB700c16466586e", // Glowing Geranium
+        ],
       },
     ],
-    completionBonus: 2500,
+    completionBonus: 2000,
+    cooldownMs: 7 * 24 * 60 * 60 * 1000, // 1 week — road encounters refresh weekly
   },
   {
     id: "lv3",

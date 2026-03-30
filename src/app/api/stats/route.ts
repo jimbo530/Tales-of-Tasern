@@ -128,13 +128,10 @@ export async function GET() {
       }
     } catch { /* prices optional */ }
 
-    // USD prices for ALL tokens (daily highs) — used for marketplace backing value
+    // USD prices for ALL tokens — start with stablecoins only, derive the rest on-chain
+    // CoinGecko prices applied as overrides AFTER on-chain derivation (fallback-safe)
     const tokenUsdPrices: Record<string, number> = {
       "0x4f604735c1cf31399c6e711d5962b2b3e0225ad3": 1,           // USDGLO = $1
-      "0x4200000000000000000000000000000000000006": ethHigh24h,   // WETH (Base)
-      "0x1bfd67037b42cf73acf2047067bd4f2c47d9bfd6": btcHigh24h,  // WBTC (Polygon)
-      "0x7ceb23fd6bc0add59e62ac25578270cff1b9f619": ethHigh24h,  // WETH (Polygon)
-      "0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270": polHigh24h,  // WPOL
       "0x3595ca37596d5895b70efab592ac315d5b9809b2": 1,           // AZOS = $1 (stablecoin)
     };
 
@@ -142,6 +139,7 @@ export async function GET() {
       "0x234b58ecdb0026b2aaf829cc46e91895f609f6d1": 300,
       "0x2953399124f0cbb46d2cbacd8a89cf0599974963": 1163,
       "0xcb8c8a116ac3e12d861c1b4bd0d859aceda25d3f": 80,
+      "0x99b772412c0d6e0fb31f227ecff4e92b98379fa8": 50, // Goblins
     };
 
     // UNIVERSAL STAT FORMULA: $0.01 = 1 stat point (except multipliers)
@@ -350,15 +348,20 @@ export async function GET() {
     // Multi-hop price derivation — keep running passes until no new prices found
     const hopTokens = [
       USDGLO, USDC_POL, USDC_BASE, USDT,
+      "0x8fb87d13b40b1a67b22ed1a17e2835fe7e3a9ba3", // MfT (moved early — derives many Base tokens)
+      "0x64f6f111e9fdb753877f17f399b759de97379170", // EGP Polygon
+      "0xc1ba76771bbf0dd841347630e57c793f9d5accee", // EGP Base (needed for WETH Base derivation)
       "0x4bf82cf0d6b2afc87367052b793097153c859d38", // DDD
-      "0x64f6f111e9fdb753877f17f399b759de97379170", // EGP
       "0x11f98a36acbd04ca3aa3a149d402affbd5966fe7", // CCC
+      "0xd7c584d40216576f1d8651eab8bef9de69497666", // BTN (for WBTC/WPOL derivation)
+      "0xe302672798d12e7f68c783db2c2d5e6b48ccf3ce", // IGS (for WBTC derivation)
       "0x1bfd67037b42cf73acf2047067bd4f2c47d9bfd6", // WBTC
       "0x7ceb23fd6bc0add59e62ac25578270cff1b9f619", // WETH Polygon
       "0x4200000000000000000000000000000000000006", // WETH Base
       "0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270", // WPOL
       "0x06a05043eb2c1691b19c2c13219db9212269ddc5", // BURGERS
-      "0x8fb87d13b40b1a67b22ed1a17e2835fe7e3a9ba3", // MfT
+      "0xd75dfa972c6136f1c594fec1945302f885e1ab29", // TGN
+      "0xddc330761761751e005333208889bfe36c6e6760", // LGP (for WPOL derivation)
     ];
     // Run multiple passes — each pass may unlock new prices that enable more hops
     for (let pass = 0; pass < 4; pass++) {
@@ -385,8 +388,21 @@ export async function GET() {
       if (newPrices === 0) break; // No new prices found, stop
     }
 
+    // Override with CoinGecko prices when available (more accurate than on-chain for major assets)
+    if (ethHigh24h > 0) {
+      tokenUsdPrices["0x4200000000000000000000000000000000000006"] = ethHigh24h;  // WETH Base
+      tokenUsdPrices["0x7ceb23fd6bc0add59e62ac25578270cff1b9f619"] = ethHigh24h;  // WETH Polygon
+    }
+    if (btcHigh24h > 0) {
+      tokenUsdPrices["0x1bfd67037b42cf73acf2047067bd4f2c47d9bfd6"] = btcHigh24h;  // WBTC
+    }
+    if (polHigh24h > 0) {
+      tokenUsdPrices["0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270"] = polHigh24h;  // WPOL
+    }
+
     const pricedCount = Object.values(tokenUsdPrices).filter(v => v > 0).length;
     console.log("[API] Derived USD prices for", pricedCount, "tokens:", Object.entries(tokenUsdPrices).filter(([,v]) => v > 0).map(([k, v]) => `${TOKEN_SYMBOLS[k] ?? k.slice(0,8)}: $${v.toFixed(6)}`).join(", "));
+    if (ethHigh24h === 0) console.log("[API] WARNING: CoinGecko ETH price = $0, using on-chain derivation only");
 
     // Assemble stats for each NFT
     const characters = GAME_NFTS.map((nft, nftIdx) => {
@@ -443,7 +459,7 @@ export async function GET() {
       let attack = 0, mAtk = 0, fAtk = 0, def = 0, mDef = 0;
       let hp = 0, healing = 0, charMultiplier = 0, magicBoost = 0, mana = 0;
 
-      const tokenAmounts: { symbol: string; amount: number; stat: string }[] = [];
+      const tokenAmounts: { symbol: string; amount: number; stat: string; addr?: string }[] = [];
 
       for (const [addr, amount] of tokenMap.entries()) {
         if (amount === 0n) continue;
@@ -488,7 +504,7 @@ export async function GET() {
           stat = "hp"; hp += points;
         }
 
-        tokenAmounts.push({ symbol: TOKEN_SYMBOLS[addr] ?? addr.slice(0, 8), amount: rawAmount, stat });
+        tokenAmounts.push({ symbol: TOKEN_SYMBOLS[addr] ?? addr.slice(0, 8), amount: rawAmount, stat, addr });
 
         // Bonus stats for game tokens (secondary at $0.02/pt, tertiary at $0.05/pt)
         const bonus = bonusStats[addr];
@@ -615,7 +631,8 @@ export async function GET() {
     const tokenBreakdown: Record<string, { symbol: string; usd: number; category: string }> = {};
     for (const char of characters as any[]) {
       for (const ta of char.tokenAmounts ?? []) {
-        const addr = Object.entries(TOKEN_SYMBOLS).find(([, s]) => s === ta.symbol)?.[0];
+        // Use direct address from tokenAmounts (avoids reverse-lookup issues with duplicate symbols)
+        const addr = ta.addr || Object.entries(TOKEN_SYMBOLS).find(([, s]) => s === ta.symbol)?.[0];
         if (!addr) continue;
         const cat = TOKEN_CATEGORY[addr] ?? "game";
         const usdPrice = tokenUsdPrices[addr] ?? 0;
