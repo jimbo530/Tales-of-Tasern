@@ -11,13 +11,15 @@ import { Avatar, Name, Address } from "@coinbase/onchainkit/identity";
 import { useAccount, useChainId, useSwitchChain } from "wagmi";
 import { base } from "wagmi/chains";
 import { useNftStats, type NftCharacter } from "@/hooks/useNftStats";
+import { useCharacterSave } from "@/hooks/useCharacterSave";
 import { CharacterCard } from "@/components/CharacterCard";
-import { BattleView } from "@/components/BattleView";
-import { CardBattleBoard } from "@/components/CardBattleBoard";
-import { Matchmaking } from "@/components/Matchmaking";
-import { AdventureMode } from "@/components/AdventureMode";
 import { Marketplace } from "@/components/Marketplace";
 import { PowerUp } from "@/components/PowerUp";
+import { HexBattle } from "@/components/HexBattle";
+import { WorldMap, type WorldLuckResult } from "@/components/WorldMap";
+import { CLASSES, type CharacterClass } from "@/lib/classes";
+import { SKILLS, abilityMod, type Skill } from "@/lib/skills";
+import { FEATS, getAvailableFeats, getStartingFeatCount, type Feat } from "@/lib/feats";
 import { downloadAndCache, getCacheCount, clearImageCache } from "@/lib/imageCache";
 import { resolveImage, toHttp } from "@/lib/resolveImage";
 
@@ -83,6 +85,481 @@ function DownloadImages({ characters }: { characters: NftCharacter[] }) {
   );
 }
 
+function NewGameFlow({ ownedChars, onStart }: {
+  ownedChars: NftCharacter[];
+  onStart: (nft: NftCharacter, classId: string, skillRanks: Record<string, number>, feats: string[]) => void;
+}) {
+  const [step, setStep] = useState<"nft" | "class" | "abilities" | "skills" | "confirm">("nft");
+  const [pickedNft, setPickedNft] = useState<NftCharacter | null>(null);
+  const [pickedClass, setPickedClass] = useState<CharacterClass | null>(null);
+  const [expandedClass, setExpandedClass] = useState<string | null>(null);
+  const [pickedFeats, setPickedFeats] = useState<string[]>([]);
+  const [skillRanks, setSkillRanks] = useState<Record<string, number>>({});
+  const [featFilter, setFeatFilter] = useState<"all" | "combat" | "general" | "magic" | "skill">("all");
+
+  const stats = pickedNft ? pickedNft.stats : { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 };
+  const intMod = abilityMod(stats.int);
+  const totalSkillPoints = pickedClass ? Math.max(1, pickedClass.skillPoints + intMod) * 4 : 0; // ×4 at level 1
+  const classSkillIds = new Set(pickedClass?.classSkills ?? []);
+  const usedSkillPoints = Object.entries(skillRanks).reduce((s, [id, v]) => s + v * (classSkillIds.has(id) ? 1 : 2), 0);
+  const remainingSkillPoints = totalSkillPoints - usedSkillPoints;
+  const maxFeatSlots = pickedClass ? getStartingFeatCount(pickedClass.id) : 1;
+  const availableFeats = pickedClass
+    ? getAvailableFeats(1, pickedClass.id, stats as Record<string, number>, pickedFeats)
+    : [];
+  const filteredFeats = featFilter === "all" ? availableFeats : availableFeats.filter(f => f.category === featFilter);
+
+  // ── Step 1: Pick NFT ──
+  if (step === "nft") {
+    return (
+      <div className="w-full flex flex-col items-center gap-4">
+        <span className="text-sm font-black tracking-widest uppercase" style={{ color: "rgba(34,197,94,0.8)" }}>
+          New Game — Pick Your Hero
+        </span>
+        <div className="flex flex-wrap gap-3 justify-center">
+          {ownedChars.map(c => (
+            <button key={c.contractAddress} onClick={() => { setPickedNft(c); setStep("class"); }}
+              className="flex flex-col items-center gap-2 px-4 py-3 rounded-lg transition-all hover:scale-105"
+              style={{ background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.25)", minWidth: 110 }}>
+              {c.imageUrl ? (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img src={`/api/images?url=${encodeURIComponent(c.imageUrl)}`} alt={c.name}
+                  className="w-12 h-12 rounded-full object-cover" style={{ border: "2px solid rgba(34,197,94,0.4)" }}
+                  onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+              ) : (
+                <span className="text-2xl">🛡️</span>
+              )}
+              <span className="text-xs font-black tracking-widest" style={{ color: "rgba(232,213,176,0.8)", fontSize: "0.55rem" }}>{c.name}</span>
+              <div className="flex gap-1 flex-wrap justify-center" style={{ fontSize: "0.45rem", color: "rgba(232,213,176,0.4)" }}>
+                <span>STR {c.stats.str.toFixed(0)}</span>
+                <span>DEX {c.stats.dex.toFixed(0)}</span>
+                <span>CON {c.stats.con.toFixed(0)}</span>
+                <span>INT {c.stats.int.toFixed(0)}</span>
+                <span>WIS {c.stats.wis.toFixed(0)}</span>
+                <span>CHA {c.stats.cha.toFixed(0)}</span>
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // ── Step 2: Pick Class ──
+  if (step === "class") {
+    return (
+      <div className="w-full flex flex-col items-center gap-4 max-w-2xl mx-auto">
+        <span className="text-sm font-black tracking-widest uppercase" style={{ color: "rgba(34,197,94,0.8)" }}>
+          Choose Class for {pickedNft?.name}
+        </span>
+
+        {/* Stat bar */}
+        <div className="flex gap-2 flex-wrap justify-center px-3 py-2 rounded-lg w-full"
+          style={{ background: "rgba(0,0,0,0.3)", border: "1px solid rgba(201,168,76,0.15)" }}>
+          {(["str","dex","con","int","wis","cha"] as const).map(a => (
+            <div key={a} className="text-center" style={{ minWidth: 40 }}>
+              <div style={{ fontSize: "0.45rem", color: "rgba(201,168,76,0.5)" }}>{a.toUpperCase()}</div>
+              <div className="font-bold" style={{ fontSize: "0.65rem", color: "rgba(232,213,176,0.8)" }}>
+                {stats[a].toFixed(0)}
+              </div>
+              <div style={{ fontSize: "0.4rem", color: abilityMod(stats[a]) >= 0 ? "rgba(74,222,128,0.6)" : "rgba(220,38,38,0.6)" }}>
+                {abilityMod(stats[a]) >= 0 ? "+" : ""}{abilityMod(stats[a])}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="flex flex-col gap-2 w-full">
+          {CLASSES.map(cls => {
+            const isExpanded = expandedClass === cls.id;
+            const classSkillNames = cls.classSkills.map(sid => SKILLS.find(s => s.id === sid)?.name ?? sid);
+            return (
+              <div key={cls.id} className="rounded-lg overflow-hidden"
+                style={{ background: "rgba(34,197,94,0.04)", border: `1px solid ${isExpanded ? "rgba(34,197,94,0.4)" : "rgba(34,197,94,0.15)"}` }}>
+                <button onClick={() => setExpandedClass(isExpanded ? null : cls.id)}
+                  className="w-full flex items-center gap-3 px-4 py-3 text-left transition-all hover:bg-white/5">
+                  <span className="text-xl">{cls.emoji}</span>
+                  <div className="flex-1">
+                    <div className="text-xs font-black tracking-widest uppercase" style={{ color: "rgba(232,213,176,0.8)" }}>
+                      {cls.name}
+                    </div>
+                    <div style={{ fontSize: "0.5rem", color: "rgba(232,213,176,0.45)" }}>
+                      {cls.hitDie} · Key: {cls.keyAbilities.map(a => a.toUpperCase()).join(", ")} · {cls.skillPoints}+INT skill pts/lv
+                    </div>
+                  </div>
+                  <span style={{ fontSize: "0.6rem", color: "rgba(201,168,76,0.4)" }}>{isExpanded ? "▲" : "▼"}</span>
+                </button>
+
+                {isExpanded && (
+                  <div className="px-4 pb-3 flex flex-col gap-2">
+                    <div style={{ fontSize: "0.55rem", color: "rgba(232,213,176,0.6)", lineHeight: 1.5 }}>
+                      {cls.description}
+                    </div>
+
+                    {/* Saves */}
+                    <div className="flex gap-3" style={{ fontSize: "0.5rem", color: "rgba(232,213,176,0.4)" }}>
+                      <span>Good saves: {cls.goodSaves.map(s => s.toUpperCase()).join(", ")}</span>
+                      <span>BAB: {cls.bab}</span>
+                    </div>
+
+                    {/* Class features */}
+                    <div>
+                      <div style={{ fontSize: "0.45rem", color: "rgba(201,168,76,0.5)", letterSpacing: "0.1em" }} className="font-bold uppercase mb-1">
+                        Class Features
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        {cls.features.map(f => (
+                          <div key={f.name} className="px-2 py-1 rounded" style={{ background: "rgba(0,0,0,0.2)", fontSize: "0.5rem" }}>
+                            <span className="font-bold" style={{ color: "rgba(251,191,36,0.8)" }}>
+                              {f.name} (Lv{f.level})
+                            </span>
+                            <span style={{ color: "rgba(232,213,176,0.5)" }}> — {f.description}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Class skills */}
+                    <div>
+                      <div style={{ fontSize: "0.45rem", color: "rgba(201,168,76,0.5)", letterSpacing: "0.1em" }} className="font-bold uppercase mb-1">
+                        Class Skills ({classSkillNames.length})
+                      </div>
+                      <div style={{ fontSize: "0.45rem", color: "rgba(232,213,176,0.4)", lineHeight: 1.6 }}>
+                        {classSkillNames.join(", ")}
+                      </div>
+                    </div>
+
+                    <button onClick={() => { setPickedClass(cls); setPickedFeats([]); setSkillRanks({}); setStep("abilities"); }}
+                      className="mt-1 w-full px-3 py-2 rounded text-xs font-bold uppercase tracking-widest"
+                      style={{ background: "rgba(34,197,94,0.15)", color: "rgba(34,197,94,0.9)", border: "1px solid rgba(34,197,94,0.4)" }}>
+                      Choose {cls.name}
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        <button onClick={() => setStep("nft")} className="px-3 py-1 rounded text-xs"
+          style={{ color: "rgba(201,168,76,0.5)", border: "1px solid rgba(201,168,76,0.15)" }}>
+          Back to hero pick
+        </button>
+      </div>
+    );
+  }
+
+  // ── Step 3: Pick Abilities (Feats) ──
+  if (step === "abilities") {
+    return (
+      <div className="w-full flex flex-col items-center gap-4 max-w-2xl mx-auto">
+        <span className="text-sm font-black tracking-widest uppercase" style={{ color: "rgba(34,197,94,0.8)" }}>
+          Choose Abilities — {pickedClass?.emoji} {pickedClass?.name}
+        </span>
+        <div className="flex items-center gap-2" style={{ fontSize: "0.55rem", color: "rgba(232,213,176,0.6)" }}>
+          <span>Slots: {pickedFeats.length}/{maxFeatSlots}</span>
+          {pickedClass?.id === "fighter" && <span className="px-1.5 py-0.5 rounded" style={{ background: "rgba(251,191,36,0.1)", color: "rgba(251,191,36,0.7)", fontSize: "0.45rem" }}>
+            +1 bonus combat ability
+          </span>}
+        </div>
+
+        {/* Selected abilities */}
+        {pickedFeats.length > 0 && (
+          <div className="w-full flex flex-col gap-1">
+            {pickedFeats.map(fid => {
+              const feat = FEATS.find(f => f.id === fid);
+              if (!feat) return null;
+              return (
+                <div key={fid} className="flex items-center gap-2 px-3 py-2 rounded-lg"
+                  style={{ background: "rgba(74,222,128,0.08)", border: "1px solid rgba(74,222,128,0.25)" }}>
+                  <div className="flex-1">
+                    <div className="text-xs font-bold" style={{ color: "rgba(74,222,128,0.9)" }}>{feat.name}</div>
+                    <div style={{ fontSize: "0.45rem", color: "rgba(232,213,176,0.5)" }}>{feat.benefit}</div>
+                  </div>
+                  <button onClick={() => setPickedFeats(prev => prev.filter(id => id !== fid))}
+                    className="px-2 py-1 rounded text-xs"
+                    style={{ color: "rgba(220,38,38,0.7)", border: "1px solid rgba(220,38,38,0.2)" }}>
+                    Remove
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Filter tabs */}
+        <div className="flex gap-1 flex-wrap">
+          {(["all", "combat", "general", "magic", "skill"] as const).map(cat => (
+            <button key={cat} onClick={() => setFeatFilter(cat)}
+              className="px-2 py-1 rounded text-xs uppercase tracking-wider"
+              style={{
+                background: featFilter === cat ? "rgba(201,168,76,0.2)" : "rgba(255,255,255,0.03)",
+                color: featFilter === cat ? "rgba(201,168,76,0.9)" : "rgba(232,213,176,0.4)",
+                border: `1px solid ${featFilter === cat ? "rgba(201,168,76,0.4)" : "rgba(201,168,76,0.1)"}`,
+                fontSize: "0.5rem",
+              }}>
+              {cat}
+            </button>
+          ))}
+        </div>
+
+        {/* Available abilities list */}
+        <div className="w-full flex flex-col gap-1 max-h-64 overflow-y-auto pr-1">
+          {filteredFeats.length === 0 && (
+            <div className="text-center py-4" style={{ fontSize: "0.55rem", color: "rgba(232,213,176,0.3)" }}>
+              {pickedFeats.length >= maxFeatSlots ? "All ability slots filled" : "No abilities available with current filter"}
+            </div>
+          )}
+          {filteredFeats.map(feat => {
+            const alreadyPicked = pickedFeats.includes(feat.id);
+            const slotsLeft = maxFeatSlots - pickedFeats.length;
+            // Fighter bonus slot must be combat
+            const needsCombatForBonus = pickedClass?.id === "fighter" && pickedFeats.length === 1 && feat.category !== "combat";
+            const disabled = alreadyPicked || slotsLeft <= 0 || needsCombatForBonus;
+            return (
+              <button key={feat.id} onClick={() => { if (!disabled) setPickedFeats(prev => [...prev, feat.id]); }}
+                disabled={disabled}
+                className="w-full text-left px-3 py-2 rounded-lg transition-all"
+                style={{
+                  background: alreadyPicked ? "rgba(74,222,128,0.06)" : "rgba(0,0,0,0.15)",
+                  border: `1px solid ${alreadyPicked ? "rgba(74,222,128,0.2)" : "rgba(201,168,76,0.08)"}`,
+                  opacity: disabled && !alreadyPicked ? 0.4 : 1,
+                }}>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold" style={{ color: "rgba(232,213,176,0.8)" }}>{feat.name}</span>
+                  <span className="px-1 rounded" style={{ fontSize: "0.4rem", background: "rgba(201,168,76,0.1)", color: "rgba(201,168,76,0.5)" }}>
+                    {feat.category}
+                  </span>
+                </div>
+                <div style={{ fontSize: "0.45rem", color: "rgba(232,213,176,0.5)", lineHeight: 1.4 }}>
+                  {feat.benefit}
+                </div>
+                {feat.prereqs.feat && (
+                  <div style={{ fontSize: "0.4rem", color: "rgba(251,191,36,0.5)" }}>
+                    Requires: {FEATS.find(f => f.id === feat.prereqs.feat)?.name ?? feat.prereqs.feat}
+                  </div>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="flex gap-2">
+          <button onClick={() => setStep("class")} className="px-3 py-1.5 rounded text-xs"
+            style={{ color: "rgba(201,168,76,0.5)", border: "1px solid rgba(201,168,76,0.15)" }}>
+            Back
+          </button>
+          <button onClick={() => setStep("skills")}
+            disabled={pickedFeats.length < maxFeatSlots}
+            className="px-4 py-1.5 rounded text-xs font-bold uppercase tracking-widest"
+            style={{
+              background: pickedFeats.length >= maxFeatSlots ? "rgba(34,197,94,0.15)" : "rgba(255,255,255,0.03)",
+              color: pickedFeats.length >= maxFeatSlots ? "rgba(34,197,94,0.9)" : "rgba(232,213,176,0.3)",
+              border: `1px solid ${pickedFeats.length >= maxFeatSlots ? "rgba(34,197,94,0.4)" : "rgba(201,168,76,0.1)"}`,
+            }}>
+            Next: Skills ({pickedFeats.length}/{maxFeatSlots})
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Step 4: Allocate Skills ──
+  if (step === "skills") {
+    const classSkillSet = new Set(pickedClass?.classSkills ?? []);
+    // Sort: class skills first, then alphabetical
+    const sortedSkills = [...SKILLS].sort((a, b) => {
+      const aClass = classSkillSet.has(a.id) ? 0 : 1;
+      const bClass = classSkillSet.has(b.id) ? 0 : 1;
+      if (aClass !== bClass) return aClass - bClass;
+      return a.name.localeCompare(b.name);
+    });
+
+    function adjustRank(skillId: string, delta: number) {
+      setSkillRanks(prev => {
+        const cur = prev[skillId] ?? 0;
+        const isClassSkill = classSkillSet.has(skillId);
+        const maxRank = isClassSkill ? 4 : 2; // level 1: class skills max 4 (level+3), cross-class max 2 ((level+3)/2)
+        const next = Math.max(0, Math.min(maxRank, cur + delta));
+        const cost = isClassSkill ? delta : delta * 2; // cross-class costs 2 points per rank
+        if (delta > 0 && cost > remainingSkillPoints) return prev;
+        const copy = { ...prev };
+        if (next === 0) delete copy[skillId];
+        else copy[skillId] = next;
+        return copy;
+      });
+    }
+
+    return (
+      <div className="w-full flex flex-col items-center gap-4 max-w-2xl mx-auto">
+        <span className="text-sm font-black tracking-widest uppercase" style={{ color: "rgba(34,197,94,0.8)" }}>
+          Allocate Skills — {pickedClass?.emoji} {pickedClass?.name}
+        </span>
+
+        <div className="flex items-center gap-3 px-3 py-2 rounded-lg w-full"
+          style={{ background: "rgba(0,0,0,0.3)", border: "1px solid rgba(201,168,76,0.15)" }}>
+          <span style={{ fontSize: "0.55rem", color: "rgba(232,213,176,0.6)" }}>
+            Skill Points: <span className="font-bold" style={{ color: remainingSkillPoints > 0 ? "rgba(74,222,128,0.9)" : "rgba(232,213,176,0.8)" }}>
+              {remainingSkillPoints}
+            </span> / {totalSkillPoints}
+          </span>
+          <span style={{ fontSize: "0.45rem", color: "rgba(201,168,76,0.4)" }}>
+            ({pickedClass?.skillPoints}+{intMod >= 0 ? "+" : ""}{intMod} INT) x4 at Lv1
+          </span>
+        </div>
+
+        <div className="w-full flex flex-col gap-0.5 max-h-80 overflow-y-auto pr-1">
+          {sortedSkills.map(skill => {
+            const isClass = classSkillSet.has(skill.id);
+            const ranks = skillRanks[skill.id] ?? 0;
+            const maxRank = isClass ? 4 : 2;
+            const mod = abilityMod(stats[skill.ability as keyof typeof stats] ?? 10);
+            const total = ranks + mod;
+            const canIncrease = ranks < maxRank && (isClass ? remainingSkillPoints >= 1 : remainingSkillPoints >= 2);
+
+            return (
+              <div key={skill.id} className="flex items-center gap-2 px-2 py-1 rounded"
+                style={{
+                  background: ranks > 0 ? "rgba(74,222,128,0.04)" : "rgba(0,0,0,0.1)",
+                  border: `1px solid ${isClass ? "rgba(34,197,94,0.12)" : "rgba(201,168,76,0.05)"}`,
+                }}>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1">
+                    <span className="text-xs font-bold truncate" style={{ color: isClass ? "rgba(74,222,128,0.8)" : "rgba(232,213,176,0.6)" }}>
+                      {skill.name}
+                    </span>
+                    {isClass && <span style={{ fontSize: "0.35rem", color: "rgba(74,222,128,0.5)" }}>CLASS</span>}
+                    {!isClass && <span style={{ fontSize: "0.35rem", color: "rgba(201,168,76,0.3)" }}>x2 cost</span>}
+                  </div>
+                  <div style={{ fontSize: "0.4rem", color: "rgba(232,213,176,0.35)" }}>
+                    {skill.ability.toUpperCase()} ({mod >= 0 ? "+" : ""}{mod}) — {skill.description}
+                  </div>
+                </div>
+                <div className="flex items-center gap-1">
+                  <button onClick={() => adjustRank(skill.id, -1)} disabled={ranks === 0}
+                    className="w-5 h-5 rounded flex items-center justify-center"
+                    style={{ background: "rgba(220,38,38,0.1)", color: "rgba(220,38,38,0.6)", opacity: ranks === 0 ? 0.3 : 1, fontSize: "0.6rem" }}>
+                    -
+                  </button>
+                  <span className="w-6 text-center font-bold" style={{ fontSize: "0.6rem", color: ranks > 0 ? "rgba(74,222,128,0.9)" : "rgba(232,213,176,0.3)" }}>
+                    {ranks}
+                  </span>
+                  <button onClick={() => adjustRank(skill.id, 1)} disabled={!canIncrease}
+                    className="w-5 h-5 rounded flex items-center justify-center"
+                    style={{ background: "rgba(74,222,128,0.1)", color: "rgba(74,222,128,0.6)", opacity: !canIncrease ? 0.3 : 1, fontSize: "0.6rem" }}>
+                    +
+                  </button>
+                  <span className="w-8 text-right" style={{ fontSize: "0.5rem", color: "rgba(232,213,176,0.4)" }}>
+                    ={total}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="flex gap-2">
+          <button onClick={() => setStep("abilities")} className="px-3 py-1.5 rounded text-xs"
+            style={{ color: "rgba(201,168,76,0.5)", border: "1px solid rgba(201,168,76,0.15)" }}>
+            Back
+          </button>
+          <button onClick={() => setStep("confirm")}
+            className="px-4 py-1.5 rounded text-xs font-bold uppercase tracking-widest"
+            style={{ background: "rgba(34,197,94,0.15)", color: "rgba(34,197,94,0.9)", border: "1px solid rgba(34,197,94,0.4)" }}>
+            Review Character
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Step 5: Confirm ──
+  return (
+    <div className="w-full flex flex-col items-center gap-4 max-w-lg mx-auto">
+      <span className="text-sm font-black tracking-widest uppercase" style={{ color: "rgba(34,197,94,0.8)" }}>
+        Confirm Your Character
+      </span>
+
+      <div className="w-full rounded-xl p-4 flex flex-col gap-3"
+        style={{ background: "rgba(0,0,0,0.3)", border: "1px solid rgba(201,168,76,0.2)" }}>
+
+        {/* Hero + Class */}
+        <div className="flex items-center gap-3">
+          {pickedNft?.imageUrl && (
+            /* eslint-disable-next-line @next/next/no-img-element */
+            <img src={`/api/images?url=${encodeURIComponent(pickedNft.imageUrl)}`} alt={pickedNft.name}
+              className="w-14 h-14 rounded-full object-cover" style={{ border: "2px solid rgba(34,197,94,0.4)" }}
+              onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+          )}
+          <div>
+            <div className="text-sm font-black" style={{ color: "rgba(232,213,176,0.9)" }}>{pickedNft?.name}</div>
+            <div style={{ fontSize: "0.6rem", color: "rgba(34,197,94,0.8)" }}>
+              {pickedClass?.emoji} {pickedClass?.name} · {pickedClass?.hitDie}
+            </div>
+          </div>
+        </div>
+
+        {/* Stats */}
+        <div className="flex gap-2 flex-wrap" style={{ fontSize: "0.5rem" }}>
+          {(["str","dex","con","int","wis","cha"] as const).map(a => (
+            <span key={a} style={{ color: "rgba(232,213,176,0.6)" }}>
+              {a.toUpperCase()} {stats[a].toFixed(0)} ({abilityMod(stats[a]) >= 0 ? "+" : ""}{abilityMod(stats[a])})
+            </span>
+          ))}
+        </div>
+
+        {/* Abilities (feats) */}
+        <div>
+          <div style={{ fontSize: "0.45rem", color: "rgba(201,168,76,0.5)" }} className="font-bold uppercase mb-1">Abilities</div>
+          <div className="flex flex-col gap-0.5">
+            {pickedFeats.map(fid => {
+              const feat = FEATS.find(f => f.id === fid);
+              return feat ? (
+                <div key={fid} style={{ fontSize: "0.5rem", color: "rgba(251,191,36,0.7)" }}>
+                  {feat.name} — <span style={{ color: "rgba(232,213,176,0.5)" }}>{feat.benefit}</span>
+                </div>
+              ) : null;
+            })}
+          </div>
+        </div>
+
+        {/* Skills with ranks */}
+        <div>
+          <div style={{ fontSize: "0.45rem", color: "rgba(201,168,76,0.5)" }} className="font-bold uppercase mb-1">
+            Skills ({remainingSkillPoints > 0 ? `${remainingSkillPoints} points unspent` : "all points spent"})
+          </div>
+          <div className="flex flex-col gap-0.5">
+            {Object.entries(skillRanks).filter(([, v]) => v > 0).sort(([, a], [, b]) => b - a).map(([sid, ranks]) => {
+              const skill = SKILLS.find(s => s.id === sid);
+              const mod = abilityMod(stats[skill?.ability as keyof typeof stats] ?? 10);
+              return (
+                <div key={sid} style={{ fontSize: "0.5rem", color: "rgba(232,213,176,0.6)" }}>
+                  {skill?.name ?? sid}: {ranks} ranks + {mod >= 0 ? "+" : ""}{mod} = <span className="font-bold" style={{ color: "rgba(74,222,128,0.8)" }}>{ranks + mod}</span>
+                </div>
+              );
+            })}
+            {Object.keys(skillRanks).length === 0 && (
+              <div style={{ fontSize: "0.45rem", color: "rgba(232,213,176,0.3)" }}>No skill ranks allocated</div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="flex gap-2">
+        <button onClick={() => setStep("skills")} className="px-3 py-1.5 rounded text-xs"
+          style={{ color: "rgba(201,168,76,0.5)", border: "1px solid rgba(201,168,76,0.15)" }}>
+          Back
+        </button>
+        <button onClick={() => { if (pickedNft && pickedClass) onStart(pickedNft, pickedClass.id, skillRanks, pickedFeats); }}
+          className="px-6 py-2 rounded text-sm font-black uppercase tracking-widest"
+          style={{ background: "rgba(34,197,94,0.2)", color: "rgba(34,197,94,0.95)", border: "1px solid rgba(34,197,94,0.5)" }}>
+          Begin Adventure
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function Home() {
   const { isConnected } = useAccount();
   const chainId = useChainId();
@@ -94,22 +571,25 @@ export default function Home() {
   const [search, setSearch] = useState("");
 
   // Navigation
-  const [view, setView] = useState<"menu" | "heroes" | "army" | "adventure" | "castleSiege" | "castleAI" | "matchmaking" | "marketplace" | "powerUp" | "1v1">("menu");
+  const [view, setView] = useState<"menu" | "heroes" | "army" | "marketplace" | "powerUp" | "battle" | "worldMap" | "adventure">("menu");
+  const [lastBattleRewards, setLastBattleRewards] = useState<{ xp: number; gold: number; levelsGained: number } | null>(null);
+
+  // Character save system
+  const { save, hasCharacter, updateSave, createCharacter, recordBattle } = useCharacterSave();
+  // Find the player's selected NFT from their save
+  const playerCharacter = save
+    ? characters.find(c => c.contractAddress.toLowerCase() === save.nft_address.toLowerCase()) ?? null
+    : null;
 
   // Cycling background images
   const BG_IMAGES = ["/bg-plains-1.webp", "/bg-plains-2.webp", "/bg-plains-3.webp", "/bg-plains-4.webp", "/bg-desert-1.webp", "/bg-desert-2.webp", "/bg-desert-3.webp", "/bg-desert-4.webp"];
   const [bgIndex, setBgIndex] = useState(0);
   const cycleView = (v: typeof view) => { setBgIndex(i => (i + 1) % BG_IMAGES.length); setView(v); };
 
-  // Battle mode (for 1v1)
-  const [battleMode, setBattleMode] = useState(false);
-  const [selectedFighters, setSelectedFighters] = useState<NftCharacter[]>([]);
-  const [activeBattle, setActiveBattle] = useState<{ fighter1: NftCharacter; fighter2: NftCharacter } | null>(null);
 
   const totalStats = (c: NftCharacter) => {
     const s = c.stats;
-    return s.attack + s.mAtk + s.fAtk + s.def + s.mDef + s.hp + s.mana +
-      s.charMultiplier * 100 + s.magicMultiplier * 100;
+    return s.str + s.dex + s.con + s.int + s.wis + s.cha;
   };
   const filtered = search.trim()
     ? characters.filter(c =>
@@ -125,35 +605,14 @@ export default function Home() {
   const pageChars = sorted.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
   const maxStats = useMemo(() => ({
-    attack: Math.max(...characters.map(c => (1 + c.stats.charMultiplier) * c.stats.attack), 1),
-    mAtk:   Math.max(...characters.map(c => (1 + c.stats.charMultiplier) * (1 + c.stats.magicMultiplier) * c.stats.mAtk), 1),
-    fAtk:   Math.max(...characters.map(c => (1 + c.stats.charMultiplier) * c.stats.fAtk), 1),
-    def:    Math.max(...characters.map(c => (1 + c.stats.charMultiplier) * c.stats.def), 1),
-    mDef:   Math.max(...characters.map(c => (1 + c.stats.charMultiplier) * (1 + c.stats.magicMultiplier) * c.stats.mDef), 1),
-    hp:     Math.max(...characters.map(c => (1 + c.stats.charMultiplier) * c.stats.hp), 1),
-    mana:   Math.max(...characters.map(c => (1 + c.stats.charMultiplier) * c.stats.mana), 1),
+    str: Math.max(...characters.map(c => c.stats.str), 1),
+    dex: Math.max(...characters.map(c => c.stats.dex), 1),
+    con: Math.max(...characters.map(c => c.stats.con), 1),
+    int: Math.max(...characters.map(c => c.stats.int), 1),
+    wis: Math.max(...characters.map(c => c.stats.wis), 1),
+    cha: Math.max(...characters.map(c => c.stats.cha), 1),
   }), [characters]);
 
-  function toggleFighter(char: NftCharacter) {
-    setSelectedFighters((prev) => {
-      const idx = prev.findIndex(f => f.contractAddress === char.contractAddress);
-      if (idx >= 0) return prev.filter((_, i) => i !== idx);
-      if (prev.length >= 2) return prev;
-      return [...prev, char];
-    });
-  }
-
-  function startBattle() {
-    if (selectedFighters.length === 2) {
-      setActiveBattle({ fighter1: selectedFighters[0], fighter2: selectedFighters[1] });
-    }
-  }
-
-  function exitBattle() {
-    setActiveBattle(null);
-    setBattleMode(false);
-    setSelectedFighters([]);
-  }
 
   // Sub-page wrapper with consistent header
   const subPage = (subtitle: string, content: React.ReactNode) => (
@@ -186,8 +645,153 @@ export default function Home() {
 
   if (view === "powerUp") return subPage("Power Up", <PowerUp characters={characters} onBack={() => cycleView("menu")} onStatsRefresh={refreshStats} />);
   if (view === "marketplace") return subPage("Marketplace", <Marketplace characters={characters} onBack={() => cycleView("menu")} />);
-  if (view === "adventure") return subPage("Adventure", <AdventureMode characters={characters} onExit={() => cycleView("menu")} onStatsRefresh={refreshStats} />);
+  if (view === "battle") return subPage("Battle", <HexBattle characters={characters}
+    onExit={() => {
+      if (lastBattleRewards) setLastBattleRewards(null);
+      cycleView(hasCharacter ? "worldMap" : "menu");
+    }}
+    onBattleEnd={async (outcome, difficulty, enemies, rounds) => {
+      const result = await recordBattle({ difficulty, enemies, outcome, rounds });
+      if (result) setLastBattleRewards({ xp: result.rewards.xp, gold: result.rewards.gold, levelsGained: result.levelsGained });
+    }}
+  />);
+  // ── Adventure: New Game / Load Game ──────────────────────────────────────
+  if (view === "adventure") {
+    const ownedChars = characters.filter(c => c.owned && c.stats.con > 0);
+    return subPage("Adventure", (
+      <div className="flex flex-col items-center gap-6 max-w-lg mx-auto">
+        <h2 className="text-xl font-black tracking-widest uppercase"
+          style={{ color: "#f0d070", fontFamily: "'Cinzel Decorative', 'Cinzel', serif" }}>
+          Adventure
+        </h2>
 
+        {/* Load Game — if save exists */}
+        {hasCharacter && save && (
+          <button onClick={() => cycleView("worldMap")}
+            className="w-full flex flex-col items-center gap-3 px-6 py-6 rounded-2xl transition-all hover:scale-[1.02]"
+            style={{ background: "rgba(96,165,250,0.1)", border: "2px solid rgba(96,165,250,0.3)" }}>
+            <span className="text-3xl">📜</span>
+            <span className="text-sm font-black tracking-widest uppercase" style={{ color: "rgba(96,165,250,0.9)" }}>Continue Adventure</span>
+            <div className="flex gap-4 text-xs" style={{ color: "rgba(96,165,250,0.6)" }}>
+              <span>Lv {save.level}</span>
+              <span>{save.xp} XP</span>
+              <span>Day {save.day}</span>
+              <span>{save.gold} Gold</span>
+              <span>{save.battles_won}W / {save.battles_lost}L</span>
+            </div>
+            {playerCharacter && (
+              <span style={{ fontSize: "0.55rem", color: "rgba(232,213,176,0.5)" }}>
+                {playerCharacter.name} · {save.class_id}
+              </span>
+            )}
+          </button>
+        )}
+
+        {/* New Game */}
+        {!isConnected ? (
+          <div className="w-full flex flex-col items-center gap-3 px-6 py-6 rounded-2xl"
+            style={{ background: "rgba(201,168,76,0.06)", border: "2px solid rgba(201,168,76,0.15)" }}>
+            <span className="text-sm" style={{ color: "rgba(201,168,76,0.6)" }}>Connect wallet to start a new adventure</span>
+            <Wallet>
+              <ConnectWallet><Avatar className="h-6 w-6" /><Name /></ConnectWallet>
+              <WalletDropdown><WalletDropdownDisconnect /></WalletDropdown>
+            </Wallet>
+          </div>
+        ) : ownedChars.length === 0 ? (
+          <div className="w-full flex flex-col items-center gap-3 px-6 py-6 rounded-2xl"
+            style={{ background: "rgba(201,168,76,0.06)", border: "2px solid rgba(201,168,76,0.15)" }}>
+            <span className="text-sm" style={{ color: "rgba(201,168,76,0.6)" }}>You need to own at least one hero NFT to play</span>
+            <button onClick={() => cycleView("marketplace")} className="px-4 py-2 rounded text-xs font-bold uppercase tracking-widest"
+              style={{ background: "rgba(251,191,36,0.2)", color: "rgba(251,191,36,0.9)", border: "1px solid rgba(251,191,36,0.4)" }}>
+              Visit Marketplace
+            </button>
+          </div>
+        ) : (
+          <NewGameFlow
+            ownedChars={ownedChars}
+            onStart={async (nft, classId, skillRanks, feats) => {
+              await createCharacter(nft.contractAddress, classId, skillRanks, feats);
+              cycleView("worldMap");
+            }}
+          />
+        )}
+
+        <button onClick={() => cycleView("menu")} className="px-4 py-2 rounded text-xs font-bold uppercase tracking-widest"
+          style={{ background: "rgba(255,255,255,0.05)", color: "rgba(201,168,76,0.5)", border: "1px solid rgba(201,168,76,0.15)" }}>
+          Back
+        </button>
+      </div>
+    ));
+  }
+
+  if (view === "worldMap" && save) return subPage("Kardov's Gate", (
+    <WorldMap
+      save={save}
+      character={playerCharacter}
+      onTravel={(hex, result, destHex, encounter) => {
+        const updates: Record<string, unknown> = {
+          map_hex: hex,
+          day: result.newDay,
+          food: result.newFood,
+          current_hp: Math.min(save.max_hp, Math.max(1, result.newHp + encounter.hpChange)),
+        };
+        if (encounter.goldChange > 0) updates.gold = save.gold + encounter.goldChange;
+        if (encounter.foodChange > 0) updates.food = (updates.food as number) + encounter.foodChange;
+        if (encounter.xpChange > 0) updates.xp = save.xp + encounter.xpChange;
+        updateSave(updates);
+        // World luck triggered a fight
+        if (encounter.outcome === "fight" && encounter.difficulty) {
+          setLastBattleRewards(null);
+          setTimeout(() => cycleView("battle"), 300);
+        }
+      }}
+      onAction={(result: WorldLuckResult) => {
+        const updates: Record<string, unknown> = { day: save.day + 1 };
+        const isInnRest = result.interaction === "rest" && result.worldRoll === 0 && result.goldChange < 0;
+
+        if (isInnRest) {
+          // Inn rest: costs gold, includes meal (no food consumed), healing from hpChange
+          updates.gold = Math.max(0, save.gold + result.goldChange);
+          updates.current_hp = Math.min(save.max_hp, save.current_hp + result.hpChange);
+        } else if (result.interaction === "rest") {
+          // Street/wilderness rest: consumes food
+          const foodCost = Math.min(save.food, 3); // FOOD_PER_DAY
+          updates.food = save.food - foodCost;
+          if (save.food >= 3) {
+            const healPerDay = Math.floor(Math.max(1, playerCharacter?.stats.con ?? 1) / 2) + save.level;
+            updates.current_hp = Math.min(save.max_hp, save.current_hp + healPerDay + result.hpChange);
+          } else {
+            updates.current_hp = Math.min(save.max_hp, Math.max(1, save.current_hp + result.hpChange));
+          }
+        } else {
+          // Search or travel
+          if (result.hpChange !== 0) updates.current_hp = Math.min(save.max_hp, Math.max(1, save.current_hp + result.hpChange));
+        }
+        if (result.foodChange > 0) updates.food = ((updates.food as number) ?? save.food) + result.foodChange;
+        if (result.goldChange > 0) updates.gold = (updates.gold as number ?? save.gold) + result.goldChange;
+        if (result.xpChange > 0) updates.xp = save.xp + result.xpChange;
+        updateSave(updates);
+        // World luck triggered a fight
+        if (result.outcome === "fight" && result.difficulty) {
+          setLastBattleRewards(null);
+          setTimeout(() => cycleView("battle"), 300);
+        }
+      }}
+      onBuyItem={(item) => {
+        if (save.gold >= item.buyPrice) {
+          const existing = save.inventory.find((i) => i.id === item.id);
+          const newInventory = existing
+            ? save.inventory.map((i) => i.id === item.id ? { ...i, qty: i.qty + 1 } : i)
+            : [...save.inventory, { id: item.id, name: item.name, qty: 1 }];
+          updateSave({ gold: save.gold - item.buyPrice, inventory: newInventory });
+        }
+      }}
+      onBattle={(difficulty) => {
+        cycleView("battle");
+      }}
+      onBack={() => cycleView("adventure")}
+    />
+  ));
   // My Army page
   if (view === "army") {
     const myNfts = characters.filter(c => c.owned);
@@ -195,11 +799,12 @@ export default function Home() {
     const baseArmy = myNfts.filter(c => c.chain === "base");
     const polyArmy = myNfts.filter(c => c.chain === "polygon");
     const totalBacking = myNfts.reduce((sum, c) => sum + c.usdBacking * c.ownedCount, 0);
-    const totalAtk = myNfts.reduce((sum, c) => sum + c.stats.attack * c.ownedCount, 0);
-    const totalDef = myNfts.reduce((sum, c) => sum + c.stats.def * c.ownedCount, 0);
-    const totalHp = myNfts.reduce((sum, c) => sum + c.stats.hp * c.ownedCount, 0);
-    const totalMAtk = myNfts.reduce((sum, c) => sum + c.stats.mAtk * c.ownedCount, 0);
-    const totalFAtk = myNfts.reduce((sum, c) => sum + c.stats.fAtk * c.ownedCount, 0);
+    const totalStr = myNfts.reduce((sum, c) => sum + c.stats.str * c.ownedCount, 0);
+    const totalDex = myNfts.reduce((sum, c) => sum + c.stats.dex * c.ownedCount, 0);
+    const totalCon = myNfts.reduce((sum, c) => sum + c.stats.con * c.ownedCount, 0);
+    const totalInt = myNfts.reduce((sum, c) => sum + c.stats.int * c.ownedCount, 0);
+    const totalWis = myNfts.reduce((sum, c) => sum + c.stats.wis * c.ownedCount, 0);
+    const totalCha = myNfts.reduce((sum, c) => sum + c.stats.cha * c.ownedCount, 0);
     const fmtStat = (n: number) => n >= 1000 ? `${(n / 1000).toFixed(1)}K` : n.toFixed(1);
     const fmtUsd = (n: number) => n >= 1000 ? `$${(n / 1000).toFixed(1)}K` : `$${n.toFixed(2)}`;
 
@@ -254,11 +859,12 @@ export default function Home() {
             <div className="flex items-center justify-center gap-3 px-4 py-2 flex-wrap rounded-lg"
               style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(201,168,76,0.1)' }}>
               <span className="text-xs font-black tracking-widest uppercase" style={{ color: 'rgba(201,168,76,0.4)' }}>Army Power</span>
-              {totalAtk > 0 && <span className="text-xs font-bold" style={{ color: 'rgba(251,191,36,0.8)' }}>⚔️ {fmtStat(totalAtk)}</span>}
-              {totalDef > 0 && <span className="text-xs font-bold" style={{ color: 'rgba(148,163,184,0.8)' }}>🛡️ {fmtStat(totalDef)}</span>}
-              {totalHp > 0 && <span className="text-xs font-bold" style={{ color: 'rgba(251,113,133,0.8)' }}>❤️ {fmtStat(totalHp)}</span>}
-              {totalMAtk > 0 && <span className="text-xs font-bold" style={{ color: 'rgba(192,132,252,0.8)' }}>⚡ {fmtStat(totalMAtk)}</span>}
-              {totalFAtk > 0 && <span className="text-xs font-bold" style={{ color: 'rgba(251,146,60,0.8)' }}>🔥 {fmtStat(totalFAtk)}</span>}
+              {totalStr > 0 && <span className="text-xs font-bold" style={{ color: 'rgba(251,191,36,0.8)' }}>STR {fmtStat(totalStr)}</span>}
+              {totalDex > 0 && <span className="text-xs font-bold" style={{ color: 'rgba(74,222,128,0.8)' }}>DEX {fmtStat(totalDex)}</span>}
+              {totalCon > 0 && <span className="text-xs font-bold" style={{ color: 'rgba(251,113,133,0.8)' }}>CON {fmtStat(totalCon)}</span>}
+              {totalInt > 0 && <span className="text-xs font-bold" style={{ color: 'rgba(96,165,250,0.8)' }}>INT {fmtStat(totalInt)}</span>}
+              {totalWis > 0 && <span className="text-xs font-bold" style={{ color: 'rgba(45,212,191,0.8)' }}>WIS {fmtStat(totalWis)}</span>}
+              {totalCha > 0 && <span className="text-xs font-bold" style={{ color: 'rgba(167,139,250,0.8)' }}>CHA {fmtStat(totalCha)}</span>}
             </div>
           </>)}
         </div>
@@ -312,11 +918,12 @@ export default function Home() {
                           </p>
                         )}
                         <div className="flex flex-wrap gap-1 mt-1" style={{ fontSize: '0.4rem', color: 'rgba(232,213,176,0.4)' }}>
-                          {card.stats.attack > 0 && <span>⚔️{card.stats.attack.toFixed(1)}</span>}
-                          {card.stats.hp > 0 && <span>❤️{card.stats.hp.toFixed(1)}</span>}
-                          {card.stats.def > 0 && <span>🛡️{card.stats.def.toFixed(1)}</span>}
-                          {card.stats.mAtk > 0 && <span>⚡{card.stats.mAtk.toFixed(1)}</span>}
-                          {card.stats.fAtk > 0 && <span>🔥{card.stats.fAtk.toFixed(1)}</span>}
+                          {card.stats.str > 0 && <span>STR {card.stats.str.toFixed(1)}</span>}
+                          {card.stats.dex > 0 && <span>DEX {card.stats.dex.toFixed(1)}</span>}
+                          {card.stats.con > 0 && <span>CON {card.stats.con.toFixed(1)}</span>}
+                          {card.stats.int > 0 && <span>INT {card.stats.int.toFixed(1)}</span>}
+                          {card.stats.wis > 0 && <span>WIS {card.stats.wis.toFixed(1)}</span>}
+                          {card.stats.cha > 0 && <span>CHA {card.stats.cha.toFixed(1)}</span>}
                         </div>
                       </div>
                     </div>
@@ -330,110 +937,7 @@ export default function Home() {
     ));
   }
 
-  if (view === "castleSiege") return subPage("Castle Siege", (
-    <div className="flex flex-col items-center gap-6 mt-12">
-      <h2 className="text-2xl font-black tracking-widest text-gold-shimmer uppercase"
-        style={{ fontFamily: "'Cinzel Decorative', 'Cinzel', serif" }}>
-        🏰 Castle Siege 🏰
-      </h2>
-      <p className="text-sm text-center" style={{ color: 'rgba(201,168,76,0.5)' }}>
-        Build your deck. Destroy the enemy fortress.
-      </p>
-      <div className="flex flex-col gap-4 w-full max-w-sm">
-        <button onClick={() => cycleView("castleAI")}
-          className="w-full px-6 py-4 rounded-lg text-sm font-black uppercase tracking-widest"
-          style={{ background: 'rgba(201,168,76,0.2)', color: '#f0d070', border: '1px solid rgba(201,168,76,0.5)', boxShadow: '0 0 15px rgba(201,168,76,0.1)' }}>
-          🤖 vs AI — Solo Play
-        </button>
-        <button onClick={() => cycleView("matchmaking")}
-          className="w-full px-6 py-4 rounded-lg text-sm font-black uppercase tracking-widest"
-          style={{ background: 'rgba(220,38,38,0.2)', color: '#fca5a5', border: '1px solid rgba(220,38,38,0.5)', boxShadow: '0 0 15px rgba(220,38,38,0.1)' }}>
-          🌐 Online — Find Opponent
-        </button>
-        <button onClick={() => cycleView("menu")}
-          className="w-full px-4 py-2 rounded text-xs font-bold uppercase tracking-widest"
-          style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(201,168,76,0.5)', border: '1px solid rgba(201,168,76,0.15)' }}>
-          ← Back
-        </button>
-      </div>
-    </div>
-  ));
 
-  if (view === "matchmaking") return subPage("Online Arena", (
-    <Matchmaking
-      characters={characters}
-      onMatchFound={() => cycleView("castleAI")}
-      onBack={() => cycleView("castleSiege")}
-    />
-  ));
-
-  if (view === "castleAI") return subPage("Card Battle", <CardBattleBoard characters={characters} onExit={() => cycleView("menu")} />);
-
-  // 1v1 Battle view
-  if (activeBattle) return subPage("◆ Arena ◆", (
-    <div className="px-2 py-4">
-      <BattleView fighter1={activeBattle.fighter1} fighter2={activeBattle.fighter2} onExit={exitBattle} />
-    </div>
-  ));
-
-  // 1v1 mode — hero gallery with battle selection
-  if (view === "1v1") {
-    battleMode || setBattleMode(true);
-    return subPage("◆ 1v1 Arena ◆", (
-      <div className="flex flex-col items-center gap-6 px-2">
-        <button onClick={() => cycleView("menu")}
-          className="fixed top-20 left-4 z-50 px-4 py-2 rounded-lg text-sm font-black uppercase tracking-widest"
-          style={{ background: 'rgba(10,6,8,0.95)', color: '#f0d070', border: '1px solid rgba(201,168,76,0.5)', boxShadow: '0 0 15px rgba(0,0,0,0.5)', fontFamily: "'Cinzel Decorative', 'Cinzel', serif" }}>
-          ⚜ ← Back ⚜
-        </button>
-        <div className="flex items-center justify-center gap-4 px-6 py-3 w-full rounded-lg"
-          style={{ background: 'rgba(220,38,38,0.1)', border: '1px solid rgba(220,38,38,0.3)' }}>
-          <span className="text-sm tracking-widest uppercase" style={{ color: 'rgba(251,191,36,0.8)' }}>
-            {selectedFighters.length === 0 && "Select two champions to battle"}
-            {selectedFighters.length === 1 && `${selectedFighters[0].name} selected — pick an opponent`}
-            {selectedFighters.length === 2 && `${selectedFighters[0].name} vs ${selectedFighters[1].name}`}
-          </span>
-          {selectedFighters.length === 2 && (
-            <button onClick={startBattle}
-              className="px-6 py-2 rounded text-sm font-black uppercase tracking-widest animate-pulse"
-              style={{ background: 'rgba(220,38,38,0.4)', color: '#fca5a5', border: '1px solid rgba(220,38,38,0.6)' }}>
-              Fight!
-            </button>
-          )}
-        </div>
-        <input value={search} onChange={(e) => { setSearch(e.target.value); setPage(0); }}
-          placeholder="Search heroes..." className="w-full max-w-md px-4 py-2 rounded-lg text-sm text-center"
-          style={{ background: 'rgba(255,255,255,0.05)', color: '#f0d070', border: '1px solid rgba(201,168,76,0.3)', outline: 'none' }} />
-        <div className="flex flex-wrap gap-4 justify-center">
-          {pageChars.map((char) => {
-            const selectedIdx = selectedFighters.findIndex(f => f.contractAddress === char.contractAddress);
-            return (
-              <CharacterCard key={`${char.contractAddress}-${char.tokenId}`} character={char} maxStats={maxStats}
-                selectable={true} selected={selectedIdx >= 0 ? (selectedIdx + 1) as 1 | 2 : null}
-                onSelect={() => toggleFighter(char)} />
-            );
-          })}
-        </div>
-        {totalPages > 1 && (
-          <div className="flex items-center gap-3">
-            <button onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0}
-              className="px-4 py-2 rounded text-sm font-bold uppercase tracking-widest disabled:opacity-30"
-              style={{ background: 'rgba(201,168,76,0.1)', color: 'rgba(201,168,76,0.9)', border: '1px solid rgba(201,168,76,0.3)' }}>← Prev</button>
-            <div className="flex gap-1">
-              {Array.from({ length: totalPages }, (_, i) => (
-                <button key={i} onClick={() => setPage(i)} className="w-7 h-7 rounded text-xs font-bold"
-                  style={i === page ? { background: 'rgba(201,168,76,0.4)', color: '#f0d070', border: '1px solid rgba(201,168,76,0.6)' }
-                    : { background: 'rgba(201,168,76,0.05)', color: 'rgba(201,168,76,0.4)', border: '1px solid rgba(201,168,76,0.15)' }}>{i + 1}</button>
-              ))}
-            </div>
-            <button onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))} disabled={page === totalPages - 1}
-              className="px-4 py-2 rounded text-sm font-bold uppercase tracking-widest disabled:opacity-30"
-              style={{ background: 'rgba(201,168,76,0.1)', color: 'rgba(201,168,76,0.9)', border: '1px solid rgba(201,168,76,0.3)' }}>Next →</button>
-          </div>
-        )}
-      </div>
-    ));
-  }
 
   // Heroes gallery page
   if (view === "heroes") {
@@ -620,6 +1124,26 @@ export default function Home() {
             </span>
           </button>
 
+          {/* Battle */}
+          <button onClick={() => cycleView("battle")}
+            className="flex flex-col items-center gap-3 px-6 py-8 rounded-2xl transition-all hover:scale-[1.02]"
+            style={{ background: 'rgba(220,38,38,0.1)', border: '2px solid rgba(220,38,38,0.3)', boxShadow: '0 0 25px rgba(220,38,38,0.05)' }}>
+            <span className="text-4xl">&#x2694;&#xFE0F;</span>
+            <span className="text-sm font-black tracking-widest uppercase" style={{ color: 'rgba(220,38,38,0.9)' }}>Battle</span>
+            <span style={{ fontSize: '0.55rem', color: 'rgba(220,38,38,0.5)' }}>PvE hex grid combat</span>
+          </button>
+
+          {/* Adventure */}
+          <button onClick={() => cycleView("adventure")}
+            className="flex flex-col items-center gap-3 px-6 py-8 rounded-2xl transition-all hover:scale-[1.02]"
+            style={{ background: 'rgba(34,197,94,0.1)', border: '2px solid rgba(34,197,94,0.3)', boxShadow: '0 0 25px rgba(34,197,94,0.05)' }}>
+            <span className="text-4xl">🗺️</span>
+            <span className="text-sm font-black tracking-widest uppercase" style={{ color: 'rgba(34,197,94,0.9)' }}>Adventure</span>
+            <span style={{ fontSize: '0.55rem', color: 'rgba(34,197,94,0.5)' }}>
+              {save && hasCharacter ? `Lv${save.level} · Day ${save.day} · ${save.xp} XP` : 'New game or load save'}
+            </span>
+          </button>
+
           {/* All Heroes */}
           <button onClick={() => cycleView("heroes")}
             className="flex flex-col items-center gap-3 px-6 py-8 rounded-2xl transition-all hover:scale-[1.02]"
@@ -629,23 +1153,6 @@ export default function Home() {
             <span style={{ fontSize: '0.55rem', color: 'rgba(201,168,76,0.4)' }}>Browse all {characters.length} champions</span>
           </button>
 
-          {/* Adventure */}
-          <button onClick={() => cycleView("adventure")}
-            className="flex flex-col items-center gap-3 px-6 py-8 rounded-2xl transition-all hover:scale-[1.02]"
-            style={{ background: 'rgba(34,197,94,0.1)', border: '2px solid rgba(34,197,94,0.3)', boxShadow: '0 0 25px rgba(34,197,94,0.05)' }}>
-            <span className="text-4xl">📖</span>
-            <span className="text-sm font-black tracking-widest uppercase" style={{ color: 'rgba(74,222,128,0.9)' }}>Adventure</span>
-            <span style={{ fontSize: '0.55rem', color: 'rgba(34,197,94,0.5)' }}>6 levels of story-driven combat</span>
-          </button>
-
-          {/* Castle Siege */}
-          <button onClick={() => cycleView("castleSiege")}
-            className="flex flex-col items-center gap-3 px-6 py-8 rounded-2xl transition-all hover:scale-[1.02]"
-            style={{ background: 'rgba(220,38,38,0.1)', border: '2px solid rgba(220,38,38,0.3)', boxShadow: '0 0 25px rgba(220,38,38,0.05)' }}>
-            <span className="text-4xl">🏰</span>
-            <span className="text-sm font-black tracking-widest uppercase" style={{ color: '#fca5a5' }}>Castle Siege</span>
-            <span style={{ fontSize: '0.55rem', color: 'rgba(220,38,38,0.5)' }}>Card battle vs AI or online</span>
-          </button>
 
           {/* Marketplace */}
           <button onClick={() => cycleView("marketplace")}
@@ -656,14 +1163,6 @@ export default function Home() {
             <span style={{ fontSize: '0.55rem', color: 'rgba(251,191,36,0.5)' }}>Buy and sell hero NFTs</span>
           </button>
 
-          {/* 1v1 */}
-          <button onClick={() => { cycleView("1v1"); setBattleMode(true); setSelectedFighters([]); }}
-            className="flex flex-col items-center gap-3 px-6 py-8 rounded-2xl transition-all hover:scale-[1.02]"
-            style={{ background: 'rgba(139,92,246,0.1)', border: '2px solid rgba(139,92,246,0.3)', boxShadow: '0 0 25px rgba(139,92,246,0.05)' }}>
-            <span className="text-4xl">⚔️</span>
-            <span className="text-sm font-black tracking-widest uppercase" style={{ color: 'rgba(167,139,250,0.9)' }}>1v1 Arena</span>
-            <span style={{ fontSize: '0.55rem', color: 'rgba(139,92,246,0.5)' }}>Pick two heroes and watch them fight</span>
-          </button>
 
           {/* Power Up */}
           <button onClick={() => cycleView("powerUp")}

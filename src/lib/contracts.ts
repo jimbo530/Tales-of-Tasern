@@ -323,68 +323,104 @@ export const KNOWN_LP_PAIRS = {
 // ─── Stat Token Addresses ─────────────────────────────────────────────────────
 // Each stat is an array — multiple tokens can contribute to the same stat.
 // The hook sums all matching token amounts across all LP pairs for each chain.
+// D20 Ability Score tokens — $10 USD value = 1 ability point
 export const STAT_TOKENS = {
   base: {
-    attack: [
-      "0x4f604735c1cf31399c6e711d5962b2b3e0225ad3", // USDGLO
-      "0x4200000000000000000000000000000000000006", // WETH (Base)
-      "0x3595ca37596d5895b70efab592ac315d5b9809b2", // AZOS (stablecoin)
+    str: [] as `0x${string}`[],
+    dex: [
+      "0x06a05043eb2c1691b19c2c13219db9212269ddc5", // BURGERS → dexterity
     ] as `0x${string}`[],
-    hp:     ["0x8fb87d13b40b1a67b22ed1a17e2835fe7e3a9ba3", "0xc1ba76771bbf0dd841347630e57c793f9d5accee", "0x06a05043eb2c1691b19c2c13219db9212269ddc5", "0xd75dfa972c6136f1c594fec1945302f885e1ab29"] as `0x${string}`[], // MfT, EGP(Base), BURGERS, TGN
-    magic:  ["0x20b048fa035d5763685d695e66adf62c5d9f5055"] as `0x${string}`[], // CHAR → global multiplier
-    magicBoost: [] as `0x${string}`[],
-    mAtk:   [] as `0x${string}`[],
-    fAtk:   [] as `0x${string}`[],
-    def:    [] as `0x${string}`[],
-    mDef:   [] as `0x${string}`[],
-    mana:   [] as `0x${string}`[],
+    egp: [
+      "0xc1ba76771bbf0dd841347630e57c793f9d5accee", // EGP(Base) → DEX+INT+WIS
+    ] as `0x${string}`[],
+    con: [
+      "0x8fb87d13b40b1a67b22ed1a17e2835fe7e3a9ba3", // MfT → constitution
+      "0xd75dfa972c6136f1c594fec1945302f885e1ab29", // TGN → constitution
+    ] as `0x${string}`[],
+    int: [] as `0x${string}`[],
+    wis: [] as `0x${string}`[],
+    cha: [] as `0x${string}`[],
+    atkBonus: [
+      "0x20b048fa035d5763685d695e66adf62c5d9f5055", // CHAR → atk bonus
+    ] as `0x${string}`[],
+    eth: [
+      "0x4200000000000000000000000000000000000006", // WETH (Base) → INT+WIS+CHA
+    ] as `0x${string}`[],
+    stablecoin: [
+      "0x4f604735c1cf31399c6e711d5962b2b3e0225ad3", // USDGLO → split all 6
+      "0x3595ca37596d5895b70efab592ac315d5b9809b2", // AZOS → split all 6
+    ] as `0x${string}`[],
   },
   polygon: {
-    attack: [
-      "0x4f604735c1cf31399c6e711d5962b2b3e0225ad3", // USDGLO (same address on Polygon)
-      "0x1bfd67037b42cf73acf2047067bd4f2c47d9bfd6", // WBTC (Polygon)
-      "0x7ceb23fd6bc0add59e62ac25578270cff1b9f619", // WETH (Polygon)
-      "0xace15da4edcec83c98b1fc196fc1dc44c5c429ca", // JCGWR (also DEF)
-      "0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270", // WPOL
+    str: [
+      "0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270", // WPOL → strength
+      "0xace15da4edcec83c98b1fc196fc1dc44c5c429ca", // JCGWR → strength
     ] as `0x${string}`[],
-    mAtk: [
-      "0xcdb4574adb7c6643153a65ee1a953afd5a189cef", // JLT-F24 (Renewable Energy Credits → electric attack)
-      "0x0b31cc088cd2cd54e2dd161eb5de7b5a3e626c9e", // JLT-B23 (electric attack)
+    dex: [
+      "0x146642d83879257ac9ed35074b1c3714b7e8f452", // AU24T → dexterity
     ] as `0x${string}`[],
-    fAtk: [
-      "0x8e87497ec9fd80fc102b33837035f76cf17c3020", // LANTERN → fire attack
+    ac: [
+      "0xcb2a97776c87433050e0ddf9de0f53ead661dab4", // TB01 → armor class
+      "0x861f57e96678c6cb586f07dd8d3b0c34ce19dd82", // LTK → armor class
     ] as `0x${string}`[],
-    hp: [
-      "0x4bf82cf0d6b2afc87367052b793097153c859d38", // DDD
-      "0x64f6f111e9fdb753877f17f399b759de97379170", // EGP
-      "0x8a088dceecbcf457762eb7c66f78fff27dc0c04a", // PKT
-      "0xccf37622e6b72352e7b410481dd4913563038b7c", // OGC
-      "0xd7c584d40216576f1d8651eab8bef9de69497666", // BTN
-      "0xe302672798d12e7f68c783db2c2d5e6b48ccf3ce", // IGS
-      "0x75c0a194cd8b4f01d5ed58be5b7c5b61a9c69d0a", // DHG
-      "0xddc330761761751e005333208889bfe36c6e6760", // LGP
-      "0xdfffe0c33b4011c4218acd61e68a62a32eaf9a8b", // REGEN (1/2 HP, 1/2 ATK)
+    ddd: [
+      "0x4bf82cf0d6b2afc87367052b793097153c859d38", // DDD → STR+INT+CHA
     ] as `0x${string}`[],
-    magic: [
-      "0x11f98a36acbd04ca3aa3a149d402affbd5966fe7", // CCC → global multiplier (like CHAR on Base)
-      "0xef6ab48ef8dfe984fab0d5c4cd6aff2e54dfda14", // CRISP-M → global multiplier
+    egp: [
+      "0x64f6f111e9fdb753877f17f399b759de97379170", // EGP (Polygon) → DEX+INT+WIS
     ] as `0x${string}`[],
-    magicBoost: [
-      "0x72e4327f592e9cb09d5730a55d1d68de144af53c", // PR25 → multiplies magic stats only
+    ogc: [
+      "0xccf37622e6b72352e7b410481dd4913563038b7c", // OGC → STR+DEX+CON
     ] as `0x${string}`[],
-    def: [
-      "0xcb2a97776c87433050e0ddf9de0f53ead661dab4", // TB01 → defense
-      "0xace15da4edcec83c98b1fc196fc1dc44c5c429ca", // JCGWR (also ATK)
-      "0x861f57e96678c6cb586f07dd8d3b0c34ce19dd82", // LTK → armor (litter cleanup)
-      "0x146642d83879257ac9ed35074b1c3714b7e8f452", // AU24T → armor (tokenized trees)
+    igs: [
+      "0xe302672798d12e7f68c783db2c2d5e6b48ccf3ce", // IGS → CON+WIS+CHA
     ] as `0x${string}`[],
-    mDef: [
-      "0xd84415c956f44b2300a2e56c5b898401913e9a29", // PR24 → magical defense
+    btn: [
+      "0xd7c584d40216576f1d8651eab8bef9de69497666", // BTN → STR+CON+WIS
     ] as `0x${string}`[],
-    mana: [
-      "0xD838290e877E0188a4A44700463419ED96c16107", // NCT
-      "0x2F800Db0fdb5223b3C3f354886d907A671414A7f", // BCT
-      "0xdb7a2607b71134d0b09c27ca2d77b495e4dbeedb", // Grant Wizard
+    lgp: [
+      "0xddc330761761751e005333208889bfe36c6e6760", // LGP → DEX+INT+CHA
+    ] as `0x${string}`[],
+    dhg: [
+      "0x75c0a194cd8b4f01d5ed58be5b7c5b61a9c69d0a", // DHG → STR+DEX+WIS
+    ] as `0x${string}`[],
+    pkt: [
+      "0x8a088dceecbcf457762eb7c66f78fff27dc0c04a", // PKT → CON+INT+CHA
+    ] as `0x${string}`[],
+    con: [
+      "0xdfffe0c33b4011c4218acd61e68a62a32eaf9a8b", // REGEN → constitution
+    ] as `0x${string}`[],
+    int: [] as `0x${string}`[],
+    lightning: [
+      "0xcdb4574adb7c6643153a65ee1a953afd5a189cef", // JLT-F24 → lightning/electric
+      "0x0b31cc088cd2cd54e2dd161eb5de7b5a3e626c9e", // JLT-B23 → lightning/electric
+    ] as `0x${string}`[],
+    fire: [
+      "0x8e87497ec9fd80fc102b33837035f76cf17c3020", // LANTERN → fire
+    ] as `0x${string}`[],
+    wis: [
+      "0xD838290e877E0188a4A44700463419ED96c16107", // NCT → wisdom
+      "0x2F800Db0fdb5223b3C3f354886d907A671414A7f", // BCT → wisdom
+      "0xdb7a2607b71134d0b09c27ca2d77b495e4dbeedb", // Grant Wizard → wisdom
+    ] as `0x${string}`[],
+    speed: [
+      "0xd84415c956f44b2300a2e56c5b898401913e9a29", // PR24 → move speed
+      "0x72e4327f592e9cb09d5730a55d1d68de144af53c", // PR25 → move speed
+    ] as `0x${string}`[],
+    cha: [
+      "0xef6ab48ef8dfe984fab0d5c4cd6aff2e54dfda14", // CRISP-M → charisma
+    ] as `0x${string}`[],
+    atkBonus: [
+      "0x11f98a36acbd04ca3aa3a149d402affbd5966fe7", // CCC → atk bonus
+    ] as `0x${string}`[],
+    btc: [
+      "0x1bfd67037b42cf73acf2047067bd4f2c47d9bfd6", // WBTC → STR+DEX+CON
+    ] as `0x${string}`[],
+    eth: [
+      "0x7ceb23fd6bc0add59e62ac25578270cff1b9f619", // WETH (Polygon) → INT+WIS+CHA
+    ] as `0x${string}`[],
+    stablecoin: [
+      "0x4f604735c1cf31399c6e711d5962b2b3e0225ad3", // USDGLO → split all 6
     ] as `0x${string}`[],
   },
 };

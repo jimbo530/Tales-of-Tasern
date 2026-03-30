@@ -3,8 +3,8 @@ import { base, polygon } from "viem/chains";
 import { V2_PAIR_ABI, STAT_TOKENS } from "./contracts";
 
 export type CharacterStats = {
-  attack: number;
-  hp: number;
+  str: number;
+  con: number;
 };
 
 const clients = {
@@ -23,7 +23,7 @@ export async function getLpStats(
   lpPairAddress: `0x${string}`,
   holderAddress: `0x${string}`,
   nftTotalSupply?: bigint
-): Promise<CharacterStats & { rawAttack: bigint; rawHp: bigint }> {
+): Promise<CharacterStats & { rawStr: bigint; rawCon: bigint }> {
   const client = clients[chain];
   const statTokens = STAT_TOKENS["base"];
 
@@ -52,22 +52,22 @@ export async function getLpStats(
   const amt0 = (res0 * share) / BigInt(1e18) / nftDivisor;
   const amt1 = (res1 * share) / BigInt(1e18) / nftDivisor;
 
-  const attackTokens = statTokens.attack.map((t: string) => t.toLowerCase());
-  const hpTokens     = statTokens.hp.map((t: string) => t.toLowerCase());
+  const strTokens = statTokens.str.map((t: string) => t.toLowerCase());
+  const conTokens = statTokens.con.map((t: string) => t.toLowerCase());
 
-  let rawAttack = 0n;
-  let rawHp = 0n;
+  let rawStr = 0n;
+  let rawCon = 0n;
 
-  if (attackTokens.includes(t0)) rawAttack = amt0;
-  else if (attackTokens.includes(t1)) rawAttack = amt1;
+  if (strTokens.includes(t0)) rawStr = amt0;
+  else if (strTokens.includes(t1)) rawStr = amt1;
 
-  if (hpTokens.includes(t0)) rawHp = amt0;
-  else if (hpTokens.includes(t1)) rawHp = amt1;
+  if (conTokens.includes(t0)) rawCon = amt0;
+  else if (conTokens.includes(t1)) rawCon = amt1;
 
   return {
-    attack: parseFloat(formatUnits(rawAttack, 18)),
-    hp: parseFloat(formatUnits(rawHp, 18)),
-    rawAttack,
-    rawHp,
+    str: parseFloat(formatUnits(rawStr, 18)),
+    con: parseFloat(formatUnits(rawCon, 18)),
+    rawStr,
+    rawCon,
   };
 }

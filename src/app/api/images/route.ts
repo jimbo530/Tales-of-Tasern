@@ -44,7 +44,39 @@ async function resolveUri(nft: { contractAddress: `0x${string}` }): Promise<{ ur
   return {};
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const proxyUrl = searchParams.get("url");
+
+  // ── Image proxy mode: /api/images?url=<external-url> ──────────────────
+  if (proxyUrl) {
+    // Only allow IPFS gateways and known image hosts
+    const allowed = proxyUrl.startsWith("https://ipfs.io/") ||
+      proxyUrl.startsWith("https://gateway.pinata.cloud/") ||
+      proxyUrl.startsWith("https://nftstorage.link/") ||
+      proxyUrl.startsWith("https://arweave.net/") ||
+      proxyUrl.startsWith("https://cloudflare-ipfs.com/");
+    if (!allowed) {
+      return new NextResponse("Forbidden", { status: 403 });
+    }
+    try {
+      const imgRes = await fetch(proxyUrl, { signal: AbortSignal.timeout(10000) });
+      if (!imgRes.ok) return new NextResponse("Not found", { status: 404 });
+      const contentType = imgRes.headers.get("content-type") ?? "image/png";
+      const buffer = await imgRes.arrayBuffer();
+      return new NextResponse(buffer, {
+        headers: {
+          "Content-Type": contentType,
+          "Cache-Control": "public, max-age=604800, stale-while-revalidate=86400",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    } catch {
+      return new NextResponse("Fetch failed", { status: 502 });
+    }
+  }
+
+  // ── Bulk image resolution mode (original) ─────────────────────────────
   const results: Record<string, { metadataUri?: string; imageUrl?: string; chain?: string }> = {};
 
   const BATCH = 10;
@@ -65,6 +97,6 @@ export async function GET() {
   }
 
   return NextResponse.json(results, {
-    headers: { "Cache-Control": "public, s-maxage=604800, stale-while-revalidate=86400" }, // Cache 7 days
+    headers: { "Cache-Control": "public, s-maxage=604800, stale-while-revalidate=86400" },
   });
 }

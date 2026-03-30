@@ -5,7 +5,15 @@ import { useAccount } from "wagmi";
 import type { NftCharacter } from "@/hooks/useNftStats";
 import { useNftImage } from "@/hooks/useNftImage";
 import { listNft, cancelListing, getActiveListings, type Listing } from "@/lib/supabase";
-import { STORY_NPCS } from "@/lib/adventureData";
+// Story NPCs excluded from marketplace sales
+const STORY_NPCS: Set<string> = new Set([
+  "0xae195df237739d6d43d4b796553f594c5ba516a7",
+  "0x2685bb66e8e45e386d3e816726de64d5001317fd",
+  "0x6ad5621f5719a6b32d0ea9dd4493ca6ac0639d4b",
+  "0x212626d66e64c9c293a845687db700c16466586e",
+  "0x7f55796f79352ab707e7fc41dd0b317be6cbd165",
+  "0x716adcbed9ef58ccf11434aa7962b0f200a030af",
+]);
 
 type Props = {
   characters: NftCharacter[];
@@ -30,7 +38,7 @@ function MarketCard({ character, isOwner, isListed, isStory, isSellerOwned, isPl
   const backing = character.usdBacking ?? 0;
   const price = backing * (1 + PLATFORM_MARKUP);
   const s = character.stats;
-  const hasStats = s.attack > 0 || s.hp > 0 || s.def > 0 || s.mAtk > 0 || s.fAtk > 0;
+  const hasStats = s.str > 0 || s.dex > 0 || s.con > 0 || s.int > 0 || s.wis > 0 || s.cha > 0;
 
   return (
     <div className="rounded-xl overflow-hidden transition-all hover:scale-[1.02]"
@@ -53,9 +61,9 @@ function MarketCard({ character, isOwner, isListed, isStory, isSellerOwned, isPl
         </div>
         {hasStats && (
           <div className="flex flex-wrap gap-1 mt-1" style={{ fontSize: '0.45rem', color: 'rgba(232,213,176,0.5)' }}>
-            {s.attack > 0 && <span>⚔️{s.attack.toFixed(1)}</span>}
-            {s.hp > 0 && <span>❤️{s.hp.toFixed(1)}</span>}
-            {s.def > 0 && <span>🛡️{s.def.toFixed(1)}</span>}
+            {s.str > 0 && <span>STR {s.str.toFixed(1)}</span>}
+            {s.dex > 0 && <span>DEX {s.dex.toFixed(1)}</span>}
+            {s.con > 0 && <span>CON {s.con.toFixed(1)}</span>}
           </div>
         )}
         <div className="mt-2 px-2 py-1 rounded text-center"

@@ -6,22 +6,35 @@ import type { NftCharacter } from "@/hooks/useNftStats";
 
 type Props = {
   character: NftCharacter;
-  maxStats: { attack: number; mAtk: number; fAtk: number; def: number; mDef: number; hp: number; mana: number };
+  maxStats: { str: number; dex: number; con: number; int: number; wis: number; cha: number };
   selectable?: boolean;
   selected?: 1 | 2 | null;
   onSelect?: () => void;
 };
 
 const STAT_META: Record<string, { label: string; color: string }> = {
-  attack:         { label: "⚔️ ATK",   color: "rgba(251,191,36,0.9)"  },
-  mAtk:           { label: "⚡ EATK",  color: "rgba(250,204,21,0.9)"  },
-  fAtk:           { label: "🔥 FATK",  color: "rgba(251,146,60,0.9)"  },
-  def:            { label: "🛡️ DEF",  color: "rgba(148,163,184,0.9)" },
-  mDef:           { label: "🛡️ MDEF", color: "rgba(45,212,191,0.9)"  },
-  hp:             { label: "❤️ HP",    color: "rgba(251,113,133,0.9)" },
-  charMultiplier: { label: "♦ CHAR×",  color: "rgba(167,139,250,0.9)" },
-  magicBoost:     { label: "✦ MAG×",   color: "rgba(236,72,153,0.9)"  },
-  mana:           { label: "💧 MANA",  color: "rgba(96,165,250,0.9)"  },
+  str: { label: "STR", color: "rgba(251,191,36,0.9)"  },
+  dex: { label: "DEX", color: "rgba(74,222,128,0.9)"  },
+  con: { label: "CON", color: "rgba(251,113,133,0.9)" },
+  int: { label: "INT", color: "rgba(96,165,250,0.9)"  },
+  wis: { label: "WIS", color: "rgba(45,212,191,0.9)"  },
+  cha: { label: "CHA", color: "rgba(167,139,250,0.9)" },
+  ac:  { label: "AC",  color: "rgba(209,213,219,0.9)"  },
+  atk:   { label: "ATK", color: "rgba(239,68,68,0.9)"   },
+  speed:     { label: "SPD", color: "rgba(56,189,248,0.9)"  },
+  lightning: { label: "LTN", color: "rgba(250,204,21,0.9)" },
+  fire:      { label: "FIR", color: "rgba(249,115,22,0.9)" },
+  all: { label: "ALL", color: "rgba(232,213,176,0.9)"  },
+  btc: { label: "STR/DEX/CON", color: "rgba(247,147,26,0.9)" },
+  eth: { label: "INT/WIS/CHA", color: "rgba(98,126,234,0.9)" },
+  egp: { label: "INT/WIS/DEX", color: "rgba(34,197,94,0.9)"  },
+  ddd: { label: "STR/INT/CHA", color: "rgba(251,191,36,0.9)" },
+  ogc: { label: "STR/DEX/CON", color: "rgba(251,146,60,0.9)" },
+  igs: { label: "CON/WIS/CHA", color: "rgba(192,132,252,0.9)" },
+  btn: { label: "STR/CON/WIS", color: "rgba(148,163,184,0.9)" },
+  lgp: { label: "DEX/INT/CHA", color: "rgba(56,189,248,0.9)" },
+  dhg: { label: "STR/DEX/WIS", color: "rgba(251,113,133,0.9)" },
+  pkt: { label: "CON/INT/CHA", color: "rgba(74,222,128,0.9)" },
 };
 
 const GATEWAYS = [
@@ -80,18 +93,7 @@ function formatAmount(n: number): string {
 }
 
 export function CharacterCard({ character, maxStats, selectable, selected, onSelect }: Props) {
-  const { name, metadataUri, stats, contractAddress, tokenId, owned, tokenAmounts } = character;
-  const multiplier = 1 + stats.charMultiplier;
-  const magicMult = 1 + stats.magicMultiplier;
-  const attack = stats.attack * multiplier;
-  const mAtk = stats.mAtk * multiplier * magicMult;
-  const fAtk = stats.fAtk * multiplier;
-  const def = stats.def * multiplier;
-  const hp = stats.hp * multiplier;
-  const mana = stats.mana * multiplier;
-  const hasSpecial = mAtk > 0 || fAtk > 0;
-  // Mana folds into MDEF if no special, otherwise it's an offensive stat shown in battle only
-  const mDef = (stats.mDef * multiplier * magicMult) + (hasSpecial ? 0 : mana);
+  const { name, metadataUri, stats, contractAddress, tokenId, owned, tokenAmounts, subtypes } = character;
 
   // Use pre-resolved imageUrl from API, fall back to client-side resolution
   const [imageUrl, setImageUrl] = useState<string | null>(character.imageUrl ?? null);
@@ -216,6 +218,12 @@ export function CharacterCard({ character, maxStats, selectable, selected, onSel
               style={owned ? undefined : { color: 'rgba(200,190,210,0.7)' }}>
               {name}
             </h2>
+            {subtypes && subtypes.length > 0 && (
+              <div className="flex gap-1 justify-center mt-0.5">
+                {subtypes.includes("electric") && <span className="px-1.5 py-0.5 rounded text-xs font-bold" style={{ background: 'rgba(250,204,21,0.2)', color: 'rgba(250,204,21,0.9)', border: '1px solid rgba(250,204,21,0.4)', fontSize: '0.5rem' }}>⚡ ELECTRIC</span>}
+                {subtypes.includes("fire") && <span className="px-1.5 py-0.5 rounded text-xs font-bold" style={{ background: 'rgba(249,115,22,0.2)', color: 'rgba(249,115,22,0.9)', border: '1px solid rgba(249,115,22,0.4)', fontSize: '0.5rem' }}>🔥 FIRE</span>}
+              </div>
+            )}
             <a
               href={`https://opensea.io/item/${character.chain === 'polygon' ? 'matic' : 'base'}/${contractAddress}/${tokenId.toString()}`}
               target="_blank"
@@ -234,39 +242,19 @@ export function CharacterCard({ character, maxStats, selectable, selected, onSel
             <div className="flex-1 h-px" style={{ background: `linear-gradient(to left, transparent, ${borderColor})` }} />
           </div>
 
-          {/* Stats */}
+          {/* D20 Ability Scores */}
           <div className="px-3 pb-3 flex flex-col gap-1.5 flex-shrink-0">
-            {stats.charMultiplier > 0 && (
-              <div className="flex items-center justify-between px-2 py-0.5 rounded"
-                style={{ background: 'rgba(139,92,246,0.1)', border: '1px solid rgba(139,92,246,0.25)' }}>
-                <span className="text-xs font-bold" style={{ color: 'rgba(167,139,250,0.8)' }}>♦</span>
-                <span className="text-xs font-black" style={{ color: '#a78bfa' }}>×{multiplier.toFixed(3)}</span>
-              </div>
-            )}
-            {stats.magicMultiplier > 0 && (
-              <div className="flex items-center justify-between px-2 py-0.5 rounded"
-                style={{ background: 'rgba(236,72,153,0.1)', border: '1px solid rgba(236,72,153,0.25)' }}>
-                <span className="text-xs tracking-widest uppercase font-bold" style={{ color: 'rgba(236,72,153,0.8)', fontSize: '0.55rem' }}>✦ MAG ×</span>
-                <span className="text-xs font-black" style={{ color: '#ec4899' }}>×{magicMult.toFixed(3)}</span>
-              </div>
-            )}
-            <StatBar label="⚔️ ATK"   value={attack} max={maxStats.attack} color="bg-amber-500" />
-            {mAtk > 0 && (
-              <StatBar label="⚡ EATK"  value={mAtk}   max={maxStats.mAtk}   color="bg-purple-500" />
-            )}
-            {fAtk > 0 && (
-              <StatBar label="🔥 FATK"  value={fAtk}   max={maxStats.fAtk}   color="bg-orange-500" />
-            )}
-            <StatBar label="❤️ HP"    value={hp}     max={maxStats.hp}     color="bg-rose-600" />
-            {def > 0 && (
-              <StatBar label="🛡️ DEF"   value={def}    max={maxStats.def}    color="bg-slate-400" />
-            )}
-            {mDef > 0 && (
-              <StatBar label="🛡️ MDEF"  value={mDef}   max={maxStats.mDef}   color="bg-teal-500" />
-            )}
-            {stats.healing > 0 && (
-              <StatBar label="💚 HEAL"  value={stats.healing * multiplier}  max={maxStats.hp * 0.1}  color="bg-emerald-400" />
-            )}
+            <StatBar label="STR" value={stats.str} max={maxStats.str} color="bg-amber-500" />
+            <StatBar label="DEX" value={stats.dex} max={maxStats.dex} color="bg-green-400" />
+            <StatBar label="CON" value={stats.con} max={maxStats.con} color="bg-rose-500" />
+            <StatBar label="INT" value={stats.int} max={maxStats.int} color="bg-blue-400" />
+            <StatBar label="WIS" value={stats.wis} max={maxStats.wis} color="bg-teal-400" />
+            <StatBar label="CHA" value={stats.cha} max={maxStats.cha} color="bg-violet-400" />
+            <StatBar label="AC" value={stats.ac} max={Math.max(stats.ac, 20)} color="bg-gray-300" />
+            {stats.atk > 0 && <StatBar label="ATK" value={stats.atk} max={Math.max(stats.atk, 10)} color="bg-red-500" />}
+            <StatBar label={`SPD ${stats.speed}ft`} value={stats.speed} max={Math.max(stats.speed, 60)} color="bg-sky-400" />
+            {stats.lightningDmg > 0 && <StatBar label="⚡ LTN" value={stats.lightningDmg} max={Math.max(stats.lightningDmg, 10)} color="bg-yellow-400" />}
+            {stats.fireDmg > 0 && <StatBar label="🔥 FIR" value={stats.fireDmg} max={Math.max(stats.fireDmg, 10)} color="bg-orange-500" />}
           </div>
         </div>
 
@@ -300,7 +288,7 @@ export function CharacterCard({ character, maxStats, selectable, selected, onSel
               </p>
             ) : (
               tokenAmounts.map(({ symbol, amount, stat }) => {
-                const meta = STAT_META[stat];
+                const meta = STAT_META[stat] ?? { label: stat.toUpperCase(), color: 'rgba(232,213,176,0.7)' };
                 return (
                   <div key={symbol}
                     className="flex items-center justify-between px-2 py-1.5 rounded"

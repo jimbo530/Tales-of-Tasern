@@ -1,0 +1,797 @@
+export type MonsterSize = "tiny" | "small" | "medium" | "large";
+export type MonsterType =
+  | "beast"
+  | "humanoid"
+  | "undead"
+  | "vermin"
+  | "magical_beast"
+  | "aberration"
+  | "fey"
+  | "plant"
+  | "dragon"
+  | "swarm";
+
+export type Monster = {
+  id: string;
+  name: string;
+  cr: number;
+  size: MonsterSize;
+  type: MonsterType;
+  hp: number;
+  ac: number;
+  str: number;
+  dex: number;
+  con: number;
+  int: number;
+  wis: number;
+  cha: number;
+  attack: string;
+  damage: string;
+  speed: number;
+  special?: string;
+  terrain: string[];
+  description: string;
+};
+
+// ---------------------------------------------------------------------------
+// All ability scores are CONVERTED from D&D originals: score - 10, minimum 1.
+// ---------------------------------------------------------------------------
+
+export const MONSTERS: Monster[] = [
+  // =======================================================================
+  // CR 0.25 (1/4)
+  // =======================================================================
+  {
+    id: "kobold",
+    name: "Kobold",
+    cr: 0.25,
+    size: "small",
+    type: "humanoid",
+    hp: 4,
+    ac: 15,
+    str: 1,
+    dex: 3,
+    con: 1,
+    int: 1,
+    wis: 1,
+    cha: 1,
+    attack: "Spear +1 (1d6-1)",
+    damage: "1d6-1",
+    speed: 30,
+    terrain: ["forest", "underground"],
+    description: "A scaly reptilian ambusher.",
+  },
+  {
+    id: "tiny_monstrous_spider",
+    name: "Tiny Monstrous Spider",
+    cr: 0.25,
+    size: "tiny",
+    type: "vermin",
+    hp: 2,
+    ac: 15,
+    str: 1,
+    dex: 7,
+    con: 1,
+    int: 1,
+    wis: 1,
+    cha: 1,
+    attack: "Bite +5 (1d3-4 + poison)",
+    damage: "1d3-4",
+    speed: 20,
+    special: "Poison",
+    terrain: ["forest"],
+    description: "A palm-sized spider with venomous fangs.",
+  },
+
+  // =======================================================================
+  // CR 0.33 (1/3)
+  // =======================================================================
+  {
+    id: "dire_rat",
+    name: "Dire Rat",
+    cr: 0.33,
+    size: "small",
+    type: "beast",
+    hp: 5,
+    ac: 15,
+    str: 1,
+    dex: 7,
+    con: 2,
+    int: 1,
+    wis: 2,
+    cha: 1,
+    attack: "Bite +4 (1d4 + disease)",
+    damage: "1d4",
+    speed: 40,
+    special: "Disease",
+    terrain: ["farm", "road", "town", "underground"],
+    description: "A dog-sized rat with filthy teeth.",
+  },
+  {
+    id: "goblin",
+    name: "Goblin",
+    cr: 0.33,
+    size: "small",
+    type: "humanoid",
+    hp: 5,
+    ac: 15,
+    str: 1,
+    dex: 3,
+    con: 2,
+    int: 1,
+    wis: 1,
+    cha: 1,
+    attack: "Morningstar +2 (1d6)",
+    damage: "1d6",
+    speed: 30,
+    terrain: ["plains", "forest", "road"],
+    description: "A sneering goblin warrior.",
+  },
+  {
+    id: "giant_fire_beetle",
+    name: "Giant Fire Beetle",
+    cr: 0.33,
+    size: "small",
+    type: "vermin",
+    hp: 4,
+    ac: 16,
+    str: 1,
+    dex: 1,
+    con: 1,
+    int: 1,
+    wis: 1,
+    cha: 1,
+    attack: "Bite +1 (2d4)",
+    damage: "2d4",
+    speed: 30,
+    terrain: ["plains", "farm"],
+    description: "A beetle with glowing glands.",
+  },
+
+  // =======================================================================
+  // CR 0.5 (1/2)
+  // =======================================================================
+  {
+    id: "orc",
+    name: "Orc",
+    cr: 0.5,
+    size: "medium",
+    type: "humanoid",
+    hp: 5,
+    ac: 13,
+    str: 7,
+    dex: 1,
+    con: 2,
+    int: 1,
+    wis: 1,
+    cha: 1,
+    attack: "Falchion +4 (2d4+4)",
+    damage: "2d4+4",
+    speed: 30,
+    terrain: ["plains", "road", "forest"],
+    description: "A tusked orc raider.",
+  },
+  {
+    id: "hobgoblin",
+    name: "Hobgoblin",
+    cr: 0.5,
+    size: "medium",
+    type: "humanoid",
+    hp: 6,
+    ac: 15,
+    str: 3,
+    dex: 3,
+    con: 4,
+    int: 1,
+    wis: 1,
+    cha: 1,
+    attack: "Longsword +2 (1d8+1)",
+    damage: "1d8+1",
+    speed: 30,
+    terrain: ["plains", "road"],
+    description: "A disciplined hobgoblin soldier.",
+  },
+  {
+    id: "zombie",
+    name: "Zombie",
+    cr: 0.5,
+    size: "medium",
+    type: "undead",
+    hp: 16,
+    ac: 11,
+    str: 2,
+    dex: 1,
+    con: 1,
+    int: 1,
+    wis: 1,
+    cha: 1,
+    attack: "Slam +2 (1d6+1)",
+    damage: "1d6+1",
+    speed: 30,
+    terrain: ["road", "farm", "forest", "plains"],
+    description: "A shambling corpse.",
+  },
+  {
+    id: "skeleton",
+    name: "Skeleton",
+    cr: 0.5,
+    size: "medium",
+    type: "undead",
+    hp: 6,
+    ac: 15,
+    str: 3,
+    dex: 3,
+    con: 1,
+    int: 1,
+    wis: 1,
+    cha: 1,
+    attack: "Scimitar +1 (1d6+1)",
+    damage: "1d6+1",
+    speed: 30,
+    special: "DR 5/bludgeoning",
+    terrain: ["road", "farm", "forest", "plains", "town", "swamp", "mountain", "desert", "underground"],
+    description: "Bones held together by dark magic.",
+  },
+  {
+    id: "stirge",
+    name: "Stirge",
+    cr: 0.5,
+    size: "tiny",
+    type: "magical_beast",
+    hp: 5,
+    ac: 16,
+    str: 1,
+    dex: 9,
+    con: 1,
+    int: 1,
+    wis: 2,
+    cha: 1,
+    attack: "Touch +7 (attach, blood drain)",
+    damage: "1d3",
+    speed: 10,
+    special: "Attach, blood drain",
+    terrain: ["farm", "forest", "swamp"],
+    description: "A bat-like bloodsucker.",
+  },
+  {
+    id: "small_spider",
+    name: "Small Spider",
+    cr: 0.5,
+    size: "small",
+    type: "vermin",
+    hp: 4,
+    ac: 14,
+    str: 1,
+    dex: 7,
+    con: 1,
+    int: 1,
+    wis: 1,
+    cha: 1,
+    attack: "Bite +4 (1d4-2 + poison)",
+    damage: "1d4-2",
+    speed: 30,
+    special: "Poison",
+    terrain: ["forest"],
+    description: "A cat-sized spider.",
+  },
+  {
+    id: "badger",
+    name: "Badger",
+    cr: 0.5,
+    size: "small",
+    type: "beast",
+    hp: 6,
+    ac: 15,
+    str: 1,
+    dex: 7,
+    con: 5,
+    int: 1,
+    wis: 2,
+    cha: 1,
+    attack: "Claw +4 (1d2-1)",
+    damage: "1d2-1",
+    speed: 30,
+    special: "Rage",
+    terrain: ["forest", "plains"],
+    description: "A fierce burrowing mustelid.",
+  },
+
+  // =======================================================================
+  // CR 1
+  // =======================================================================
+  {
+    id: "wolf",
+    name: "Wolf",
+    cr: 1,
+    size: "medium",
+    type: "beast",
+    hp: 13,
+    ac: 14,
+    str: 3,
+    dex: 5,
+    con: 5,
+    int: 1,
+    wis: 2,
+    cha: 1,
+    attack: "Bite +3 (1d6+1)",
+    damage: "1d6+1",
+    speed: 50,
+    special: "Trip",
+    terrain: ["forest", "plains", "farm"],
+    description: "A snarling grey wolf.",
+  },
+  {
+    id: "gnoll",
+    name: "Gnoll",
+    cr: 1,
+    size: "large",
+    type: "humanoid",
+    hp: 11,
+    ac: 15,
+    str: 5,
+    dex: 1,
+    con: 3,
+    int: 1,
+    wis: 1,
+    cha: 1,
+    attack: "Battleaxe +3 (1d8+2)",
+    damage: "1d8+2",
+    speed: 30,
+    terrain: ["plains", "road"],
+    description: "A hyena-headed marauder.",
+  },
+  {
+    id: "medium_spider",
+    name: "Medium Spider",
+    cr: 1,
+    size: "medium",
+    type: "vermin",
+    hp: 11,
+    ac: 14,
+    str: 1,
+    dex: 7,
+    con: 2,
+    int: 1,
+    wis: 1,
+    cha: 1,
+    attack: "Bite +4 (1d6 + poison)",
+    damage: "1d6",
+    speed: 30,
+    special: "Poison",
+    terrain: ["forest"],
+    description: "A spider the size of a dog.",
+  },
+  {
+    id: "krenshar",
+    name: "Krenshar",
+    cr: 1,
+    size: "medium",
+    type: "magical_beast",
+    hp: 11,
+    ac: 15,
+    str: 1,
+    dex: 4,
+    con: 1,
+    int: 1,
+    wis: 2,
+    cha: 3,
+    attack: "Bite +2 (1d6)",
+    damage: "1d6",
+    speed: 40,
+    special: "Scare (Will DC 13)",
+    terrain: ["forest"],
+    description: "A cat-like beast that peels back its face to frighten prey.",
+  },
+  {
+    id: "giant_ant_worker",
+    name: "Giant Ant Worker",
+    cr: 1,
+    size: "medium",
+    type: "vermin",
+    hp: 9,
+    ac: 17,
+    str: 1,
+    dex: 1,
+    con: 1,
+    int: 1,
+    wis: 1,
+    cha: 1,
+    attack: "Bite +1 (1d6)",
+    damage: "1d6",
+    speed: 50,
+    terrain: ["plains", "farm"],
+    description: "A horse-sized ant.",
+  },
+  {
+    id: "giant_bee",
+    name: "Giant Bee",
+    cr: 1,
+    size: "medium",
+    type: "vermin",
+    hp: 13,
+    ac: 14,
+    str: 1,
+    dex: 4,
+    con: 1,
+    int: 1,
+    wis: 2,
+    cha: 1,
+    attack: "Sting +2 (1d4 + poison)",
+    damage: "1d4",
+    speed: 20,
+    special: "Poison",
+    terrain: ["plains", "farm", "forest"],
+    description: "A massive bee with a lethal stinger.",
+  },
+  {
+    id: "troglodyte",
+    name: "Troglodyte",
+    cr: 1,
+    size: "medium",
+    type: "humanoid",
+    hp: 13,
+    ac: 15,
+    str: 1,
+    dex: 1,
+    con: 4,
+    int: 1,
+    wis: 1,
+    cha: 1,
+    attack: "Club +1 (1d6)",
+    damage: "1d6",
+    speed: 30,
+    special: "Stench (Fort DC 13)",
+    terrain: ["underground", "forest"],
+    description: "A stinking reptilian cave dweller.",
+  },
+
+  // =======================================================================
+  // CR 2
+  // =======================================================================
+  {
+    id: "bugbear",
+    name: "Bugbear",
+    cr: 2,
+    size: "medium",
+    type: "humanoid",
+    hp: 16,
+    ac: 17,
+    str: 5,
+    dex: 2,
+    con: 3,
+    int: 1,
+    wis: 1,
+    cha: 1,
+    attack: "Morningstar +5 (1d8+2)",
+    damage: "1d8+2",
+    speed: 30,
+    terrain: ["forest", "road", "mountain"],
+    description: "A hulking goblinoid brute.",
+  },
+  {
+    id: "worg",
+    name: "Worg",
+    cr: 2,
+    size: "large",
+    type: "magical_beast",
+    hp: 30,
+    ac: 14,
+    str: 7,
+    dex: 5,
+    con: 5,
+    int: 1,
+    wis: 4,
+    cha: 1,
+    attack: "Bite +7 (1d6+4)",
+    damage: "1d6+4",
+    speed: 50,
+    special: "Trip",
+    terrain: ["plains", "forest"],
+    description: "An evil, intelligent wolf the size of a horse.",
+  },
+  {
+    id: "boar",
+    name: "Boar",
+    cr: 2,
+    size: "medium",
+    type: "beast",
+    hp: 25,
+    ac: 16,
+    str: 5,
+    dex: 1,
+    con: 7,
+    int: 1,
+    wis: 3,
+    cha: 1,
+    attack: "Gore +4 (1d8+3)",
+    damage: "1d8+3",
+    speed: 40,
+    special: "Ferocity (fights while dying)",
+    terrain: ["forest", "farm"],
+    description: "A massive, ill-tempered wild pig.",
+  },
+  {
+    id: "dire_weasel",
+    name: "Dire Weasel",
+    cr: 2,
+    size: "medium",
+    type: "beast",
+    hp: 13,
+    ac: 16,
+    str: 4,
+    dex: 9,
+    con: 1,
+    int: 1,
+    wis: 2,
+    cha: 1,
+    attack: "Bite +6 (1d6+3)",
+    damage: "1d6+3",
+    speed: 40,
+    special: "Blood drain",
+    terrain: ["forest", "plains"],
+    description: "A weasel the length of a man.",
+  },
+  {
+    id: "giant_ant_soldier",
+    name: "Giant Ant Soldier",
+    cr: 2,
+    size: "medium",
+    type: "vermin",
+    hp: 11,
+    ac: 17,
+    str: 4,
+    dex: 1,
+    con: 3,
+    int: 1,
+    wis: 3,
+    cha: 1,
+    attack: "Bite +3 (2d4+3)",
+    damage: "2d4+3",
+    speed: 50,
+    special: "Acid sting",
+    terrain: ["plains", "farm"],
+    description: "An armored ant warrior as big as a pony.",
+  },
+  {
+    id: "rat_swarm",
+    name: "Rat Swarm",
+    cr: 2,
+    size: "tiny",
+    type: "swarm",
+    hp: 13,
+    ac: 14,
+    str: 1,
+    dex: 5,
+    con: 1,
+    int: 1,
+    wis: 2,
+    cha: 1,
+    attack: "Swarm (1d6 + disease)",
+    damage: "1d6",
+    speed: 15,
+    special: "Disease, distraction",
+    terrain: ["town", "farm", "road", "underground"],
+    description: "A tide of squeaking, biting rats.",
+  },
+
+  // =======================================================================
+  // CR 3
+  // =======================================================================
+  {
+    id: "dire_wolf",
+    name: "Dire Wolf",
+    cr: 3,
+    size: "large",
+    type: "beast",
+    hp: 45,
+    ac: 14,
+    str: 15,
+    dex: 5,
+    con: 7,
+    int: 1,
+    wis: 2,
+    cha: 1,
+    attack: "Bite +11 (1d8+10)",
+    damage: "1d8+10",
+    speed: 50,
+    special: "Trip",
+    terrain: ["forest", "plains"],
+    description: "A wolf the size of a horse with jaws like a bear trap.",
+  },
+  {
+    id: "wight",
+    name: "Wight",
+    cr: 3,
+    size: "medium",
+    type: "undead",
+    hp: 26,
+    ac: 15,
+    str: 2,
+    dex: 2,
+    con: 1,
+    int: 1,
+    wis: 3,
+    cha: 5,
+    attack: "Slam +3 (1d4+1 + energy drain)",
+    damage: "1d4+1",
+    speed: 30,
+    special: "Energy drain, create spawn",
+    terrain: ["road", "farm", "forest", "plains", "town", "swamp", "mountain", "desert", "underground"],
+    description: "A hateful undead that drains the life from the living.",
+  },
+  {
+    id: "ankheg",
+    name: "Ankheg",
+    cr: 3,
+    size: "large",
+    type: "magical_beast",
+    hp: 28,
+    ac: 18,
+    str: 11,
+    dex: 1,
+    con: 7,
+    int: 1,
+    wis: 3,
+    cha: 1,
+    attack: "Bite +7 (2d6+7 + 1d4 acid)",
+    damage: "2d6+7",
+    speed: 30,
+    special: "Spit acid",
+    terrain: ["farm", "plains"],
+    description: "A burrowing insectoid that lurks beneath farmland.",
+  },
+  {
+    id: "cockatrice",
+    name: "Cockatrice",
+    cr: 3,
+    size: "small",
+    type: "magical_beast",
+    hp: 27,
+    ac: 14,
+    str: 1,
+    dex: 7,
+    con: 1,
+    int: 1,
+    wis: 3,
+    cha: 1,
+    attack: "Bite +9 (1d4-2 + petrification)",
+    damage: "1d4-2",
+    speed: 20,
+    special: "Petrification (Fort DC 12)",
+    terrain: ["plains", "farm"],
+    description: "A rooster-serpent whose bite turns flesh to stone.",
+  },
+  {
+    id: "ettercap",
+    name: "Ettercap",
+    cr: 3,
+    size: "medium",
+    type: "aberration",
+    hp: 27,
+    ac: 14,
+    str: 4,
+    dex: 7,
+    con: 3,
+    int: 1,
+    wis: 5,
+    cha: 1,
+    attack: "Bite +5 (1d8+2 + poison)",
+    damage: "1d8+2",
+    speed: 30,
+    special: "Web, poison",
+    terrain: ["forest"],
+    description: "A hideous spider-taming humanoid.",
+  },
+  {
+    id: "doppelganger",
+    name: "Doppelganger",
+    cr: 3,
+    size: "medium",
+    type: "aberration",
+    hp: 22,
+    ac: 15,
+    str: 2,
+    dex: 3,
+    con: 2,
+    int: 3,
+    wis: 4,
+    cha: 3,
+    attack: "Slam +5 (1d6+1)",
+    damage: "1d6+1",
+    speed: 30,
+    special: "Change shape, detect thoughts",
+    terrain: ["town", "road"],
+    description: "It could be anyone. It could be you.",
+  },
+  {
+    id: "assassin_vine",
+    name: "Assassin Vine",
+    cr: 3,
+    size: "large",
+    type: "plant",
+    hp: 30,
+    ac: 15,
+    str: 10,
+    dex: 1,
+    con: 6,
+    int: 1,
+    wis: 3,
+    cha: 1,
+    attack: "Slam +7 (1d6+7)",
+    damage: "1d6+7",
+    speed: 5,
+    special: "Constrict, entangle, camouflage",
+    terrain: ["forest"],
+    description: "A predatory plant that strangles the unwary.",
+  },
+];
+
+// ---------------------------------------------------------------------------
+// Helper functions
+// ---------------------------------------------------------------------------
+
+/** Return all monsters with the given challenge rating. */
+export function getMonstersByCR(cr: number): Monster[] {
+  return MONSTERS.filter((m) => m.cr === cr);
+}
+
+/** Return all monsters that can appear in the given terrain. */
+export function getMonstersByTerrain(terrain: string): Monster[] {
+  return MONSTERS.filter((m) => m.terrain.includes(terrain));
+}
+
+/**
+ * Pick a single random monster that matches the terrain and falls within
+ * the CR range [minCR, maxCR] (inclusive).
+ */
+export function pickEncounterMonster(
+  terrain: string,
+  minCR: number,
+  maxCR: number,
+): Monster {
+  const candidates = MONSTERS.filter(
+    (m) => m.terrain.includes(terrain) && m.cr >= minCR && m.cr <= maxCR,
+  );
+  if (candidates.length === 0) {
+    // Fallback: relax terrain constraint
+    const anyInRange = MONSTERS.filter(
+      (m) => m.cr >= minCR && m.cr <= maxCR,
+    );
+    if (anyInRange.length === 0) {
+      // Absolute fallback: return the first monster in the list
+      return MONSTERS[0];
+    }
+    return anyInRange[Math.floor(Math.random() * anyInRange.length)];
+  }
+  return candidates[Math.floor(Math.random() * candidates.length)];
+}
+
+/**
+ * Build an encounter group for the given terrain and CR range.
+ *
+ * Roughly 40% of the time a single strong monster is chosen (biased toward
+ * the upper end of the CR range). The other 60% of the time a pack of 2-4
+ * weaker monsters is returned (biased toward the lower end).
+ */
+export function pickEncounterGroup(
+  terrain: string,
+  minCR: number,
+  maxCR: number,
+): { monsters: Monster[]; count: number } {
+  const roll = Math.random();
+
+  if (roll < 0.4) {
+    // --- Single strong monster ---
+    // Bias toward the upper half of the CR range
+    const midCR = (minCR + maxCR) / 2;
+    const monster = pickEncounterMonster(terrain, midCR, maxCR);
+    return { monsters: [monster], count: 1 };
+  }
+
+  // --- Pack of weaker monsters ---
+  // Bias toward the lower half of the CR range
+  const midCR = (minCR + maxCR) / 2;
+  const monster = pickEncounterMonster(terrain, minCR, midCR);
+  const count = 2 + Math.floor(Math.random() * 3); // 2-4
+  return { monsters: [monster], count };
+}

@@ -7,7 +7,7 @@ import { ERC1155_ABI, GAME_NFTS } from "@/lib/contracts";
 
 const TOKEN_ID = BigInt(1);
 const MAX_TOKEN_ID = 200;
-const STATS_CACHE_KEY = "tot-stats-cache";
+const STATS_CACHE_KEY = "tot-stats-cache-v2"; // v2: D20 ability scores
 const STATS_CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
 
 const OWNERSHIP_CACHE_KEY = "tot-ownership-cache";
@@ -65,11 +65,25 @@ export type NftCharacter = {
   imageUrl?: string;
   owned: boolean;
   ownedCount: number;
-  stats: { attack: number; mAtk: number; fAtk: number; def: number; mDef: number; hp: number; healing: number; charMultiplier: number; magicMultiplier: number; mana: number };
+  stats: { str: number; dex: number; con: number; int: number; wis: number; cha: number; ac: number; atk: number; speed: number; lightningDmg: number; fireDmg: number };
+  subtypes: string[];
   tokenAmounts: TokenAmount[];
   usdBacking: number;
   forSale: boolean;
 };
+
+/** Ensure all 6 core ability scores are at least 1 */
+function floorStats(s: NftCharacter["stats"]): NftCharacter["stats"] {
+  return {
+    ...s,
+    str: Math.max(1, s.str),
+    dex: Math.max(1, s.dex),
+    con: Math.max(1, s.con),
+    int: Math.max(1, s.int),
+    wis: Math.max(1, s.wis),
+    cha: Math.max(1, s.cha),
+  };
+}
 
 export function useNftStats() {
   const { address, isConnected } = useAccount();
@@ -206,7 +220,8 @@ export function useNftStats() {
           imageUrl: c.imageUrl,
           owned: (ownershipMap.get(c.contractAddress.toLowerCase()) ?? 0) > 0,
           ownedCount: ownershipMap.get(c.contractAddress.toLowerCase()) ?? 0,
-          stats: c.stats,
+          stats: floorStats(c.stats),
+          subtypes: c.subtypes ?? [],
           tokenAmounts: c.tokenAmounts ?? [],
           usdBacking: c.usdBacking ?? 0,
           forSale: sellerOwnedSet.has(c.contractAddress.toLowerCase()),
@@ -286,7 +301,7 @@ export function useNftStats() {
         tokenId: TOKEN_ID, metadataUri: c.metadataUri, imageUrl: c.imageUrl,
         owned: (ownershipMap.get(c.contractAddress.toLowerCase()) ?? 0) > 0,
         ownedCount: ownershipMap.get(c.contractAddress.toLowerCase()) ?? 0,
-        stats: c.stats, tokenAmounts: c.tokenAmounts ?? [], usdBacking: c.usdBacking ?? 0,
+        stats: floorStats(c.stats), subtypes: c.subtypes ?? [], tokenAmounts: c.tokenAmounts ?? [], usdBacking: c.usdBacking ?? 0,
         forSale: sellerOwnedSet.has(c.contractAddress.toLowerCase()),
       }));
       setCharacters(updated);

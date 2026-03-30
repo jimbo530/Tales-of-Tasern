@@ -46,12 +46,9 @@ const STAT_OPTIONS: StatOption[] = [
   { key: "egp", label: "🌿 EGP", desc: "HP via impact token", tokens: "EGP + MfT LP", color: "rgba(34,197,94,0.8)", chain: "base", deployed: true },
   { key: "wethegp", label: "⛓️ WETH/EGP", desc: "HP + MATK + MDEF — builds liquidity", tokens: "WETH + EGP LP", color: "rgba(96,165,250,0.8)", chain: "base", deployed: true },
   { key: "pol_egpusdglo", label: "🌿💰 EGP/USDGLO", desc: "HP + ATK + DEF via stablecoin + impact", tokens: "EGP + USDGLO LP", color: "rgba(167,139,250,0.8)", chain: "polygon", deployed: true },
-  { key: "def", label: "🛡️ DEF", desc: "Physical defense", tokens: "TB01 + DDD LP", color: "rgba(148,163,184,0.8)", chain: "polygon", deployed: false },
-  { key: "mAtk", label: "⚡ EATK", desc: "Electric attack", tokens: "JLT-F24 + DDD LP", color: "rgba(192,132,252,0.8)", chain: "polygon", deployed: false },
-  { key: "fAtk", label: "🔥 FATK", desc: "Fire attack", tokens: "LANTERN + DDD LP", color: "rgba(251,146,60,0.8)", chain: "polygon", deployed: false },
-  { key: "mDef", label: "🛡️ MDEF", desc: "Magic defense", tokens: "PR24 + DDD LP", color: "rgba(45,212,191,0.8)", chain: "polygon", deployed: false },
-  { key: "mana", label: "💧 Mana", desc: "Powers up all magic stats", tokens: "NCT + DDD LP", color: "rgba(96,165,250,0.8)", chain: "polygon", deployed: false },
-  { key: "charMultiplier", label: "♦ Multiplier", desc: "Boosts all stats", tokens: "CHAR + USDC LP", color: "rgba(167,139,250,0.8)", chain: "polygon", deployed: false },
+  { key: "int", label: "INT", desc: "Intelligence — magic attack", tokens: "JLT-F24 + DDD LP", color: "rgba(96,165,250,0.8)", chain: "polygon", deployed: false },
+  { key: "wis", label: "WIS", desc: "Wisdom — magic defense + healing", tokens: "PR24 + DDD LP", color: "rgba(45,212,191,0.8)", chain: "polygon", deployed: false },
+  { key: "cha", label: "CHA", desc: "Charisma — boosts all stats", tokens: "CHAR + USDC LP", color: "rgba(167,139,250,0.8)", chain: "polygon", deployed: false },
 ];
 
 function HeroPortrait({ character }: { character: NftCharacter }) {
@@ -184,13 +181,12 @@ export function PowerUp({ characters, onBack, onStatsRefresh }: Props) {
         <p className="text-center text-xs tracking-widest uppercase mb-3" style={{ color: 'rgba(201,168,76,0.4)' }}>Current Stats</p>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           {[
-            { key: "attack", label: "⚔️ ATK", color: "rgba(251,191,36,0.8)" },
-            { key: "def", label: "🛡️ DEF", color: "rgba(148,163,184,0.8)" },
-            { key: "hp", label: "❤️ HP", color: "rgba(251,113,133,0.8)" },
-            { key: "mAtk", label: "⚡ EATK", color: "rgba(192,132,252,0.8)" },
-            { key: "fAtk", label: "🔥 FATK", color: "rgba(251,146,60,0.8)" },
-            { key: "mDef", label: "🛡️ MDEF", color: "rgba(45,212,191,0.8)" },
-            { key: "charMultiplier", label: "♦ Mult", color: "rgba(167,139,250,0.8)" },
+            { key: "str", label: "STR", color: "rgba(251,191,36,0.8)" },
+            { key: "dex", label: "DEX", color: "rgba(74,222,128,0.8)" },
+            { key: "con", label: "CON", color: "rgba(251,113,133,0.8)" },
+            { key: "int", label: "INT", color: "rgba(96,165,250,0.8)" },
+            { key: "wis", label: "WIS", color: "rgba(45,212,191,0.8)" },
+            { key: "cha", label: "CHA", color: "rgba(167,139,250,0.8)" },
           ].map(s => {
             const val = (selectedHero.stats as any)[s.key] ?? 0;
             return (

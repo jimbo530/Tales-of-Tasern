@@ -1,0 +1,250 @@
+{
+  "world": {
+    "title": "Tales of Tasern",
+    "planet": "Tasern",
+    "core_premise": "A world at the edge of existence where belief shapes reality.",
+    "summary": "Tasern is an Earth-scale fantasy world influenced by the Flow of Existence, a metaphysical current that moves outward from the Pillars of Creation. Reality becomes thinner toward the edge, belief can shape gods and nations, and travel is generally slow except through rare gates and elite sky travel.",
+    "themes": [
+      "belief shapes reality",
+      "slow travel across a vast world",
+      "civilizations rise and fall through memory, faith, and fear",
+      "public myth and private truth are both world-shaping forces"
+    ],
+    "celestial_features": {
+      "suns": [
+        "One sun is a gateway to endless fire.",
+        "One sun is described as a castle of light."
+      ],
+      "moons": [
+        "White moon tied to white dragons that consume everything, even each other.",
+        "Green moon tied to deadly forests.",
+        "Blue moon tied to endless seas and aerial-capable sealife."
+      ]
+    }
+  },
+  "cosmology": {
+    "pillars_of_creation": "Unreachable source from which new souls enter existence.",
+    "flow_model": [
+      "Pillars of Creation",
+      "Heavy Band",
+      "Belief Ring",
+      "Demon Plane",
+      "Nothing"
+    ],
+    "souls": {
+      "origin": "New souls enter from the Pillars of Creation.",
+      "conservation": "Souls are generally conserved unless annihilated.",
+      "afterlife_logic": [
+        "No true death except annihilation.",
+        "Souls may reincarnate or transform into beings such as angels, devils, or demons.",
+        "Plane collapse can destabilize connected chains of existence."
+      ],
+      "annihilation_risks": [
+        "Demons",
+        "The Grandfather",
+        "The Crystal Lady"
+      ]
+    },
+    "devils_and_demons": {
+      "devils": "Lawful protectors that prevent demons from escaping the ring.",
+      "demons": "Agents of corruption, destruction, and possible annihilation."
+    }
+  },
+  "magic_and_society": {
+    "magic_distribution": {
+      "Elpha": "High and widely taught magic with formal schools.",
+      "Skrim": "High and widely taught magic with strong institutional use.",
+      "Durgan Dynasty": "Mid-magic culture with academies and organized wizardry.",
+      "Orklin": "Low-magic industrial culture.",
+      "Red Dragon Lands": "Minimal organized magic.",
+      "Blue Dragon Lands": "Alchemy and natural magic.",
+      "Druids": "Rare but powerful."
+    },
+    "social_patterns": [
+      "Most races are somewhat segregated.",
+      "Humans are generally the most broadly accepting.",
+      "Igypt is among the most culturally accepting, but judges by contribution and sacrifice.",
+      "Hostility varies heavily by region and situation.",
+      "Gates and sky travel are rare for common people and mostly controlled by elites or adventurers."
+    ]
+  },
+  "major_factions": {
+    "Durgan Dynasty": {
+      "type": "Human republic-empire",
+      "homeland": "Manlan",
+      "description": "A powerful human realm with a 500-year unbroken ruling line and a founding maxim roughly summarized as 'don't kill humans.' Known for flying ships, markets, merchant houses, wizardry, and immense urban scale.",
+      "capital_region": {
+        "Durganthrone": "Flying castle-city and current capital hovering above Durganhold.",
+        "Durganhold": "Original ground capital below Durganthrone.",
+        "First Wall": "Ancient defensive perimeter and shrine to human civilization.",
+        "Tribesmeet": "Original castle and hall of congress.",
+        "Iron Rise": "Rocky overlook with an ancient watchtower."
+      }
+    },
+    "Elpha": {
+      "type": "Elven empire",
+      "description": "Realm of long-lived elves, master enchanters, and formal magical excellence. Ruled by the pureblood emperor known as The Eldest One, whose authority is tied to belief.",
+      "capital": "Vaelthiryaen, the Emerald and Amber Palace",
+      "notes": [
+        "Pure bloodlines can stretch back ten thousand years.",
+        "Long war and distrust toward Orklin.",
+        "Distrustful of dragons."
+      ]
+    },
+    "Argenti": {
+      "type": "Dwarven civilization",
+      "description": "Ancient, long-lived dwarves known for endurance, isolation, and master craftsmanship. They create works meant to outlast ages and hold deep traditions around stone and memory.",
+      "major_forges": [
+        "Sunforge",
+        "Skyforge",
+        "Groundbreaker"
+      ],
+      "other_holds": [
+        "Blackstone",
+        "Hotrock"
+      ],
+      "beliefs": [
+        "Craft should endure.",
+        "Some traditions emphasize a return to stone."
+      ]
+    },
+    "Orklin": {
+      "type": "Industrial ork nation",
+      "description": "A low-magic society undergoing industrial transformation with steam power, steel war machines, and practical strength-through-industry values.",
+      "leadership_notes": "Long-lived gnomes secretly guide multi-generational ork rulers.",
+      "key_figure": "Gorak in the Black Tower"
+    },
+    "Igypt": {
+      "type": "Desert civilization under a god-king pharaoh",
+      "description": "A grand desert power that idolizes those who give of themselves eternally and despises those who take for themselves eternally. Includes both noble and corrupt preserved dead.",
+      "traits": [
+        "Undead guardians",
+        "Strong emphasis on sacrifice and service",
+        "Culturally accepting if one contributes"
+      ]
+    },
+    "Skrim": {
+      "type": "Vampire-led nation",
+      "description": "A nation run with corporate efficiency under Mr. Carpenter, with cathedral power, gate-linked logistics, and deep institutional control.",
+      "traits": [
+        "Warehouse and gate network",
+        "Church authority",
+        "Tension around Elderglen gate politics"
+      ]
+    },
+    "Pirates of the Thousand Kingdoms": {
+      "type": "Decentralized sea and off-world trader network",
+      "description": "A loose web of maritime and extraplanar traders who shape commerce, rumor, culture, and movement through the Isles and beyond."
+    },
+    "Dragons": {
+      "type": "Fractured draconic powers",
+      "description": "Color- and clan-divided dragons that can remain ageless if sufficiently fed, often ruling through tribute."
+    },
+    "Druids": {
+      "type": "Cycle-keepers",
+      "description": "Guardians of growth and decay who preserve balance, sometimes through terrible means such as plague or famine."
+    }
+  },
+  "regions_and_landmarks": {
+    "Red Spire": "An ancient fire dragon opened a portal to the fire realm here, creating the Red Wastes.",
+    "Blue Barrens": "Eastern lands of lightning dragons and energy-harvesting cultures.",
+    "White Wastes": "Frozen reaches associated with white dragons and consumption.",
+    "Glowing Grove": {
+      "description": "A large regional biome and breeding ground for Aethertitans. It includes coasts, settlements, migratory routes, and repeated catastrophic convergence events.",
+      "notes": [
+        "Not limited to the turtles themselves.",
+        "Supports multiple story settings including coastal cities.",
+        "Convergence events reshape land and memory."
+      ]
+    },
+    "Luminocity": {
+      "type": "Ancient dwarven hold",
+      "description": "A thousand-year-old dwarven settlement in the Glowing Grove that survives repeated convergence events through natural sandbars and constructed sea walls.",
+      "importance": "Preserves more continuity than most places in the region, though still lacks full understanding of the disasters."
+    }
+  },
+  "aethertitans": {
+    "name": "Wandering Shells",
+    "alternate_name": "Aethertitans",
+    "description": "Continent-scale turtles that carry island chains and generate Aetherreef ecosystems. Their movements influence ocean currents, atmospheric currents, and even the behavior of the Flow.",
+    "convergence": {
+      "summary": "Rare mating events, often associated with moon alignment on roughly 700-year cycles, causing catastrophic floods, earthquakes, and falling land where shells overlap.",
+      "effects": [
+        "Regional flooding",
+        "Earthquakes",
+        "Land collapse",
+        "Loss of knowledge continuity",
+        "Political and cultural turnover"
+      ]
+    },
+    "male_vs_female_shells": {
+      "female_shells": "Near-total surface resets; cultures must be highly adaptive and rarely persist.",
+      "male_shells": "Partial continuity is possible, but still subject to severe collapse and fragmentation."
+    },
+    "knowledge_problem": "Knowledge preservation systematically fails across convergence cycles. Female shells reset almost entirely. Male shells preserve fragments, but continuity is broken by time, conflict, and disaster, causing cyclical rediscovery."
+  },
+  "keepers_and_conflicts": {
+    "Verdant Accord": {
+      "type": "Nonviolent Keeper sect",
+      "description": "A movement opposing spine carving and warning that recent carving practices are tied to natural disasters.",
+      "leader": "Liora Venn, called the First Voice"
+    },
+    "Thornpath": {
+      "type": "Radical splinter movement",
+      "description": "An extremist offshoot that believes violent disruption is necessary to end spine carving.",
+      "leader": "Serra Thorne, called The Unyielding Root",
+      "leader_notes": "A fan of Liora Venn who has never met her. Serra plans to collapse spine-carved settlements, sacrificing herself and likely many others to prevent future generations from suffering what she sees as normalized brutality."
+    },
+    "loyalists": {
+      "description": "Humans living in dwarven settlements. They are useful but treated as second-class residents, especially during convergence triage.",
+      "tension": "Dwarves and gnomes reproduce slowly and often prioritize preserving key members, producing conflict between practical triage factions and resentful human populations.",
+      "internal_factions": [
+        "Wardens",
+        "Calculators"
+      ]
+    }
+  },
+  "major_threats": {
+    "Grandfather": "A parasitic cosmic hive entity and one of the existential threats to the world.",
+    "Hoard Mother": "An ancient white dragon in the Icey Waste.",
+    "Crystal Lady": {
+      "current_category": "Demonic Annihilation force",
+      "description": "A death-linked manipulator capable of manifesting anywhere. She is no longer primarily tied to Igypt, though her stronghold between Igypt and Argenti disrupts trade routes.",
+      "traits": [
+        "Can heal and harm with death magic",
+        "Uses blood and souls of others to fuel dark power",
+        "Can infiltrate heroic groups for long periods before betrayal",
+        "May appear as a child, young woman, or old lady",
+        "Nearly impossible to track"
+      ]
+    }
+  },
+  "campaign_hubs": {
+    "Elderglen": {
+      "description": "A fast-growing valley hub tied to the gate at Rockridge. Population rose from under 100 to around 10,000 within months, creating major tensions in supply, power, and identity.",
+      "features": [
+        "Gate-linked growth",
+        "Wizard academy studying planar anomalies",
+        "Odin cathedral influence",
+        "Resource strain",
+        "Undead breaches tied to magical research"
+      ],
+      "notable_figures": {
+        "Lexa Bella": "Guardian and recruitment figure, often used to bring players into the story.",
+        "Gary": "Gareth Alderwood, local king-like authority with familiar style.",
+        "Frank": "Wizard academy figure tied to interdimensional skepticism and dangerous inquiry.",
+        "Darkstar": "Dark elf paladin of the sun and a strong stabilizing ally."
+      },
+      "adventure_hook": "Escort supplies from Rockridge to Elderglen as the valley strains under explosive growth."
+    }
+  },
+  "usage_notes_for_ai": {
+    "tone": "Epic fantasy with layered myth, political tension, and metaphysical stakes.",
+    "style_guidance": [
+      "Treat belief, rumor, and public perception as forces that can materially shape the world.",
+      "Remember that travel is slow and logistics matter unless gates or elite sky travel are involved.",
+      "Preserve faction identities and internal contradictions.",
+      "When uncertain, prefer mystery over contradiction."
+    ]
+  }
+}
