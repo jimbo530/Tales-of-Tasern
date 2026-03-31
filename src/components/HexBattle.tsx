@@ -31,6 +31,7 @@ type Props = {
   playerFeats?: string[];           // feat IDs from save for combat bonuses
   onExit: () => void;
   onBattleEnd?: (outcome: "victory" | "defeat" | "retreat", difficulty: "easy" | "medium" | "hard", enemies: string[], rounds: number) => void;
+  onDefeatChoice?: (choice: "perish" | "rescue") => void;  // death penalty choice
 };
 
 // ── D20 Roll Animation ──────────────────────────────────────────────────────
@@ -109,7 +110,7 @@ function phaseLabel(phase: BattlePhase): string {
 
 // ── Main Component ───────────────────────────────────────────────────────────
 
-export function HexBattle({ characters, questEncounter, playerFeats, onExit, onBattleEnd }: Props) {
+export function HexBattle({ characters, questEncounter, playerFeats, onExit, onBattleEnd, onDefeatChoice }: Props) {
   const ownedChars = useMemo(() => characters.filter(c => c.owned && c.stats.con > 0), [characters]);
   const [selectedChar, setSelectedChar] = useState<NftCharacter | null>(null);
   const [selectedClass, setSelectedClass] = useState<CharacterClass | null>(null);
@@ -464,18 +465,41 @@ export function HexBattle({ characters, questEncounter, playerFeats, onExit, onB
           {state.phase === "defeat" && (
             <div className="flex flex-col items-center gap-3 px-4 py-6 rounded-lg" style={{ background: "rgba(220,38,38,0.1)", border: "1px solid rgba(220,38,38,0.4)" }}>
               <span className="text-2xl font-black tracking-widest uppercase" style={{ color: "rgba(220,38,38,0.9)", fontFamily: "'Cinzel Decorative', 'Cinzel', serif" }}>
-                Defeat
+                You Have Fallen
               </span>
-              <button onClick={() => {
-                if (onBattleEnd) {
-                  const enemyNames = state.units.filter(u => !u.isPlayer).map(u => u.name);
-                  onBattleEnd("defeat", effectiveDifficulty, enemyNames, state.round);
-                }
-                onExit();
-              }} className="px-6 py-2 rounded text-sm font-bold uppercase tracking-widest"
-                style={{ background: "rgba(220,38,38,0.2)", color: "rgba(220,38,38,0.9)", border: "1px solid rgba(220,38,38,0.4)" }}>
-                Return
-              </button>
+              <p className="text-xs text-center max-w-xs" style={{ color: "rgba(232,213,176,0.7)" }}>
+                Your soul drifts toward the void. A faint light flickers &mdash; the Temple of Namaris offers rescue... for a price.
+              </p>
+              <div className="flex flex-col gap-2 w-full max-w-xs">
+                {/* Rescue option — pay ETH, keep everything */}
+                <button onClick={() => {
+                  if (onBattleEnd) {
+                    const enemyNames = state.units.filter(u => !u.isPlayer).map(u => u.name);
+                    onBattleEnd("defeat", effectiveDifficulty, enemyNames, state.round);
+                  }
+                  onDefeatChoice?.("rescue");
+                }} className="flex flex-col items-center px-4 py-3 rounded-lg text-sm font-bold uppercase tracking-widest transition-all hover:scale-[1.02]"
+                  style={{ background: "rgba(251,191,36,0.1)", color: "#f0d070", border: "1px solid rgba(251,191,36,0.4)" }}>
+                  <span>Temple Rescue &mdash; 0.0005 ETH</span>
+                  <span className="text-[0.6rem] normal-case tracking-normal font-normal" style={{ color: "rgba(232,213,176,0.5)" }}>
+                    Teleport to Kardov&apos;s Gate. Keep all levels, items &amp; gold.
+                  </span>
+                </button>
+                {/* Perish option — lose everything */}
+                <button onClick={() => {
+                  if (onBattleEnd) {
+                    const enemyNames = state.units.filter(u => !u.isPlayer).map(u => u.name);
+                    onBattleEnd("defeat", effectiveDifficulty, enemyNames, state.round);
+                  }
+                  onDefeatChoice?.("perish");
+                }} className="flex flex-col items-center px-4 py-3 rounded-lg text-sm font-bold uppercase tracking-widest transition-all hover:scale-[1.02]"
+                  style={{ background: "rgba(220,38,38,0.08)", color: "rgba(220,38,38,0.7)", border: "1px solid rgba(220,38,38,0.3)" }}>
+                  <span>Accept Death</span>
+                  <span className="text-[0.6rem] normal-case tracking-normal font-normal" style={{ color: "rgba(232,213,176,0.4)" }}>
+                    Lose all levels, items &amp; gold. Restart from nothing.
+                  </span>
+                </button>
+              </div>
             </div>
           )}
 

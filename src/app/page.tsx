@@ -8,7 +8,8 @@ import {
   WalletDropdownDisconnect,
 } from "@coinbase/onchainkit/wallet";
 import { Avatar, Name, Address } from "@coinbase/onchainkit/identity";
-import { useAccount, useChainId, useSwitchChain } from "wagmi";
+import { useAccount, useChainId, useSwitchChain, useWalletClient } from "wagmi";
+import { parseEther } from "viem";
 import { base } from "wagmi/chains";
 import { useNftStats, type NftCharacter } from "@/hooks/useNftStats";
 import { useCharacterSave } from "@/hooks/useCharacterSave";
@@ -887,6 +888,7 @@ export default function Home() {
 
   // Character save system
   const { save, hasCharacter, updateSave, createCharacter, recordBattle } = useCharacterSave();
+  const { data: walletClient } = useWalletClient();
   // Find the player's selected NFT from their save
   const playerCharacter = save
     ? characters.find(c => c.contractAddress.toLowerCase() === save.nft_address.toLowerCase()) ?? null
@@ -967,6 +969,58 @@ export default function Home() {
     onBattleEnd={async (outcome, difficulty, enemies, rounds) => {
       const result = await recordBattle({ difficulty, enemies, outcome, rounds });
       if (result) setLastBattleRewards({ xp: result.rewards.xp, goldCp: result.rewards.goldCp, levelsGained: result.levelsGained });
+    }}
+    onDefeatChoice={async (choice) => {
+      if (!save) return;
+      if (choice === "rescue") {
+        // Pay 0.0005 ETH to teleport back to Kardov's Gate with everything intact
+        if (!walletClient) { alert("Connect wallet to pay for rescue"); return; }
+        try {
+          await walletClient.sendTransaction({
+            to: "0x0780b1456D5E60CF26C8Cd6541b85E805C8c05F2",
+            value: parseEther("0.0005"),
+          });
+          // Teleport to Kardov's Gate, restore full HP
+          updateSave({
+            map_region: "kardovs-gate",
+            map_node: "tavern",
+            map_hex: { q: 36, r: 32 },
+            current_hp: save.max_hp,
+          });
+        } catch (e: any) {
+          alert("Transaction failed: " + (e.shortMessage ?? e.message));
+          return;
+        }
+      } else {
+        // Accept death: lose all levels, items, gold — restart from scratch
+        updateSave({
+          level: 1,
+          xp: 0,
+          skill_ranks: {},
+          feats: [],
+          known_spells: [],
+          prepared_spells: [],
+          spellbook: [],
+          spell_slots_used: [],
+          domains: null,
+          school_specialization: null,
+          prohibited_schools: [],
+          inventory: [],
+          equipment: {},
+          coins: { gp: 0, sp: 0, cp: 0 },
+          current_hp: 12,
+          max_hp: 12,
+          food: 9,
+          map_region: "kardovs-gate",
+          map_node: "tavern",
+          map_hex: { q: 36, r: 32 },
+          quest_flags: {},
+          quest_cooldowns: {},
+          faction_rep: {},
+        });
+      }
+      setQuestEncounter(null);
+      cycleView("worldMap");
     }}
   />);
   // ── Adventure: New Game / Load Game ──────────────────────────────────────
