@@ -252,6 +252,19 @@ export function HexBattle({ characters, questEncounter, playerFeats, playerWeapo
     setPendingSpell(spell);
   }, [playerUnit, castSpell]);
 
+  // Spell targeting: highlight valid targets (must be before early returns — hooks order)
+  const spellTargetPositions = useMemo(() => {
+    if (!pendingSpell?.battle || !playerUnit) return new Set<string>();
+    const range = pendingSpell.battle.hexRange;
+    if (pendingSpell.battle.type === "healing" || pendingSpell.battle.type === "buff") {
+      return new Set([`${playerUnit.position.q},${playerUnit.position.r}`]);
+    }
+    return new Set(
+      state.units.filter(u => !u.isPlayer && u.currentHp > 0 && hexDistance(playerUnit.position, u.position) <= range)
+        .map(u => `${u.position.q},${u.position.r}`)
+    );
+  }, [pendingSpell, playerUnit, state.units]);
+
   // ── Character Picker ───────────────────────────────────────────────────
   if (!selectedChar) {
     return (
@@ -356,19 +369,6 @@ export function HexBattle({ characters, questEncounter, playerFeats, playerWeapo
     state.units.filter(u => state.attackableEnemies.includes(u.id)).map(u => `${u.position.q},${u.position.r}`)
   );
   const target = state.pendingTargetId ? state.units.find(u => u.id === state.pendingTargetId) : null;
-
-  // Spell targeting: highlight valid targets
-  const spellTargetPositions = useMemo(() => {
-    if (!pendingSpell?.battle || !playerUnit) return new Set<string>();
-    const range = pendingSpell.battle.hexRange;
-    if (pendingSpell.battle.type === "healing" || pendingSpell.battle.type === "buff") {
-      return new Set([`${playerUnit.position.q},${playerUnit.position.r}`]);
-    }
-    return new Set(
-      state.units.filter(u => !u.isPlayer && u.currentHp > 0 && hexDistance(playerUnit.position, u.position) <= range)
-        .map(u => `${u.position.q},${u.position.r}`)
-    );
-  }, [pendingSpell, playerUnit, state.units]);
 
   return (
     <div className="flex flex-col gap-3">

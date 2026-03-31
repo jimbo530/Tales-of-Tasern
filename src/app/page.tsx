@@ -140,7 +140,7 @@ function LevelUpFlow({ save, character, fromLevel, toLevel, onComplete }: {
   const isWizard = save.class_id === "wizard";
 
   // Calculate new spells to pick for spontaneous casters
-  let newSpellSlots: { level: number; count: number }[] = [];
+  const newSpellSlots: { level: number; count: number }[] = [];
   if (isSpontaneous && casterClass) {
     const oldKnown = getSpellsKnown(casterClass, fromLevel);
     const newKnown = getSpellsKnown(casterClass, toLevel);
