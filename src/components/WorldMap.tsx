@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useRef, useEffect, useCallback } from "react";
-import { type CharacterSave, type Coins, travel, HOURS_PER_ACTION, formatCoins, totalCp, canAfford, cpToCoins, coinWeight } from "@/lib/saveSystem";
+import { type CharacterSave, type Coins, type Equipment, travel, HOURS_PER_ACTION, formatCoins, totalCp, canAfford, cpToCoins, coinWeight, isQuestOnCooldown, isQuestOnDayCooldown, dayCooldownRemaining, xpToNextLevel, getExhaustionPoints, exhaustedStat, lowestExhaustedStat } from "@/lib/saveSystem";
 import type { NftCharacter } from "@/hooks/useNftStats";
 import { getZone, getLevelRange, generateFightEncounter, generateLootDrop, type EncounterData, type LootDrop } from "@/lib/encounters";
 import { getShopsForLocation, getAvailableItems, type Shop, type ShopItem } from "@/lib/shops";
@@ -10,6 +10,10 @@ import { rollFieldTreasure, rollTreasure, d, nd } from "@/lib/treasure";
 import { MONSTERS } from "@/lib/monsters";
 import { createMonsterSpec, type EnemySpec } from "@/lib/hexCombat";
 import { FEATS } from "@/lib/feats";
+import { getClassById } from "@/lib/classes";
+import { getCarryThresholds, getEncumbrance } from "@/lib/battleStats";
+import { getItemInfo, getItemWeight } from "@/lib/itemRegistry";
+import { rollFarmDrop, rollWildernessFoodDrop, type FoodItem } from "@/lib/foodItems";
 import type { QuestEncounter } from "@/components/HexBattle";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -39,6 +43,12 @@ export type EncounterResult = {
   type: "safe" | "fight" | "lost_time" | "find";
   difficulty?: "easy" | "medium" | "hard";
   description: string;
+  hpChange?: number;
+  goldChange?: number;
+  coinReward?: Coins;
+  foodChange?: number;
+  xpChange?: number;
+  foodDrop?: FoodItem[];     // specific food items found (farms, foraging)
 };
 
 // ── Unified World Luck System ───────────────────────────────────────────
@@ -109,10 +119,13 @@ export type WorldLuckResult = {
   coinReward?: Coins;           // mixed denomination coin find (preserves cp/sp/gp weight)
   foodChange: number;
   xpChange: number;
+  fameChange?: number;          // performer renown gained (Perform skill only)
+  factionRepChange?: { factionId: string; amount: number }; // faction rep from performing, crafting, etc.
   enemyCount?: number;        // pre-rolled count for generated encounters (thugs, etc.)
   encounter?: EncounterData;  // populated when outcome is "fight"
   loot?: LootDrop;           // populated on valuable/rare finds
   treasureDesc?: string;     // detailed treasure breakdown text
+  foodDrop?: FoodItem[];     // specific food items found (farms, foraging)
 };
 
 const DANGER_DESC: Record<HexType, string[]> = {
@@ -227,26 +240,30 @@ export function rollWorldLuck(
   distFromCity: number,
   fieldSkillId?: FieldSkillId,    // which skill the player chose (for "skill" interaction)
   partySize?: number,             // number of heroes in party (for thug encounters)
+  fame?: number,                  // performer renown (for Perform skill)
+  exhaustionPoints?: number,      // each point = -1 to all stats
 ): WorldLuckResult {
   // ── Two rolls: world (hidden) + skill check (shown to player) ──
   const worldRoll = Math.floor(Math.random() * 20) + 1;
   const rawD20 = Math.floor(Math.random() * 20) + 1;
+  const exh = exhaustionPoints ?? 0;
+  const exhStat = (v: number) => Math.max(1, Math.floor(v) - exh);
 
-  // Compute skill check: d20 + ability mod + ranks
+  // Compute skill check: d20 + ability mod (exhaustion-reduced) + ranks
   let skillRoll: number;
   let skillName: string | undefined;
   if (interaction === "skill" && fieldSkillId) {
     const fs = FIELD_SKILLS[fieldSkillId];
-    const abilScore = stats[fs.ability] ?? 10;
+    const abilScore = exhStat(stats[fs.ability] ?? 10);
     const ranks = skillRanks[fs.id] ?? 0;
     skillRoll = rawD20 + calcAbilityMod(abilScore) + ranks;
     skillName = fs.name;
   } else if (interaction === "rest") {
     // Rest uses WIS with a penalty
-    skillRoll = rawD20 + calcAbilityMod(stats.wis ?? 10) - 2;
+    skillRoll = rawD20 + calcAbilityMod(exhStat(stats.wis ?? 10)) - 2;
   } else {
     // Travel uses WIS
-    skillRoll = rawD20 + calcAbilityMod(stats.wis ?? 10);
+    skillRoll = rawD20 + calcAbilityMod(exhStat(stats.wis ?? 10));
   }
 
   const isFarm = hex.tags?.includes("farm");
@@ -364,7 +381,7 @@ export function rollWorldLuck(
 
   // ── Skill-specific find tables ──
   // Social skills (diplomacy, gatherInformation, intimidate, perform) — info, quests, rumors
-  const isSocial = ["diplomacy", "gatherInformation", "intimidate", "perform"].includes(sid);
+  const isSocial = ["diplomacy", "gatherInformation", "intimidate"].includes(sid); // perform has its own handler above
   // Wilderness skills (survival, handleAnimal, heal) — food, herbs, animals
   const isWild = ["survival", "handleAnimal", "heal"].includes(sid);
   // Awareness skills (spot, listen) — detect danger, find hidden things
@@ -398,6 +415,222 @@ export function rollWorldLuck(
     ]) : isKnow ? "Your studies remind you of a quest mentioned in historical records."
       : pick(FIND_QUEST_DESC[hex.type] ?? FIND_QUEST_DESC.plains);
     return r({ skillDC: 30, outcome: "find_quest", description: desc, hpChange: 0, goldChange: 0, foodChange: 0, xpChange: 10 });
+  }
+
+  // ── PERFORM ─────────────────────────────────────────────────────────────────
+  // Uses COMBINED = worldRoll + skillRoll (2-die system, range ~2-50).
+  // Cities: money + fame (Kardov's Gate pays best). Good shows → faction favor.
+  // Farms: little coin, food tips, faction favor (farmers).
+  // Wilderness: just practicing unless combined >= 35 (stranger helps).
+  // Combined < 5 in the wild → a monster hears you!
+  if (sid === "perform") {
+    const fameBonus = Math.floor((fame ?? 0) / 25); // +1 per 25 fame
+    const currentFame = fame ?? 0;
+    const isKardov = hex.name?.includes("Kardov");
+    const combined = worldRoll + skillRoll + fameBonus; // both dice + fame
+
+    // Fame tier labels for flavor
+    const fameTitle = currentFame >= 75 ? "legendary" : currentFame >= 50 ? "famous"
+      : currentFame >= 25 ? "well-known" : currentFame >= 10 ? "local" : "unknown";
+
+    // ── WILDERNESS — just practice unless exceptional or disastrous ──
+    if (!isTown && !isFarm) {
+      // Combined < 5 → a monster hears your music!
+      if (combined < 5) {
+        const diff = distFromCity <= 6 ? "easy" as const : distFromCity <= 15 ? "medium" as const : "hard" as const;
+        return r({ skillDC: 0, outcome: "fight", difficulty: diff,
+          description: pick([
+            "Your music echoes through the wilds. Something heard you — something hungry.",
+            "A predator stalks toward the sound of your playing. Too late to run.",
+            "Your song attracts unwanted attention. Hostile creatures burst from the undergrowth!",
+            "The melody carries far on the wind. Glowing eyes appear in the shadows.",
+          ]),
+          hpChange: 0, goldChange: 0, foodChange: 0, xpChange: 0 });
+      }
+
+      // Combined >= 35 → a traveling stranger is moved by your music
+      if (combined >= 35) {
+        const strangerCoins: Coins = { gp: d(3), sp: nd(1, 6), cp: nd(2, 8) };
+        return r({ skillDC: 35, outcome: "find_coins",
+          description: pick([
+            "A hooded stranger stops on the road, entranced. When you finish, they leave a pouch of coin and a nod of respect before vanishing.",
+            "A traveling merchant pauses his caravan to listen. \"You have real talent. Take this — you've earned it.\" He leaves gold.",
+            "An old bard, weathered by the road, listens silently. \"Not bad, not bad at all.\" They share wine, stories, and a handful of coin.",
+            "A wealthy pilgrim weeps at your ballad. \"That song... my mother used to sing it.\" They press gold into your hands.",
+          ]),
+          hpChange: 0, goldChange: 0, coinReward: strangerCoins, foodChange: Math.random() < 0.5 ? 1 : 0,
+          xpChange: 8, fameChange: 1 });
+      }
+
+      // Otherwise: just practicing — gain XP from the effort, nothing else
+      const practiceXp = combined >= 25 ? 3 : combined >= 15 ? 2 : combined >= 8 ? 1 : 0;
+      return r({ skillDC: 0, outcome: "nothing",
+        description: pick([
+          "You practice your craft under the open sky. No audience, but the repetition sharpens your skill.",
+          "Your music mingles with birdsong. Good practice, even if nobody's listening.",
+          "You play to the trees and the wind. The solitude lets you try new techniques.",
+          "An afternoon of practice. No coins, but you feel sharper for it.",
+        ]),
+        hpChange: 0, goldChange: 0, foodChange: 0, xpChange: practiceXp, fameChange: 0 });
+    }
+
+    // ── FARM — food, small coin, farmer faction points ──
+    // Combined DCs: 30+ great, 22+ good, 14+ okay, below 14 = meh
+    if (isFarm) {
+      if (combined >= 30) {
+        return r({ skillDC: 30, outcome: "find_coins",
+          description: pick([
+            "The entire village gathers. Farmers pull out coins they've been saving. Children dance. You're invited to stay for the feast.",
+            "Old farmers weep at your ballad. They pass a hat of their own — every family contributes.",
+            "The village elder insists you stay. \"Play at the harvest festival!\" Food and goodwill in abundance.",
+          ]),
+          hpChange: 0, goldChange: 0,
+          coinReward: { gp: 0, sp: nd(1, 4), cp: nd(2, 8) },
+          foodChange: nd(1, 3) + 1, xpChange: 7, fameChange: 1,
+          factionRepChange: { factionId: "farmers", amount: 3 } });
+      }
+      if (combined >= 22) {
+        return r({ skillDC: 22, outcome: "find_coins",
+          description: pick([
+            "The farmhands enjoy your tune. A few toss copper and someone brings bread and cheese.",
+            "Your music carries across the fields. Workers set down their tools to listen. They share their lunch.",
+          ]),
+          hpChange: 0, goldChange: 0,
+          coinReward: { gp: 0, sp: d(3), cp: nd(1, 8) },
+          foodChange: 1, xpChange: 5, fameChange: 0,
+          factionRepChange: { factionId: "farmers", amount: 2 } });
+      }
+      if (combined >= 14) {
+        const drops = rollFarmDrop();
+        return r({ skillDC: 14, outcome: "find_food",
+          description: pick([
+            "A couple of farmhands tap their feet. One shares a piece of bread.",
+            "The farm dogs come to listen. A kindly farmer gives you an apple and some cheese.",
+          ]) + " They give you: " + drops.map(f => f.name).join(", ") + ".",
+          hpChange: 0, goldChange: 0,
+          coinReward: { gp: 0, sp: 0, cp: nd(1, 6) },
+          foodChange: 1, xpChange: 3, fameChange: 0, foodDrop: drops,
+          factionRepChange: { factionId: "farmers", amount: 1 } });
+      }
+      // Below 14 on farms — polite indifference
+      return r({ skillDC: 14, outcome: "nothing",
+        description: pick([
+          "The farmhands glance over, shrug, and go back to work.",
+          "A farmer's dog howls along. The farmer shoos you both away, but not unkindly.",
+        ]),
+        hpChange: 0, goldChange: 0, foodChange: 0, xpChange: 1, fameChange: 0 });
+    }
+
+    // ── TOWN — best money & fame. Kardov's Gate pays double. ──
+    // Combined DCs: 38+ extraordinary, 32+ memorable, 27+ great, 23+ enjoyable, 20+ copper
+    // Below 20 = failed, no coin.
+    const goldMult = isKardov ? 2 : 1;
+
+    // ── Extraordinary (38+) ──
+    if (combined >= 38) {
+      const coins: Coins = {
+        gp: nd(3, 6) * goldMult,
+        sp: nd(2, 10) * goldMult,
+        cp: nd(3, 10),
+      };
+      const fameGain = isKardov ? 4 : 3;
+      return r({ skillDC: 38, outcome: "find_coins",
+        description: pick(isKardov ? [
+          "A standing ovation in Kardov's Gate! The crowd roars. A merchant's wife sends a servant with gold.",
+          "The tavern erupts in applause. A noble drops gold in your hat. \"Play at my estate — name your price.\"",
+          "The crowd is entranced. Hardened dockworkers weep openly. Your hat overflows with coin.",
+          fameTitle === "legendary" ? "\"It's THEM!\" The crowd presses in. Guards keep order as gold pours in." : "Word spreads — people run from nearby streets to hear you play.",
+        ] : [
+          "A standing ovation! The crowd roars and coins rain into your hat.",
+          "Your performance leaves the room speechless, then erupting in applause. Gold and silver fill your hat.",
+        ]),
+        hpChange: 0, goldChange: 0, coinReward: coins, foodChange: 1,
+        xpChange: 10, fameChange: fameGain });
+    }
+
+    // ── Memorable (32+) ──
+    if (combined >= 32) {
+      const coins: Coins = {
+        gp: nd(1, 6) * goldMult,
+        sp: nd(2, 8) * goldMult,
+        cp: nd(3, 10),
+      };
+      const fameGain = isKardov ? 3 : 2;
+      return r({ skillDC: 32, outcome: "find_coins",
+        description: pick(isKardov ? [
+          "The crowd cheers and claps along. Silver and gold clink into your hat. \"Come back tomorrow!\"",
+          "A memorable show! People buy you drinks and press coins into your hands.",
+          "The tavern keeper waives your tab. \"Play like that every night and you eat free.\"",
+          fameTitle === "unknown" ? "People start asking your name. \"Who IS that?\"" : `\"I've heard of you!\" shouts someone in the crowd.`,
+        ] : [
+          "The crowd cheers and claps along. Your hat fills with silver and gold.",
+          "A memorable performance. The innkeeper waives your tab and tips generously.",
+        ]),
+        hpChange: 0, goldChange: 0, coinReward: coins, foodChange: 0,
+        xpChange: 7, fameChange: fameGain });
+    }
+
+    // ── Great (27+) ──
+    if (combined >= 27) {
+      const coins: Coins = {
+        gp: 0,
+        sp: nd(3, 10) * goldMult,
+        cp: nd(2, 10),
+      };
+      const fameGain = isKardov ? 2 : 1;
+      return r({ skillDC: 27, outcome: "find_coins",
+        description: pick(isKardov ? [
+          "A solid performance draws a decent crowd in Kardov's Gate. Silver clinks into your hat.",
+          "The crowd nods along approvingly. Several toss coins your way.",
+        ] : [
+          "A solid performance. The crowd tips respectably.",
+          "People stop to listen. Not your best, but the tips are decent.",
+        ]),
+        hpChange: 0, goldChange: 0, coinReward: coins, foodChange: 0,
+        xpChange: 5, fameChange: fameGain });
+    }
+
+    // ── Enjoyable (23+) ──
+    if (combined >= 23) {
+      const coins: Coins = {
+        gp: 0,
+        sp: nd(1, 10) * goldMult,
+        cp: nd(2, 8),
+      };
+      return r({ skillDC: 23, outcome: "find_coins",
+        description: pick(isKardov ? [
+          "A few people pause to listen in the busy streets. Some copper and silver land in your hat.",
+          "Your performance is pleasant enough. Passersby toss a few coins.",
+        ] : [
+          "A handful of listeners toss some copper and silver.",
+          "Your playing is decent. A few coins for the effort.",
+        ]),
+        hpChange: 0, goldChange: 0, coinReward: coins, foodChange: 0,
+        xpChange: 3, fameChange: 0 });
+    }
+
+    // ── Copper (20+) — bare minimum to earn anything ──
+    if (combined >= 20) {
+      const coins: Coins = { gp: 0, sp: 0, cp: nd(1, 10) * goldMult };
+      return r({ skillDC: 20, outcome: "find_coins",
+        description: pick([
+          "A few people toss copper out of pity more than appreciation.",
+          "Your playing is adequate. A child drops a copper in your hat.",
+          "Not your best work. A couple of coppers for the effort.",
+        ]),
+        hpChange: 0, goldChange: 0, coinReward: coins, foodChange: 0,
+        xpChange: 1, fameChange: 0 });
+    }
+
+    // ── Failed (below 20) — no coin in town ──
+    return r({ skillDC: 20, outcome: "nothing",
+      description: pick([
+        "Your performance falls flat. People hurry past, avoiding eye contact.",
+        "A drunk heckles you mercilessly. You pack up with an empty hat.",
+        "You fumble a chord and the small crowd disperses. Someone throws a rotten tomato.",
+        "The crowd watches for a moment, then drifts away. Not even pity copper today.",
+      ]),
+      hpChange: 0, goldChange: 0, foodChange: 0, xpChange: 0, fameChange: 0 });
   }
 
   // ── 40+: Very valuable / magic item tier ──
@@ -476,9 +709,10 @@ export function rollWorldLuck(
   if (skillRoll >= 30) {
     if (isWild) {
       const food = isFarm ? Math.floor(Math.random() * 3) + 2 : Math.floor(Math.random() * 2) + 2;
+      const drops = isFarm ? rollFarmDrop() : rollWildernessFoodDrop();
       return r({ skillDC: 30, outcome: "find_food",
-        description: pick(["You track game and make a successful hunt.", "A patch of wild vegetables and tubers — a solid haul.", "You find a clean spring and edible plants growing nearby."]),
-        hpChange: 0, goldChange: 0, foodChange: food, xpChange: 5 });
+        description: pick(["You track game and make a successful hunt.", "A patch of wild vegetables and tubers — a solid haul.", "You find a clean spring and edible plants growing nearby."]) + " Found: " + drops.map(f => f.name).join(", ") + ".",
+        hpChange: 0, goldChange: 0, foodChange: food, xpChange: 5, foodDrop: drops });
     }
     if (isSocial) {
       // Tips come as mixed small coins — mostly copper and silver from common folk
@@ -502,15 +736,7 @@ export function rollWorldLuck(
         description: "You gather useful healing herbs and treat minor wounds.",
         hpChange: Math.floor(Math.random() * 3) + 1, goldChange: 0, foodChange: 1, xpChange: 5 });
     }
-    if (sid === "perform") {
-      // Performance earnings — crowd tosses copper and the occasional silver
-      const perfCoins: Coins = isTown
-        ? { gp: Math.random() < 0.2 ? 1 : 0, sp: nd(1, 8), cp: nd(3, 10) }
-        : { gp: 0, sp: nd(1, 4), cp: nd(2, 8) };
-      return r({ skillDC: 30, outcome: "find_coins",
-        description: pick(isTown ? ["You play a rousing tune and the crowd tosses coins!", "Your performance draws a crowd — the hat fills nicely."] : ["The farmhands gather round your song and pay you in coin and food."]),
-        hpChange: 0, goldChange: 0, coinReward: perfCoins, foodChange: isFarm ? 1 : 0, xpChange: 5 });
-    }
+    // (Perform is handled by its own dedicated block above)
     // General coin find — scales with distance (wilder areas = older, richer caches)
     const cr = Math.max(1, Math.floor((levelRange[0] + levelRange[1]) / 2));
     const t = rollFieldTreasure(cr);
@@ -524,12 +750,14 @@ export function rollWorldLuck(
   if (skillRoll >= 25) {
     if (isWild) {
       const food = isFarm ? Math.floor(Math.random() * 3) + 2 : Math.floor(Math.random() * 2) + 1;
+      const drops = isFarm ? rollFarmDrop() : rollWildernessFoodDrop();
       return r({ skillDC: 25, outcome: "find_food",
-        description: pick(["You forage edible roots and berries.", "Animal tracks lead to a small catch.", "You identify safe mushrooms and wild herbs.", "A clean water source and edible plants nearby."]),
-        hpChange: 0, goldChange: 0, foodChange: food, xpChange: 2 });
+        description: pick(["You forage edible roots and berries.", "Animal tracks lead to a small catch.", "You identify safe mushrooms and wild herbs.", "A clean water source and edible plants nearby."]) + " Found: " + drops.map(f => f.name).join(", ") + ".",
+        hpChange: 0, goldChange: 0, foodChange: food, xpChange: 2, foodDrop: drops });
     }
     if (isSocial && (isTown || isFarm)) {
       const food = isFarm ? 1 : (Math.random() < 0.4 ? 1 : 0);
+      const drops = isFarm ? rollFarmDrop() : undefined;
       return r({ skillDC: 25, outcome: "find_food",
         description: pick(isTown ? [
           "You chat with locals. Nothing earth-shattering, but someone shares a meal.",
@@ -538,8 +766,8 @@ export function rollWorldLuck(
         ] : [
           "A farmer shares bread and cheese while complaining about the weather.",
           "A local child shows you their favorite fishing spot.",
-        ]),
-        hpChange: 0, goldChange: 0, foodChange: food, xpChange: 2 });
+        ]) + (drops ? " They give you: " + drops.map(f => f.name).join(", ") + "." : ""),
+        hpChange: 0, goldChange: 0, foodChange: food, xpChange: 2, foodDrop: drops });
     }
     if (sid === "heal") {
       return r({ skillDC: 25, outcome: "find_food",
@@ -553,9 +781,10 @@ export function rollWorldLuck(
     }
     const food = isFarm ? Math.floor(Math.random() * 3) + 2 : Math.floor(Math.random() * 2) + 1;
     const gold = Math.random() < 0.3 ? (Math.floor(Math.random() * 2) + 1) * 100 : 0;
+    const drops = isFarm ? rollFarmDrop() : rollWildernessFoodDrop();
     return r({ skillDC: 25, outcome: "find_food",
-      description: pick(FIND_FOOD_DESC[hex.type] ?? FIND_FOOD_DESC.plains),
-      hpChange: 0, goldChange: gold, foodChange: food, xpChange: 2 });
+      description: pick(FIND_FOOD_DESC[hex.type] ?? FIND_FOOD_DESC.plains) + " Found: " + drops.map(f => f.name).join(", ") + ".",
+      hpChange: 0, goldChange: gold, foodChange: food, xpChange: 2, foodDrop: drops });
   }
 
   // ── Below 25: nothing found — skill-flavored failure ──
@@ -645,13 +874,23 @@ export function rollEncounter(hex: MapHex, distFromCity: number): EncounterResul
 
   if (roll >= findThreshold) {
     if (isFarm) {
+      const drops = rollFarmDrop();
       const farmFind = [
         "A farmer offers you fresh food for the road.",
         "You find ripe crops growing wild along the roadside.",
         "A grateful farmer rewards you for scaring off pests.",
         "You stumble upon a hidden root cellar with supplies.",
       ];
-      return { roll, type: "find", description: farmFind[Math.floor(Math.random() * farmFind.length)] };
+      const desc = farmFind[Math.floor(Math.random() * farmFind.length)];
+      const totalFood = drops.reduce((sum, f) => sum + f.foodValue, 0);
+      return { roll, type: "find", description: desc + " Found: " + drops.map(f => f.name).join(", ") + ".", foodDrop: drops, foodChange: Math.max(1, totalFood) };
+    }
+    // Low-level wilderness finds include foraged food
+    if (distFromCity <= 8) {
+      const drops = rollWildernessFoodDrop();
+      const desc = FIND_SOMETHING[Math.floor(Math.random() * FIND_SOMETHING.length)];
+      const totalFood = drops.reduce((sum, f) => sum + f.foodValue, 0);
+      return { roll, type: "find", description: desc + " Also found: " + drops.map(f => f.name).join(", ") + ".", foodDrop: drops, foodChange: Math.max(1, totalFood) };
     }
     const desc = FIND_SOMETHING[Math.floor(Math.random() * FIND_SOMETHING.length)];
     return { roll, type: "find", description: desc };
@@ -807,7 +1046,7 @@ const POIS: Record<string, Omit<MapHex, "q" | "r">> = {
   "31,26": { type: "plains", name: "Farmland", description: "Fertile fields surrounding Kardov's Gate.", tags: ["farm"] },
   "30,28": { type: "plains", name: "Farmland", description: "Fertile fields surrounding Kardov's Gate.", tags: ["farm"] },
   "29,27": { type: "plains", name: "Farmland", description: "Fertile fields surrounding Kardov's Gate.", tags: ["farm"] },
-  "32,31": { type: "plains", name: "Farmland", description: "Fertile fields surrounding Kardov's Gate.", tags: ["farm"] },
+  "32,31": { type: "mountain", name: "Goblin Hills", description: "Rocky hills overlooking Kardov's Gate. Goblin raids are a constant threat.", tags: ["dungeon"] },
   "33,30": { type: "plains", name: "Farmland", description: "Fertile fields surrounding Kardov's Gate.", tags: ["farm"] },
   "34,30": { type: "plains", name: "Farmland", description: "Fertile fields surrounding Kardov's Gate.", tags: ["farm"] },
   "28,32": { type: "plains", name: "Farmland", description: "Fertile fields surrounding Kardov's Gate.", tags: ["farm"] },
@@ -1764,12 +2003,15 @@ export function performAction(action: HexAction, hex: MapHex, save: Pick<Charact
 type Props = {
   save: CharacterSave;
   character: NftCharacter | null;
+  characters?: NftCharacter[];       // all NFT characters (for party images)
   onTravel: (hex: { q: number; r: number }, result: ReturnType<typeof travel>, destHex: MapHex, encounter: WorldLuckResult) => void;
   onAction: (result: WorldLuckResult) => void;
   onBuyItem: (item: ShopItem) => void;
   onBattle: (difficulty: "easy" | "medium" | "hard") => void;
   onQuestBattle: (encounter: QuestEncounter) => void;
+  onExhaustionCollapse: (isSafe: boolean) => void;  // collapse from exhaustion; isSafe = town/farm (infirmary)
   onInventory: () => void;
+  onSwitchParty?: (newIndex: number) => void;  // switch active party
   onBack: () => void;
 };
 
@@ -1792,7 +2034,7 @@ const MAX_TRAVEL = 9; // ~same physical distance as old 5-hex limit on denser gr
 const MIN_ZOOM = 1;
 const MAX_ZOOM = 3.5;
 
-export function WorldMap({ save, character, onTravel, onAction, onBuyItem, onBattle, onQuestBattle, onInventory, onBack }: Props) {
+export function WorldMap({ save, character, characters, onTravel, onAction, onBuyItem, onBattle, onQuestBattle, onExhaustionCollapse, onInventory, onSwitchParty, onBack }: Props) {
   const [selectedHex, setSelectedHex] = useState<MapHex | null>(null);
   const [zoom, setZoom] = useState(2);
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -1802,9 +2044,20 @@ export function WorldMap({ save, character, onTravel, onAction, onBuyItem, onBat
   const [pendingQuest, setPendingQuest] = useState<QuestEncounter | null>(null);
   const [cityDistrict, setCityDistrict] = useState<string | null>(null); // "market" | "temple" | "high" | "low"
   const [cityShop, setCityShop] = useState<string | null>(null);         // shop or temple id
+  const [leftPanel, setLeftPanel] = useState<"sheet" | "inventory">("sheet");
+  const [gameLog, setGameLog] = useState<WorldLuckResult[]>([]);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // Multi-party: active party position (falls back to save.map_hex for saves without parties)
+  const activeParty = save.parties?.[save.active_party_index ?? 0];
+  const activeMapHex = activeParty?.map_hex ?? save.map_hex;
   const dragRef = useRef<{ startX: number; startY: number; panX: number; panY: number } | null>(null);
   const didCenter = useRef(false);
+
+  // Append to game log when a new action happens
+  useEffect(() => {
+    if (lastAction) setGameLog(prev => [lastAction, ...prev].slice(0, 50));
+  }, [lastAction]);
 
   // Generate quest/encounter data when lastAction changes (stable, doesn't re-roll on re-render)
   useEffect(() => {
@@ -1826,6 +2079,127 @@ export function WorldMap({ save, character, onTravel, onAction, onBuyItem, onBat
         mapImage: "/cellar_1.png",
         difficulty: "easy",
       });
+      return;
+    }
+
+    // ── Tavern quest: Giant spiders in the warehouse ──
+    if (lastAction.outcome === "find_quest" && lastAction.description.toLowerCase().includes("spider")) {
+      const spider = MONSTERS.find(m => m.id === "small_spider") ?? MONSTERS.find(m => m.id === "tiny_monstrous_spider");
+      if (spider) {
+        const count = Math.floor(Math.random() * 3) + 2 + save.level;
+        const enemies: EnemySpec[] = Array.from({ length: count }, () => createMonsterSpec(spider, "\uD83D\uDD77\uFE0F"));
+        setPendingQuest({ questId: "tavern_pests", questName: "Warehouse Pests", enemies, difficulty: "easy" });
+        return;
+      }
+    }
+
+    // ── Tavern quest: Run off street thugs ──
+    if (lastAction.outcome === "find_quest" && lastAction.description.toLowerCase().includes("thugs have been shaking")) {
+      const thugCount = Math.floor(Math.random() * 3) + 2 + Math.floor(save.level / 2);
+      const thugNames = ["Scarface", "Knuckles", "Ratbone", "Grinner", "Nail", "Crooked Tom", "Shiv", "Guttersnipe"];
+      const usedN = new Set<string>();
+      const thugs: EnemySpec[] = Array.from({ length: thugCount }, () => {
+        let name: string;
+        do { name = thugNames[Math.floor(Math.random() * thugNames.length)]; } while (usedN.has(name) && usedN.size < thugNames.length);
+        usedN.add(name);
+        return { name, imageEmoji: "\uD83D\uDC4A", stats: { str: 5, dex: 5, con: 5, int: 5, wis: 5, cha: 5, ac: 13, atk: 1, speed: 30, lightningDmg: 0, fireDmg: 0 }, subtypes: [], hpOverride: 8 + Math.floor(Math.random() * 4) + 1 };
+      });
+      setPendingQuest({ questId: "tavern_thugs", questName: "Street Shakedown", enemies: thugs, difficulty: "medium" });
+      return;
+    }
+
+    // ── Tavern quest: Skeletons in the old crypt ──
+    if (lastAction.outcome === "find_quest" && lastAction.description.toLowerCase().includes("crypt")) {
+      const skeleton = MONSTERS.find(m => m.id === "skeleton");
+      if (skeleton) {
+        const count = Math.floor(Math.random() * 3) + 3 + save.level;
+        const enemies: EnemySpec[] = Array.from({ length: count }, () => createMonsterSpec(skeleton, "\uD83D\uDC80"));
+        setPendingQuest({ questId: "tavern_undead", questName: "Crypt Clearing", enemies, mapImage: "/cellar_1.png", difficulty: "medium" });
+        return;
+      }
+    }
+
+    // ── Tavern quest: Wolf pack den ──
+    if (lastAction.outcome === "find_quest" && lastAction.description.toLowerCase().includes("wolves")) {
+      const wolf = MONSTERS.find(m => m.id === "wolf");
+      if (wolf) {
+        const count = Math.floor(Math.random() * 3) + 2 + Math.floor(save.level / 2);
+        const enemies: EnemySpec[] = Array.from({ length: count }, () => createMonsterSpec(wolf, "\uD83D\uDC3A"));
+        setPendingQuest({ questId: "tavern_wolves", questName: "Wolf Pack Den", enemies, difficulty: "medium" });
+        return;
+      }
+    }
+
+    // ── Rumor quest: Smuggler's cave ──
+    if (lastAction.outcome === "find_quest" && lastAction.description.toLowerCase().includes("smuggler")) {
+      const thugCount = Math.floor(Math.random() * 3) + 3 + save.level;
+      const smugglerNames = ["Silvertongue", "The Eel", "Dockrat", "Barnacle", "Longfinger", "Whisper", "Cutpurse", "Saltblood"];
+      const usedN = new Set<string>();
+      const enemies: EnemySpec[] = Array.from({ length: thugCount }, () => {
+        let name: string;
+        do { name = smugglerNames[Math.floor(Math.random() * smugglerNames.length)]; } while (usedN.has(name) && usedN.size < smugglerNames.length);
+        usedN.add(name);
+        return { name, imageEmoji: "\uD83D\uDDE1\uFE0F", stats: { str: 6, dex: 7, con: 5, int: 5, wis: 5, cha: 5, ac: 14, atk: 2, speed: 30, lightningDmg: 0, fireDmg: 0 }, subtypes: [], hpOverride: 10 + Math.floor(Math.random() * 6) + 1 };
+      });
+      setPendingQuest({ questId: "rumor_smugglers", questName: "Smuggler's Cave", enemies, difficulty: "medium" });
+      return;
+    }
+
+    // ── Rumor quest: Haunted manor ──
+    if (lastAction.outcome === "find_quest" && lastAction.description.toLowerCase().includes("manor")) {
+      const skeleton = MONSTERS.find(m => m.id === "skeleton");
+      const wight = MONSTERS.find(m => m.id === "wight");
+      const enemies: EnemySpec[] = [];
+      if (skeleton) {
+        const skelCount = Math.floor(Math.random() * 4) + 3;
+        for (let i = 0; i < skelCount; i++) enemies.push(createMonsterSpec(skeleton, "\uD83D\uDC80"));
+      }
+      if (wight) enemies.push(createMonsterSpec(wight, "\uD83D\uDC7B")); // boss
+      setPendingQuest({ questId: "rumor_haunted_manor", questName: "Haunted Manor", enemies, difficulty: "hard" });
+      return;
+    }
+
+    // ── Rumor quest: Shadow cultists in the sewers ──
+    if (lastAction.outcome === "find_quest" && lastAction.description.toLowerCase().includes("shadow temple")) {
+      const cultistCount = Math.floor(Math.random() * 3) + 3 + save.level;
+      const enemies: EnemySpec[] = Array.from({ length: cultistCount }, (_, i) => ({
+        name: i === 0 ? "Shadow Priest" : `Cultist ${i}`,
+        imageEmoji: i === 0 ? "\uD83E\uDDD9" : "\uD83D\uDC64",
+        stats: i === 0
+          ? { str: 5, dex: 6, con: 6, int: 8, wis: 8, cha: 7, ac: 16, atk: 3, speed: 30, lightningDmg: 0, fireDmg: 0 }
+          : { str: 5, dex: 5, con: 5, int: 5, wis: 5, cha: 5, ac: 13, atk: 1, speed: 30, lightningDmg: 0, fireDmg: 0 },
+        subtypes: [] as string[],
+        hpOverride: i === 0 ? 20 + save.level * 2 : 8 + Math.floor(Math.random() * 4),
+      }));
+      setPendingQuest({ questId: "rumor_cultists", questName: "Sewer Cult", enemies, difficulty: "hard" });
+      return;
+    }
+
+    // ── Rumor quest: Gnoll bounty on King's Road ──
+    if (lastAction.outcome === "find_quest" && lastAction.description.toLowerCase().includes("gnoll raider")) {
+      const gnoll = MONSTERS.find(m => m.id === "gnoll");
+      if (gnoll) {
+        const count = Math.floor(Math.random() * 2) + 2 + Math.floor(save.level / 2);
+        const enemies: EnemySpec[] = Array.from({ length: count }, (_, i) => {
+          const spec = createMonsterSpec(gnoll, "\uD83D\uDC3A");
+          return i === 0 ? { ...spec, name: "Gnoll Raider Chief", hpOverride: (spec.hpOverride ?? 10) + 8 } : spec;
+        });
+        setPendingQuest({ questId: "rumor_bounty", questName: "Gnoll Raider Bounty", enemies, difficulty: "medium" });
+        return;
+      }
+    }
+
+    // ── Rumor quest: Lost caravan ──
+    if (lastAction.outcome === "find_quest" && lastAction.description.toLowerCase().includes("caravan vanished")) {
+      const goblin = MONSTERS.find(m => m.id === "goblin");
+      const hobgoblin = MONSTERS.find(m => m.id === "hobgoblin");
+      const enemies: EnemySpec[] = [];
+      if (goblin) {
+        const gobCount = Math.floor(Math.random() * 4) + 3;
+        for (let i = 0; i < gobCount; i++) enemies.push(createMonsterSpec(goblin, "\uD83D\uDC7A"));
+      }
+      if (hobgoblin) enemies.push(createMonsterSpec(hobgoblin, "\u2694\uFE0F")); // leader
+      setPendingQuest({ questId: "rumor_lost_caravan", questName: "Lost Caravan", enemies, difficulty: "medium" });
       return;
     }
 
@@ -1862,25 +2236,43 @@ export function WorldMap({ save, character, onTravel, onAction, onBuyItem, onBat
   }, [lastAction, save.party.heroes.length, save.level]);
 
   const [selectedSkill, setSelectedSkill] = useState<FieldSkillId>("search");
-  const currentHex = ALL_HEXES.find(h => h.q === save.map_hex.q && h.r === save.map_hex.r);
+  const currentHex = ALL_HEXES.find(h => h.q === activeMapHex.q && h.r === activeMapHex.r);
   const con = character ? Math.max(1, character.stats.con) : 1;
   const charStats: Record<string, number> = character
     ? { str: character.stats.str, dex: character.stats.dex, con: character.stats.con, int: character.stats.int, wis: character.stats.wis, cha: character.stats.cha }
     : { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 };
   const skillRanks = save.skill_ranks ?? {};
   const heroCount = Math.max(1, save.party.heroes.length);
-  const playerPx = hexToPixel(save.map_hex.q, save.map_hex.r);
-  const distFromCity = hexDistance(save.map_hex, CITY_CENTER);
+  const playerPx = hexToPixel(activeMapHex.q, activeMapHex.r);
+  const distFromCity = hexDistance(activeMapHex, CITY_CENTER);
+  // For existing saves without last_rest_hour/last_ate_hour, treat as fresh
+  const exhaustion = getExhaustionPoints(save.hour ?? 0, save.last_rest_hour ?? (save.hour ?? 0), save.last_ate_hour ?? (save.hour ?? 0));
+  const exhPts = exhaustion.points;  // -1 to all stats per point
+
+  // Auto-collapse when any stat hits 1 from exhaustion (only on change, not mount)
+  const prevExhPts = useRef(exhPts);
+  useEffect(() => {
+    if (prevExhPts.current === exhPts) return; // skip mount
+    prevExhPts.current = exhPts;
+    if (!character || exhPts <= 0) return;
+    const minStat = lowestExhaustedStat(charStats, exhPts);
+    if (minStat <= 1) {
+      const isSafe = currentHex?.type === "town" || (currentHex?.tags?.includes("farm") ?? false);
+      // Defer to avoid alert during render
+      setTimeout(() => onExhaustionCollapse(isSafe), 0);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [exhPts]);
 
   // Reachable hexes within MAX_TRAVEL (all terrain, including water)
   const reachableSet = useMemo(() => {
     const set = new Set<string>();
     ALL_HEXES.forEach(h => {
-      const d = hexDistance(save.map_hex, h);
+      const d = hexDistance(activeMapHex, h);
       if (d >= 1 && d <= MAX_TRAVEL) set.add(`${h.q},${h.r}`);
     });
     return set;
-  }, [save.map_hex]);
+  }, [activeMapHex]);
 
   // Center on player
   const centerOnPlayer = useCallback(() => {
@@ -1943,7 +2335,7 @@ export function WorldMap({ save, character, onTravel, onAction, onBuyItem, onBat
     const dx = e.clientX - dragRef.current.startX;
     const dy = e.clientY - dragRef.current.startY;
     if (Math.abs(dx) > 5 || Math.abs(dy) > 5) wasDrag.current = true;
-    setPan({ x: dragRef.current.panX + dx, y: dragRef.current.panY + dy });
+    setPan({ x: dragRef.current.panX - dx, y: dragRef.current.panY - dy });
   }
   function onPointerUp() {
     dragRef.current = null;
@@ -1978,12 +2370,12 @@ export function WorldMap({ save, character, onTravel, onAction, onBuyItem, onBat
 
   function handleTravel() {
     if (!selectedHex) return;
-    const dist = hexDistance(save.map_hex, selectedHex);
+    const dist = hexDistance(activeMapHex, selectedHex);
     if (dist === 0 || dist > MAX_TRAVEL) return;
     const effectiveHexes = travelCost(dist, selectedHex);
     const result = travel(effectiveHexes, save, con);
     const destDist = hexDistance(selectedHex, CITY_CENTER);
-    const encounter = rollWorldLuck(selectedHex, "travel", charStats, skillRanks, destDist, undefined, heroCount);
+    const encounter = rollWorldLuck(selectedHex, "travel", charStats, skillRanks, destDist, undefined, heroCount, save.fame ?? 0, exhPts);
     onTravel({ q: selectedHex.q, r: selectedHex.r }, result, selectedHex, encounter);
     setSelectedHex(null);
   }
@@ -2034,8 +2426,278 @@ export function WorldMap({ save, character, onTravel, onAction, onBuyItem, onBat
         </button>
       </div>
 
-      {/* Map + side panel */}
+      {/* Party selector bar — only shows when multiple parties exist */}
+      {save.parties && save.parties.length > 1 && (
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg overflow-x-auto"
+          style={{ background: "rgba(0,0,0,0.25)", border: "1px solid rgba(201,168,76,0.1)" }}>
+          <span className="text-xs font-bold uppercase tracking-widest shrink-0" style={{ color: "rgba(201,168,76,0.4)", fontSize: "0.5rem" }}>
+            Parties
+          </span>
+          {save.parties.map((p, i) => {
+            const isActive = i === (save.active_party_index ?? 0);
+            const partyNft = characters?.find(c => c.contractAddress.toLowerCase() === p.heroes[0]?.nft_address);
+            return (
+              <button key={p.id} onClick={() => onSwitchParty?.(i)}
+                className="flex items-center gap-1.5 px-2 py-1 rounded shrink-0"
+                style={{
+                  background: isActive ? "rgba(96,165,250,0.2)" : "rgba(255,255,255,0.03)",
+                  border: `1px solid ${isActive ? "rgba(96,165,250,0.5)" : "rgba(201,168,76,0.1)"}`,
+                  opacity: p.has_acted && !isActive ? 0.4 : 1,
+                }}>
+                {partyNft?.imageUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={partyNft.imageUrl} alt="" className="rounded-full" style={{ width: 18, height: 18, objectFit: "cover" }} />
+                ) : (
+                  <span style={{ fontSize: "0.7rem" }}>{"\u{1F6E1}\uFE0F"}</span>
+                )}
+                <span className="text-xs" style={{ color: isActive ? "rgba(96,165,250,0.9)" : "rgba(232,213,176,0.6)", fontSize: "0.55rem" }}>
+                  {p.name}
+                </span>
+                {p.has_acted && <span style={{ fontSize: "0.5rem", color: "rgba(74,222,128,0.6)" }}>{"\u2713"}</span>}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Main layout: left panel + map + side panel */}
       <div className="flex gap-2 flex-col lg:flex-row">
+        {/* ── Left panel: Character Sheet / Inventory ── */}
+        <div className="hidden lg:flex flex-col gap-1" style={{ width: 240, minWidth: 240 }}>
+          <div className="flex gap-1">
+            <button onClick={() => setLeftPanel("sheet")}
+              className="flex-1 px-2 py-1 rounded text-xs font-bold uppercase tracking-widest"
+              style={{ background: leftPanel === "sheet" ? "rgba(201,168,76,0.15)" : "rgba(255,255,255,0.03)", color: leftPanel === "sheet" ? "rgba(201,168,76,0.9)" : "rgba(201,168,76,0.4)", border: `1px solid ${leftPanel === "sheet" ? "rgba(201,168,76,0.4)" : "rgba(201,168,76,0.1)"}` }}>
+              Character
+            </button>
+            <button onClick={() => setLeftPanel("inventory")}
+              className="flex-1 px-2 py-1 rounded text-xs font-bold uppercase tracking-widest"
+              style={{ background: leftPanel === "inventory" ? "rgba(201,168,76,0.15)" : "rgba(255,255,255,0.03)", color: leftPanel === "inventory" ? "rgba(201,168,76,0.9)" : "rgba(201,168,76,0.4)", border: `1px solid ${leftPanel === "inventory" ? "rgba(201,168,76,0.4)" : "rgba(201,168,76,0.1)"}` }}>
+              Inventory
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto rounded-lg" style={{ background: "rgba(0,0,0,0.2)", border: "1px solid rgba(201,168,76,0.1)" }}>
+            {leftPanel === "sheet" && character && (() => {
+              const cls = getClassById(save.class_id);
+              const xpInfo = xpToNextLevel(save.level, save.xp);
+              const fameBonus = Math.floor((save.fame ?? 0) / 25);
+              const fameTier = (save.fame ?? 0) >= 75 ? "Legendary" : (save.fame ?? 0) >= 50 ? "Famous" : (save.fame ?? 0) >= 25 ? "Well-known" : (save.fame ?? 0) >= 10 ? "Local" : "Unknown";
+              const stats = character.stats;
+              const mod = (v: number) => { const m = calcAbilityMod(v); return m >= 0 ? `+${m}` : `${m}`; };
+              const rankedSkills = SKILLS.filter(s => (save.skill_ranks[s.id] ?? 0) > 0)
+                .sort((a, b) => (save.skill_ranks[b.id] ?? 0) - (save.skill_ranks[a.id] ?? 0));
+              const charFeats = save.feats.map(fid => FEATS.find(f => f.id === fid)).filter(Boolean);
+              return (
+                <div className="p-2 flex flex-col gap-2" style={{ fontSize: "0.55rem", color: "rgba(232,213,176,0.7)" }}>
+                  {/* Name + Class */}
+                  <div>
+                    <div className="text-sm font-bold" style={{ color: "rgba(232,213,176,0.9)" }}>{character.name}</div>
+                    <div style={{ color: "rgba(201,168,76,0.6)" }}>Level {save.level} {cls?.name ?? save.class_id}</div>
+                  </div>
+                  {/* HP + XP bar */}
+                  <div className="flex flex-col gap-1">
+                    <div className="flex justify-between"><span>HP</span><span className="font-bold">{save.current_hp}/{save.max_hp}</span></div>
+                    <div style={{ height: 4, background: "rgba(255,255,255,0.05)", borderRadius: 2 }}>
+                      <div style={{ width: `${Math.min(100, (save.current_hp / save.max_hp) * 100)}%`, height: "100%", background: save.current_hp / save.max_hp > 0.5 ? "rgba(74,222,128,0.6)" : save.current_hp / save.max_hp > 0.25 ? "rgba(251,191,36,0.6)" : "rgba(220,38,38,0.6)", borderRadius: 2 }} />
+                    </div>
+                    <div className="flex justify-between"><span>XP</span><span className="font-bold">{save.xp}/{xpInfo.needed}</span></div>
+                    <div style={{ height: 4, background: "rgba(255,255,255,0.05)", borderRadius: 2 }}>
+                      <div style={{ width: `${Math.min(100, xpInfo.progress * 100)}%`, height: "100%", background: "rgba(96,165,250,0.6)", borderRadius: 2 }} />
+                    </div>
+                  </div>
+                  {/* Ability Scores */}
+                  <div>
+                    <div className="font-bold uppercase tracking-widest mb-1" style={{ fontSize: "0.45rem", color: "rgba(201,168,76,0.5)" }}>Abilities</div>
+                    <div className="grid grid-cols-3 gap-x-2 gap-y-0.5">
+                      {(["str", "dex", "con", "int", "wis", "cha"] as const).map(ab => {
+                        const base = Math.floor(stats[ab]);
+                        const eff = exhaustedStat(base, exhPts);
+                        const reduced = eff < base;
+                        return (
+                          <div key={ab} className="flex justify-between">
+                            <span className="uppercase" style={{ color: "rgba(232,213,176,0.5)" }}>{ab}</span>
+                            <span className="font-bold" style={reduced ? { color: "rgba(220,38,38,0.8)" } : undefined}>
+                              {reduced ? eff : base} <span style={{ color: reduced ? "rgba(220,38,38,0.5)" : "rgba(96,165,250,0.6)" }}>({mod(eff)})</span>
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  {/* Combat stats */}
+                  <div>
+                    <div className="font-bold uppercase tracking-widest mb-1" style={{ fontSize: "0.45rem", color: "rgba(201,168,76,0.5)" }}>Combat</div>
+                    <div className="grid grid-cols-2 gap-x-2 gap-y-0.5">
+                      <span>AC</span><span className="font-bold">{stats.ac}</span>
+                      <span>Attack</span><span className="font-bold">+{stats.atk}</span>
+                      <span>Speed</span><span className="font-bold">{stats.speed} ft</span>
+                    </div>
+                  </div>
+                  {/* Supplies */}
+                  <div>
+                    <div className="font-bold uppercase tracking-widest mb-1" style={{ fontSize: "0.45rem", color: "rgba(201,168,76,0.5)" }}>Supplies</div>
+                    <div className="grid grid-cols-2 gap-x-2 gap-y-0.5">
+                      <span>{"\u{1F356}"} Food</span><span className="font-bold">{save.food} ({Math.floor(save.food / 3)}d)</span>
+                      <span>{"\u{1FA99}"} Purse</span><span className="font-bold">{formatCoins(save.coins)}</span>
+                      <span>{"\u{1F4C5}"} Day</span><span className="font-bold">{Math.floor((save.hour ?? 0) / 24) + 1}</span>
+                      <span>{"\u2B50"} Fame</span><span className="font-bold">{save.fame ?? 0} <span style={{ color: "rgba(251,191,36,0.6)" }}>({fameTier})</span></span>
+                    </div>
+                  </div>
+                  {/* Exhaustion */}
+                  {exhPts > 0 && (() => {
+                    const minStat = character ? lowestExhaustedStat(charStats, exhPts) : 10 - exhPts;
+                    const critical = minStat <= 2;
+                    const severe = minStat <= 4;
+                    return (
+                      <div className="px-2 py-1 rounded" style={{
+                        background: critical ? "rgba(220,38,38,0.2)" : severe ? "rgba(220,38,38,0.1)" : "rgba(251,191,36,0.08)",
+                        border: `1px solid ${critical ? "rgba(220,38,38,0.4)" : severe ? "rgba(220,38,38,0.25)" : "rgba(251,191,36,0.2)"}`,
+                      }}>
+                        <div className="font-bold uppercase" style={{ fontSize: "0.45rem", color: critical ? "rgba(220,38,38,0.9)" : severe ? "rgba(220,38,38,0.7)" : "rgba(251,191,36,0.7)" }}>
+                          EXHAUSTION {exhPts} — all stats -{exhPts}
+                        </div>
+                        <div style={{ fontSize: "0.4rem", color: "rgba(232,213,176,0.5)" }}>
+                          {exhaustion.sleepPoints > 0 && <>{exhaustion.sleepPoints} from no sleep ({exhaustion.hoursAwake}h) </>}
+                          {exhaustion.hungerPoints > 0 && <>{exhaustion.hungerPoints} from hunger ({exhaustion.hoursSinceFood}h) </>}
+                          {critical ? "— REST AND EAT or you will die!" : severe ? "— dangerously fatigued!" : ""}
+                        </div>
+                      </div>
+                    );
+                  })()}
+                  {/* Skills with ranks */}
+                  {rankedSkills.length > 0 && (
+                    <div>
+                      <div className="font-bold uppercase tracking-widest mb-1" style={{ fontSize: "0.45rem", color: "rgba(201,168,76,0.5)" }}>Skills</div>
+                      <div className="flex flex-col gap-0.5">
+                        {rankedSkills.map(s => {
+                          const ranks = save.skill_ranks[s.id] ?? 0;
+                          const abilScore = stats[s.ability as keyof typeof stats] ?? 10;
+                          const total = ranks + calcAbilityMod(abilScore);
+                          return (
+                            <div key={s.id} className="flex justify-between">
+                              <span>{s.name}</span>
+                              <span className="font-bold">+{total} <span style={{ color: "rgba(232,213,176,0.35)" }}>({ranks}r)</span></span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                  {/* Feats */}
+                  {charFeats.length > 0 && (
+                    <div>
+                      <div className="font-bold uppercase tracking-widest mb-1" style={{ fontSize: "0.45rem", color: "rgba(201,168,76,0.5)" }}>Abilities</div>
+                      <div className="flex flex-wrap gap-1">
+                        {charFeats.map(f => f && (
+                          <span key={f.id} className="px-1.5 py-0.5 rounded" style={{ background: "rgba(168,85,247,0.1)", border: "1px solid rgba(168,85,247,0.2)", color: "rgba(168,85,247,0.7)", fontSize: "0.45rem" }}>
+                            {f.name}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {/* Equipment */}
+                  <div>
+                    <div className="font-bold uppercase tracking-widest mb-1" style={{ fontSize: "0.45rem", color: "rgba(201,168,76,0.5)" }}>Equipment</div>
+                    <div className="flex flex-col gap-0.5">
+                      {(["weapon", "armor", "shield", "accessory"] as (keyof Equipment)[]).map(slot => {
+                        const itemId = save.equipment[slot];
+                        const info = itemId ? getItemInfo(itemId) : null;
+                        return (
+                          <div key={slot} className="flex justify-between">
+                            <span className="capitalize" style={{ color: "rgba(232,213,176,0.4)" }}>{slot}</span>
+                            <span className="font-bold">{info?.name ?? (itemId || "—")}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+            {leftPanel === "inventory" && (() => {
+              const str = character ? Math.max(1, character.stats.str) : 10;
+              const thresholds = getCarryThresholds(str);
+              const invWeight = save.inventory.reduce((sum, item) => sum + getItemWeight(item.id) * item.qty, 0);
+              const eqWeight = (["weapon", "armor", "shield", "accessory"] as (keyof Equipment)[]).reduce((sum, slot) => {
+                const id = save.equipment[slot];
+                return id ? sum + getItemWeight(id) : sum;
+              }, 0);
+              const cWeight = coinWeight(save.coins);
+              const totalWeight = invWeight + eqWeight + cWeight;
+              const enc = getEncumbrance(str, totalWeight);
+              const encColor = enc === "over" ? "rgba(220,38,38,0.8)" : enc === "heavy" ? "rgba(251,191,36,0.8)" : enc === "medium" ? "rgba(251,191,36,0.6)" : "rgba(74,222,128,0.6)";
+              return (
+                <div className="p-2 flex flex-col gap-2" style={{ fontSize: "0.55rem", color: "rgba(232,213,176,0.7)" }}>
+                  {/* Carry weight bar */}
+                  <div>
+                    <div className="flex justify-between mb-1">
+                      <span className="font-bold uppercase tracking-widest" style={{ fontSize: "0.45rem", color: "rgba(201,168,76,0.5)" }}>Carry Weight</span>
+                      <span className="font-bold" style={{ color: encColor }}>{totalWeight.toFixed(1)} / {thresholds.heavy} lbs ({enc})</span>
+                    </div>
+                    <div style={{ height: 6, background: "rgba(255,255,255,0.05)", borderRadius: 3 }}>
+                      <div style={{ width: `${Math.min(100, (totalWeight / thresholds.heavy) * 100)}%`, height: "100%", background: encColor, borderRadius: 3 }} />
+                    </div>
+                  </div>
+                  {/* Coin purse */}
+                  <div>
+                    <div className="font-bold uppercase tracking-widest mb-1" style={{ fontSize: "0.45rem", color: "rgba(201,168,76,0.5)" }}>Coin Purse</div>
+                    <div className="flex justify-between">
+                      <span>{formatCoins(save.coins)}</span>
+                      <span style={{ color: "rgba(232,213,176,0.4)" }}>{cWeight.toFixed(1)} lbs</span>
+                    </div>
+                  </div>
+                  {/* Equipment */}
+                  <div>
+                    <div className="font-bold uppercase tracking-widest mb-1" style={{ fontSize: "0.45rem", color: "rgba(201,168,76,0.5)" }}>Equipped</div>
+                    {(["weapon", "armor", "shield", "accessory"] as (keyof Equipment)[]).map(slot => {
+                      const itemId = save.equipment[slot];
+                      const info = itemId ? getItemInfo(itemId) : null;
+                      return (
+                        <div key={slot} className="flex justify-between">
+                          <span className="capitalize" style={{ color: "rgba(232,213,176,0.4)" }}>{slot}</span>
+                          <span>{info?.name ?? (itemId || "—")}{info ? ` (${getItemWeight(itemId!)}lb)` : ""}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {/* Food */}
+                  <div className="flex justify-between">
+                    <span className="font-bold">{"\u{1F356}"} Food Supply</span>
+                    <span className="font-bold">{save.food} ({Math.floor(save.food / 3)} days)</span>
+                  </div>
+                  {/* Item list */}
+                  <div>
+                    <div className="font-bold uppercase tracking-widest mb-1" style={{ fontSize: "0.45rem", color: "rgba(201,168,76,0.5)" }}>Items ({save.inventory.length})</div>
+                    {save.inventory.length === 0 ? (
+                      <div style={{ color: "rgba(232,213,176,0.3)" }}>No items</div>
+                    ) : (
+                      <div className="flex flex-col gap-0.5">
+                        {save.inventory.map(item => {
+                          const info = getItemInfo(item.id);
+                          const w = getItemWeight(item.id);
+                          return (
+                            <div key={item.id} className="flex justify-between">
+                              <span>{info?.name ?? item.id}{item.qty > 1 ? ` x${item.qty}` : ""}</span>
+                              <span style={{ color: "rgba(232,213,176,0.4)" }}>{(w * item.qty).toFixed(1)}lb</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                  {/* Full inventory button */}
+                  <button onClick={onInventory}
+                    className="w-full px-2 py-1.5 rounded text-xs font-bold uppercase tracking-widest mt-1"
+                    style={{ background: "rgba(201,168,76,0.1)", color: "rgba(201,168,76,0.7)", border: "1px solid rgba(201,168,76,0.2)" }}>
+                    Full Inventory
+                  </button>
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+
         {/* Zoomable map container */}
         <div className="flex-1 flex flex-col gap-1">
           <div ref={containerRef} className="overflow-hidden rounded-lg select-none"
@@ -2049,10 +2711,10 @@ export function WorldMap({ save, character, onTravel, onAction, onBuyItem, onBat
                 {ALL_HEXES.map(hex => {
                   const { x, y } = hexToPixel(hex.q, hex.r);
                   const key = `${hex.q},${hex.r}`;
-                  const isCurrent = hex.q === save.map_hex.q && hex.r === save.map_hex.r;
+                  const isCurrent = hex.q === activeMapHex.q && hex.r === activeMapHex.r;
                   const isReachable = reachableSet.has(key);
                   const isSelected = selectedHex?.q === hex.q && selectedHex?.r === hex.r;
-                  const dist = hexDistance(save.map_hex, hex);
+                  const dist = hexDistance(activeMapHex, hex);
 
                   if (hex.type === "water" && !hex.name && !mappingMode && !markedHexes.has(key)) return null; // skip plain water
 
@@ -2072,10 +2734,29 @@ export function WorldMap({ save, character, onTravel, onAction, onBuyItem, onBat
                       onClick={() => handleHexClick(hex)}>
                       <polygon points={hexPolygon(x, y, HEX_SIZE * 0.95)} fill={fill} stroke={stroke} strokeWidth={sw} />
                       {isCurrent && (
-                        <text x={x} y={y + 0.8} textAnchor="middle" dominantBaseline="central"
-                          fontSize={5} style={{ pointerEvents: "none" }}>
-                          {"\u{1F9D9}"}
-                        </text>
+                        character?.imageUrl ? (
+                          <g style={{ pointerEvents: "none" }}>
+                            <defs>
+                              <clipPath id="hex-avatar">
+                                <circle cx={x} cy={y} r={HEX_SIZE * 0.7} />
+                              </clipPath>
+                            </defs>
+                            <image
+                              href={character.imageUrl}
+                              x={x - HEX_SIZE * 0.7} y={y - HEX_SIZE * 0.7}
+                              width={HEX_SIZE * 1.4} height={HEX_SIZE * 1.4}
+                              clipPath="url(#hex-avatar)"
+                              preserveAspectRatio="xMidYMid slice"
+                            />
+                            <circle cx={x} cy={y} r={HEX_SIZE * 0.7}
+                              fill="none" stroke="rgba(96,165,250,0.9)" strokeWidth={0.6} />
+                          </g>
+                        ) : (
+                          <text x={x} y={y + 0.8} textAnchor="middle" dominantBaseline="central"
+                            fontSize={5} style={{ pointerEvents: "none" }}>
+                            {"\u{1F9D9}"}
+                          </text>
+                        )
                       )}
                       {!isCurrent && isReachable && hex.type !== "water" && (
                         <text x={x} y={y - HEX_SIZE * 0.15} textAnchor="middle"
@@ -2084,6 +2765,28 @@ export function WorldMap({ save, character, onTravel, onAction, onBuyItem, onBat
                           {dist}d
                         </text>
                       )}
+                      {/* Other (non-active) party markers */}
+                      {!isCurrent && save.parties?.filter((p, i) => i !== (save.active_party_index ?? 0) && p.map_hex.q === hex.q && p.map_hex.r === hex.r).map((p) => {
+                        const partyNft = characters?.find(c => c.contractAddress.toLowerCase() === p.heroes[0]?.nft_address);
+                        return (
+                          <g key={p.id} style={{ pointerEvents: "all", cursor: "pointer", opacity: 0.6 }}
+                            onClick={(e) => { e.stopPropagation(); onSwitchParty?.(save.parties!.indexOf(p)); }}>
+                            {partyNft?.imageUrl ? (
+                              <>
+                                <defs><clipPath id={`clip-${p.id}`}><circle cx={x} cy={y} r={HEX_SIZE * 0.55} /></clipPath></defs>
+                                <image href={partyNft.imageUrl} x={x - HEX_SIZE * 0.55} y={y - HEX_SIZE * 0.55}
+                                  width={HEX_SIZE * 1.1} height={HEX_SIZE * 1.1}
+                                  clipPath={`url(#clip-${p.id})`} preserveAspectRatio="xMidYMid slice" />
+                                <circle cx={x} cy={y} r={HEX_SIZE * 0.55}
+                                  fill="none" stroke="rgba(201,168,76,0.7)" strokeWidth={0.4} />
+                              </>
+                            ) : (
+                              <text x={x} y={y + 0.5} textAnchor="middle" dominantBaseline="central"
+                                fontSize={4}>{"\u{1F6E1}\uFE0F"}</text>
+                            )}
+                          </g>
+                        );
+                      })}
                     </g>
                   );
                 })}
@@ -2148,7 +2851,7 @@ export function WorldMap({ save, character, onTravel, onAction, onBuyItem, onBat
                 Current Location
               </span>
               <span style={{ fontSize: "0.5rem", color: "rgba(96,165,250,0.5)", fontFamily: "monospace" }}>
-                {save.map_hex.q},{save.map_hex.r}
+                {activeMapHex.q},{activeMapHex.r}
               </span>
             </div>
             <div className="text-sm font-bold" style={{ color: "rgba(232,213,176,0.9)" }}>
@@ -2217,33 +2920,54 @@ export function WorldMap({ save, character, onTravel, onAction, onBuyItem, onBat
                         </button>
                       ))}
                     </div>
+                    {/* Exhaustion warning */}
+                    {exhPts > 0 && (() => {
+                      const minStat = character ? lowestExhaustedStat(charStats, exhPts) : 10 - exhPts;
+                      const critical = minStat <= 2;
+                      return (
+                        <div className="mt-1 px-2 py-1 rounded" style={{
+                          background: critical ? "rgba(220,38,38,0.2)" : "rgba(251,191,36,0.08)",
+                          border: `1px solid ${critical ? "rgba(220,38,38,0.4)" : "rgba(251,191,36,0.2)"}`,
+                          fontSize: "0.45rem", color: critical ? "rgba(220,38,38,0.9)" : "rgba(251,191,36,0.8)",
+                        }}>
+                          Exhaustion {exhPts} — all stats -{exhPts}
+                          {exhaustion.sleepPoints > 0 && <> ({exhaustion.sleepPoints} sleep)</>}
+                          {exhaustion.hungerPoints > 0 && <> ({exhaustion.hungerPoints} hunger)</>}
+                          {critical ? " — REST NOW or you will collapse!" : ""}
+                        </div>
+                      );
+                    })()}
                     {/* Skill picker + rest */}
                     <div className="flex flex-col gap-1 mt-1">
-                      <div className="flex flex-wrap gap-0.5">
-                        {Object.values(FIELD_SKILLS).map(fs => (
-                          <button key={fs.id} onClick={() => setSelectedSkill(fs.id as FieldSkillId)}
-                            className="px-1.5 py-0.5 rounded transition-all"
-                            style={{
-                              background: selectedSkill === fs.id ? "rgba(251,191,36,0.2)" : "rgba(255,255,255,0.03)",
-                              color: selectedSkill === fs.id ? "rgba(251,191,36,0.9)" : "rgba(232,213,176,0.4)",
-                              border: `1px solid ${selectedSkill === fs.id ? "rgba(251,191,36,0.4)" : "rgba(201,168,76,0.08)"}`,
-                              fontSize: "0.4rem",
-                            }}>
-                            {fs.emoji} {fs.name}
-                          </button>
-                        ))}
-                      </div>
+                      {(
+                        <div className="flex flex-wrap gap-0.5">
+                          {Object.values(FIELD_SKILLS).map(fs => (
+                            <button key={fs.id} onClick={() => setSelectedSkill(fs.id as FieldSkillId)}
+                              className="px-1.5 py-0.5 rounded transition-all"
+                              style={{
+                                background: selectedSkill === fs.id ? "rgba(251,191,36,0.2)" : "rgba(255,255,255,0.03)",
+                                color: selectedSkill === fs.id ? "rgba(251,191,36,0.9)" : "rgba(232,213,176,0.4)",
+                                border: `1px solid ${selectedSkill === fs.id ? "rgba(251,191,36,0.4)" : "rgba(201,168,76,0.08)"}`,
+                                fontSize: "0.4rem",
+                              }}>
+                              {fs.emoji} {fs.name}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                       <div className="flex gap-1">
+                        {(
+                          <button onClick={() => {
+                              const result = rollWorldLuck(currentHex, "skill", charStats, skillRanks, distFromCity, selectedSkill, heroCount, save.fame ?? 0, exhPts);
+                              setLastAction(result); onAction(result);
+                            }}
+                            className="flex-1 px-2 py-1 rounded text-xs font-bold uppercase tracking-widest"
+                            style={{ background: "rgba(251,191,36,0.12)", color: "rgba(251,191,36,0.9)", border: "1px solid rgba(251,191,36,0.3)", fontSize: "0.45rem" }}>
+                            Use {FIELD_SKILLS[selectedSkill].name} (8h)
+                          </button>
+                        )}
                         <button onClick={() => {
-                            const result = rollWorldLuck(currentHex, "skill", charStats, skillRanks, distFromCity, selectedSkill, heroCount);
-                            setLastAction(result); onAction(result);
-                          }}
-                          className="flex-1 px-2 py-1 rounded text-xs font-bold uppercase tracking-widest"
-                          style={{ background: "rgba(251,191,36,0.12)", color: "rgba(251,191,36,0.9)", border: "1px solid rgba(251,191,36,0.3)", fontSize: "0.45rem" }}>
-                          Use {FIELD_SKILLS[selectedSkill].name} (8h)
-                        </button>
-                        <button onClick={() => {
-                            const result = rollWorldLuck(currentHex, "rest", charStats, skillRanks, distFromCity, undefined, heroCount);
+                            const result = rollWorldLuck(currentHex, "rest", charStats, skillRanks, distFromCity, undefined, heroCount, save.fame ?? 0, exhPts);
                             setLastAction(result); onAction(result);
                           }}
                           disabled={save.food === 0 && save.current_hp >= save.max_hp}
@@ -2564,6 +3288,162 @@ export function WorldMap({ save, character, onTravel, onAction, onBuyItem, onBat
                       Common Inn (1d, {formatCoins(cpToCoins(commonCost))}) — Safe
                     </button>
 
+                    {/* Look for Work */}
+                    <button onClick={() => {
+                        const wRoll = Math.floor(Math.random() * 20) + 1;
+                        const perfRanks = skillRanks["perform"] ?? 0;
+                        const diploRanks = skillRanks["diplomacy"] ?? 0;
+                        const sRoll = Math.floor(Math.random() * 20) + 1 + calcAbilityMod(charStats.cha ?? 10) + diploRanks;
+                        const combined = wRoll + sRoll + Math.floor((save.fame ?? 0) / 25);
+                        const isBard = save.class_id === "bard";
+                        const isKardovHere = currentHex.name?.includes("Kardov");
+                        const qFlags = save.quest_flags ?? {};
+                        const qCooldowns = save.quest_cooldowns ?? {};
+
+                        // ── Tavern Quest Board ──────────────────────────────────
+                        // Repeatable quests (cooldown) — available if not on cooldown
+                        // One-time rumors — available if not already done (quest_flags)
+                        // Higher combined → better quests offered
+
+                        // Repeatable quests pool (cooldown-gated)
+                        type TavernQuest = { id: string; minCombined: number; cooldownMin: number; desc: string };
+                        const repeatableQuests: TavernQuest[] = [
+                          { id: "tavern_rats", minCombined: 0, cooldownMin: 60,
+                            desc: `The innkeeper sighs. "Rats again. Cellar's overrun. I'll pay you to clear them out."` },
+                          { id: "tavern_pests", minCombined: 18, cooldownMin: 120,
+                            desc: `A warehouse owner slams his fist on the bar. "Giant spiders in my storeroom! Eating the grain sacks! Someone deal with this!"` },
+                          { id: "tavern_thugs", minCombined: 22, cooldownMin: 180,
+                            desc: `A worried merchant pulls you aside. "Thugs have been shaking down shops on my street. Run them off and I'll make it worth your while."` },
+                          { id: "tavern_undead", minCombined: 28, cooldownMin: 360,
+                            desc: `A pale-faced gravedigger whispers over his ale. "Something's moving in the old crypt. Skeletons, I tell you. The watch won't go near it."` },
+                          { id: "tavern_wolves", minCombined: 24, cooldownMin: 240,
+                            desc: `A farmer at the bar pleads for help. "Wolves have been killing our livestock every night. We tracked the pack to a den outside the walls."` },
+                        ];
+
+                        // One-time rumor quests (flag-gated)
+                        type RumorQuest = { id: string; flag: string; minCombined: number; desc: string };
+                        const rumorQuests: RumorQuest[] = [
+                          { id: "rumor_smugglers", flag: "heard_smuggler_rumor", minCombined: 26,
+                            desc: `A drunk sailor leans in. "There's a smuggler's cave under the docks. They move stolen goods at night. Nobody talks about it but everyone knows."` },
+                          { id: "rumor_haunted_manor", flag: "heard_manor_rumor", minCombined: 30,
+                            desc: `An old woman clutches your arm. "The abandoned manor on the hill — people hear screaming at night. My grandson went to look. He never came back."` },
+                          { id: "rumor_cultists", flag: "heard_cultist_rumor", minCombined: 32,
+                            desc: `A hooded figure whispers from the corner booth. "The Shadow Temple is recruiting. They meet in the sewers beneath the market. People go in and don't come out."` },
+                          { id: "rumor_bounty", flag: "heard_bounty_rumor", minCombined: 20,
+                            desc: `A retired guard shows you a crumpled notice. "There's a bounty on a gnoll raider harassing caravans on the King's Road. Fifty gold, dead or alive."` },
+                          { id: "rumor_lost_caravan", flag: "heard_caravan_rumor", minCombined: 24,
+                            desc: `A weeping merchant tells anyone who'll listen: "My partner's caravan vanished on the road three days ago. All hands, cargo, everything. Please, find them."` },
+                        ];
+
+                        // Filter available quests
+                        const availRepeatable = repeatableQuests.filter(q =>
+                          combined >= q.minCombined && !isQuestOnCooldown(qCooldowns, q.id));
+                        const availRumors = rumorQuests.filter(q =>
+                          combined >= q.minCombined && !qFlags[q.flag]);
+
+                        // Roll for what you hear: quests first (30% chance if available), then bard gig, then normal work
+                        const questRoll = Math.random();
+                        const offerRumor = availRumors.length > 0 && questRoll < 0.15;
+                        const offerRepeatable = !offerRumor && availRepeatable.length > 0 && questRoll < 0.35;
+
+                        let result: WorldLuckResult;
+
+                        if (offerRumor) {
+                          // One-time rumor — mysterious lead
+                          const rumor = availRumors[Math.floor(Math.random() * availRumors.length)];
+                          result = {
+                            worldRoll: wRoll, skillRoll: sRoll, skillUsed: "Diplomacy", skillDC: rumor.minCombined,
+                            interaction: "skill", outcome: "find_quest",
+                            description: rumor.desc,
+                            hpChange: 0, goldChange: 0, foodChange: 0, xpChange: 5,
+                          };
+                        } else if (offerRepeatable) {
+                          // Repeatable job posting
+                          const quest = availRepeatable[Math.floor(Math.random() * availRepeatable.length)];
+                          result = {
+                            worldRoll: wRoll, skillRoll: sRoll, skillUsed: "Diplomacy", skillDC: quest.minCombined,
+                            interaction: "skill", outcome: "find_quest",
+                            description: quest.desc,
+                            hpChange: 0, goldChange: 0, foodChange: 0, xpChange: 3,
+                          };
+                        } else if (isBard && (isKardovHere ? Math.random() < 0.2 && combined >= 32 : Math.random() < 0.5)) {
+                          // Bard gig — Kardov's pays double, more fame
+                          const days = Math.floor(Math.random() * 3) + 2;
+                          const payPerDay = isKardovHere ? nd(2, 6) * 10 : nd(1, 6) * 10;
+                          const totalSp = payPerDay * days;
+                          const coins: Coins = { gp: Math.floor(totalSp / 10), sp: totalSp % 10, cp: 0 };
+                          const fameGain = isKardovHere ? days * 2 : Math.ceil(days / 2);
+                          const perfCheck = Math.floor(Math.random() * 20) + 1 + calcAbilityMod(charStats.cha ?? 10) + perfRanks;
+                          result = {
+                            worldRoll: wRoll, skillRoll: isKardovHere ? perfCheck : sRoll,
+                            skillUsed: "Perform", skillDC: isKardovHere ? 32 : 0,
+                            interaction: "skill", outcome: "find_coins",
+                            description: pick(isKardovHere ? [
+                              `"You want to play the Gate stage? Bold. ${days} nights, ${formatCoins(coins)}, room and board. Don't embarrass us."`,
+                              `"A bard who can handle the Kardov's crowd? ${days} nights, ${formatCoins(coins)}. This is the big leagues."`,
+                              `"We had a cancellation. ${days} nights on the main stage, ${formatCoins(coins)} plus meals."`,
+                            ] : [
+                              `"You play? We could use entertainment for ${days} days. ${formatCoins(coins)} and food."`,
+                              `"A bard! Play for us at suppertime. ${days} days, ${formatCoins(coins)}, and you eat with us."`,
+                              `The tavern keeper grins. "Live music! ${days} nights, ${formatCoins(coins)}, meals on the house."`,
+                            ]),
+                            hpChange: 0, goldChange: 0, coinReward: coins, foodChange: days, xpChange: days * 3,
+                            fameChange: fameGain,
+                          };
+                        } else if (isBard && isKardovHere && Math.random() < 0.3) {
+                          result = {
+                            worldRoll: wRoll, skillRoll: sRoll, skillUsed: "Diplomacy", skillDC: 32,
+                            interaction: "skill", outcome: "nothing",
+                            description: pick([
+                              `"The stage? Ha. You're not ready for Kardov's Gate. Try busking on the streets first."`,
+                              `"We book professionals, friend. Come back when you've got fame behind you."`,
+                              `"No openings on the stage. Play the common room for tips if you like."`,
+                            ]),
+                            hpChange: 0, goldChange: 0, foodChange: 0, xpChange: 0,
+                          };
+                        } else if (combined >= 28) {
+                          const payCp = isKardovHere ? nd(2, 6) * 10 + 50 : nd(1, 8) * 10 + 30;
+                          result = {
+                            worldRoll: wRoll, skillRoll: sRoll, skillUsed: "Diplomacy", skillDC: 28,
+                            interaction: "skill", outcome: "find_coins",
+                            description: pick([
+                              `"You look capable. Help me load cargo and I'll pay well." Honest work for ${formatCoins(cpToCoins(payCp))}.`,
+                              `The innkeeper needs a bouncer tonight. "Keep the drunks in line. ${formatCoins(cpToCoins(payCp))} and a meal."`,
+                              `A merchant hires you to guard a delivery within the city. ${formatCoins(cpToCoins(payCp))} for a few hours' work.`,
+                            ]),
+                            hpChange: 0, goldChange: payCp, foodChange: 1, xpChange: 3,
+                          };
+                        } else if (combined >= 20) {
+                          const payCp = isKardovHere ? nd(1, 6) * 10 + 20 : nd(1, 4) * 10 + 10;
+                          result = {
+                            worldRoll: wRoll, skillRoll: sRoll, skillUsed: "Diplomacy", skillDC: 20,
+                            interaction: "skill", outcome: "find_coins",
+                            description: pick([
+                              `"Dishes need washing. ${formatCoins(cpToCoins(payCp))} and leftover stew." Not glamorous, but honest.`,
+                              `You help the innkeeper haul barrels from the cellar. ${formatCoins(cpToCoins(payCp))} and a hot meal.`,
+                              `"Sweep the floors and clean the rooms. ${formatCoins(cpToCoins(payCp))} and you can sleep in the common room."`,
+                            ]),
+                            hpChange: 0, goldChange: payCp, foodChange: 1, xpChange: 2,
+                          };
+                        } else {
+                          result = {
+                            worldRoll: wRoll, skillRoll: sRoll, skillUsed: "Diplomacy", skillDC: 20,
+                            interaction: "skill", outcome: "nothing",
+                            description: pick([
+                              `"Nothing today. Try again tomorrow." The innkeeper shrugs.`,
+                              `"We're fully staffed. Ask around the docks, maybe." No luck here.`,
+                              `You ask around but nobody's hiring right now.`,
+                            ]),
+                            hpChange: 0, goldChange: 0, foodChange: 0, xpChange: 0,
+                          };
+                        }
+                        setLastAction(result); onAction(result);
+                      }}
+                      className="w-full px-2 py-1.5 rounded text-xs font-bold uppercase tracking-widest"
+                      style={{ background: "rgba(251,191,36,0.08)", color: "rgba(251,191,36,0.8)", border: "1px solid rgba(251,191,36,0.2)" }}>
+                      Look for Work (8h){save.class_id === "bard" ? " — Bard may get a gig!" : ""}
+                    </button>
+
                     {/* Artisan Workshops */}
                     <div style={{ fontSize: "0.4rem", color: "rgba(201,168,76,0.5)", letterSpacing: "0.08em", marginTop: 4 }} className="font-bold uppercase">
                       Artisan Workshops
@@ -2629,18 +3509,37 @@ export function WorldMap({ save, character, onTravel, onAction, onBuyItem, onBat
                       })}
                     </div>
 
+                    {/* Exhaustion warning (town) */}
+                    {exhPts > 0 && (() => {
+                      const minStat = character ? lowestExhaustedStat(charStats, exhPts) : 10 - exhPts;
+                      const critical = minStat <= 2;
+                      return (
+                        <div className="mt-1 px-2 py-1 rounded" style={{
+                          background: critical ? "rgba(220,38,38,0.2)" : "rgba(251,191,36,0.08)",
+                          border: `1px solid ${critical ? "rgba(220,38,38,0.4)" : "rgba(251,191,36,0.2)"}`,
+                          fontSize: "0.45rem", color: critical ? "rgba(220,38,38,0.9)" : "rgba(251,191,36,0.8)",
+                        }}>
+                          Exhaustion {exhPts} — all stats -{exhPts}
+                          {exhaustion.sleepPoints > 0 && <> ({exhaustion.sleepPoints} sleep)</>}
+                          {exhaustion.hungerPoints > 0 && <> ({exhaustion.hungerPoints} hunger)</>}
+                          {critical ? " — REST NOW or you will collapse!" : ""}
+                        </div>
+                      );
+                    })()}
                     {/* Street actions */}
                     <div className="flex gap-1 mt-1">
+                      {(
+                        <button onClick={() => {
+                            const result = rollWorldLuck(currentHex, "skill", charStats, skillRanks, distFromCity, selectedSkill, heroCount, save.fame ?? 0, exhPts);
+                            setLastAction(result); onAction(result);
+                          }}
+                          className="flex-1 px-2 py-1 rounded text-xs font-bold"
+                          style={{ background: "rgba(251,191,36,0.08)", color: "rgba(251,191,36,0.7)", border: "1px solid rgba(251,191,36,0.15)", fontSize: "0.45rem" }}>
+                          {FIELD_SKILLS[selectedSkill].emoji} {FIELD_SKILLS[selectedSkill].name} (8h)
+                        </button>
+                      )}
                       <button onClick={() => {
-                          const result = rollWorldLuck(currentHex, "skill", charStats, skillRanks, distFromCity, selectedSkill, heroCount);
-                          setLastAction(result); onAction(result);
-                        }}
-                        className="flex-1 px-2 py-1 rounded text-xs font-bold"
-                        style={{ background: "rgba(251,191,36,0.08)", color: "rgba(251,191,36,0.7)", border: "1px solid rgba(251,191,36,0.15)", fontSize: "0.45rem" }}>
-                        {FIELD_SKILLS[selectedSkill].emoji} {FIELD_SKILLS[selectedSkill].name} (8h)
-                      </button>
-                      <button onClick={() => {
-                          const result = rollWorldLuck(currentHex, "rest", charStats, skillRanks, distFromCity, undefined, heroCount);
+                          const result = rollWorldLuck(currentHex, "rest", charStats, skillRanks, distFromCity, undefined, heroCount, save.fame ?? 0, exhPts);
                           setLastAction(result); onAction(result);
                         }}
                         disabled={save.food === 0 && save.current_hp >= save.max_hp}
@@ -2665,54 +3564,72 @@ export function WorldMap({ save, character, onTravel, onAction, onBuyItem, onBat
             })()}
             {currentHex && currentHex.type !== "town" && (
               <div className="mt-2 flex flex-col gap-1">
+                {/* Exhaustion warning (wilderness) */}
+                {exhPts > 0 && (() => {
+                  const minStat = character ? lowestExhaustedStat(charStats, exhPts) : 10 - exhPts;
+                  const critical = minStat <= 2;
+                  return (
+                    <div className="px-2 py-1 rounded" style={{
+                      background: critical ? "rgba(220,38,38,0.2)" : "rgba(251,191,36,0.08)",
+                      border: `1px solid ${critical ? "rgba(220,38,38,0.4)" : "rgba(251,191,36,0.2)"}`,
+                      fontSize: "0.45rem", color: critical ? "rgba(220,38,38,0.9)" : "rgba(251,191,36,0.8)",
+                    }}>
+                      Exhaustion {exhPts} — all stats -{exhPts}
+                      {exhaustion.sleepPoints > 0 && <> ({exhaustion.sleepPoints} sleep)</>}
+                      {exhaustion.hungerPoints > 0 && <> ({exhaustion.hungerPoints} hunger)</>}
+                      {critical ? " — REST NOW or you will collapse!" : ""}
+                    </div>
+                  );
+                })()}
                 {/* Skill picker grid */}
-                <div className="flex flex-wrap gap-0.5">
-                  {Object.values(FIELD_SKILLS).map(fs => (
-                    <button key={fs.id} onClick={() => setSelectedSkill(fs.id as FieldSkillId)}
-                      className="px-1.5 py-0.5 rounded transition-all"
-                      title={fs.desc}
-                      style={{
-                        background: selectedSkill === fs.id ? "rgba(251,191,36,0.2)" : "rgba(255,255,255,0.03)",
-                        color: selectedSkill === fs.id ? "rgba(251,191,36,0.9)" : "rgba(232,213,176,0.4)",
-                        border: `1px solid ${selectedSkill === fs.id ? "rgba(251,191,36,0.4)" : "rgba(201,168,76,0.08)"}`,
-                        fontSize: "0.4rem",
-                      }}>
-                      {fs.emoji} {fs.name}
-                    </button>
-                  ))}
-                </div>
-                <div style={{ fontSize: "0.35rem", color: "rgba(232,213,176,0.3)" }}>
-                  {FIELD_SKILLS[selectedSkill].desc}
-                </div>
+                {(
+                  <div className="flex flex-wrap gap-0.5">
+                    {Object.values(FIELD_SKILLS).map(fs => (
+                      <button key={fs.id} onClick={() => setSelectedSkill(fs.id as FieldSkillId)}
+                        className="px-1.5 py-0.5 rounded transition-all"
+                        title={fs.desc}
+                        style={{
+                          background: selectedSkill === fs.id ? "rgba(251,191,36,0.2)" : "rgba(255,255,255,0.03)",
+                          color: selectedSkill === fs.id ? "rgba(251,191,36,0.9)" : "rgba(232,213,176,0.4)",
+                          border: `1px solid ${selectedSkill === fs.id ? "rgba(251,191,36,0.4)" : "rgba(201,168,76,0.08)"}`,
+                          fontSize: "0.4rem",
+                        }}>
+                        {fs.emoji} {fs.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {(
+                  <div style={{ fontSize: "0.35rem", color: "rgba(232,213,176,0.3)" }}>
+                    {FIELD_SKILLS[selectedSkill].desc}
+                  </div>
+                )}
                 <div className="flex gap-1">
+                  {(
+                    <button
+                      onClick={() => {
+                        const result = rollWorldLuck(currentHex, "skill", charStats, skillRanks, distFromCity, selectedSkill, heroCount, save.fame ?? 0, exhPts);
+                        setLastAction(result);
+                        onAction(result);
+                      }}
+                      className="flex-1 px-2 py-1.5 rounded text-xs font-bold uppercase tracking-widest"
+                      style={{
+                        background: "rgba(251,191,36,0.15)",
+                        color: "rgba(251,191,36,0.9)",
+                        border: "1px solid rgba(251,191,36,0.3)",
+                      }}>
+                      {FIELD_SKILLS[selectedSkill].emoji} {FIELD_SKILLS[selectedSkill].name} (8h)
+                    </button>
+                  )}
                   <button
                     onClick={() => {
-                      const result = rollWorldLuck(currentHex, "skill", charStats, skillRanks, distFromCity, selectedSkill, heroCount);
+                      const result = rollWorldLuck(currentHex, "rest", charStats, skillRanks, distFromCity, undefined, heroCount, save.fame ?? 0, exhPts);
                       setLastAction(result);
                       onAction(result);
                     }}
-                    className="flex-1 px-2 py-1.5 rounded text-xs font-bold uppercase tracking-widest"
-                    style={{
-                      background: "rgba(251,191,36,0.15)",
-                      color: "rgba(251,191,36,0.9)",
-                      border: "1px solid rgba(251,191,36,0.3)",
-                    }}>
-                    {FIELD_SKILLS[selectedSkill].emoji} {FIELD_SKILLS[selectedSkill].name} (8h)
-                  </button>
-                  <button
-                    onClick={() => {
-                      const result = rollWorldLuck(currentHex, "rest", charStats, skillRanks, distFromCity, undefined, heroCount);
-                      setLastAction(result);
-                      onAction(result);
-                    }}
-                    disabled={currentHex.type === "water" || (save.food === 0 && save.current_hp >= save.max_hp)}
+                    disabled={(currentHex.type === "water" || (save.food === 0 && save.current_hp >= save.max_hp))}
                     className="px-2 py-1.5 rounded text-xs font-bold uppercase tracking-widest"
-                    style={{
-                      background: "rgba(96,165,250,0.15)",
-                      color: "rgba(96,165,250,0.9)",
-                      border: "1px solid rgba(96,165,250,0.3)",
-                      opacity: currentHex.type === "water" || (save.food === 0 && save.current_hp >= save.max_hp) ? 0.4 : 1,
-                    }}>
+                    style={{ background: "rgba(96,165,250,0.15)", color: "rgba(96,165,250,0.9)", border: "1px solid rgba(96,165,250,0.3)", opacity: currentHex.type === "water" || (save.food === 0 && save.current_hp >= save.max_hp) ? 0.4 : 1 }}>
                     Rest (8h)
                   </button>
                 </div>
@@ -2721,103 +3638,56 @@ export function WorldMap({ save, character, onTravel, onAction, onBuyItem, onBat
                     Can&apos;t rest on water without a boat
                   </div>
                 )}
+                {/* Location-specific dungeon quests */}
+                {currentHex.name === "Goblin Hills" && (() => {
+                  const goblinCooldownDays = 60;
+                  const cooldownKey = "goblin_hills_raid";
+                  const currentDay = Math.floor((save.hour ?? 0) / 24) + 1;
+                  const onCooldown = isQuestOnDayCooldown(save.quest_cooldowns ?? {}, cooldownKey, currentDay);
+                  const daysLeft = dayCooldownRemaining(save.quest_cooldowns ?? {}, cooldownKey, currentDay);
+                  return (
+                    <div className="mt-1">
+                      <button onClick={() => {
+                          const goblin = MONSTERS.find(m => m.id === "goblin");
+                          const hobgoblin = MONSTERS.find(m => m.id === "hobgoblin");
+                          if (!goblin) return;
+                          const gobCount = Math.floor(Math.random() * 4) + 3 + save.level;
+                          const enemies: EnemySpec[] = Array.from({ length: gobCount }, (_, i) => {
+                            if (i === 0 && hobgoblin) return { ...createMonsterSpec(hobgoblin, "\u2694\uFE0F"), name: "Goblin Warchief" };
+                            return createMonsterSpec(goblin, "\uD83D\uDC7A");
+                          });
+                          const quest: QuestEncounter = {
+                            questId: cooldownKey,
+                            questName: "Goblin Hills Raid",
+                            enemies,
+                            difficulty: "medium",
+                          };
+                          onQuestBattle(quest);
+                        }}
+                        disabled={onCooldown}
+                        className="w-full px-2 py-1.5 rounded text-xs font-bold uppercase tracking-widest"
+                        style={{
+                          background: onCooldown ? "rgba(220,38,38,0.05)" : "rgba(220,38,38,0.15)",
+                          color: onCooldown ? "rgba(220,38,38,0.4)" : "rgba(220,38,38,0.9)",
+                          border: `1px solid ${onCooldown ? "rgba(220,38,38,0.1)" : "rgba(220,38,38,0.4)"}`,
+                        }}>
+                        {onCooldown
+                          ? `Goblin Hills — Cleared (${daysLeft}d until goblins return)`
+                          : "Raid the Goblin Hills"}
+                      </button>
+                      <div style={{ fontSize: "0.35rem", color: "rgba(232,213,176,0.3)", marginTop: 2 }}>
+                        Goblins raid from these hills. Clear them out to protect the city. Resets every {goblinCooldownDays} days.
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             )}
 
-            {/* Last action result */}
-            {lastAction && (() => {
-              const isFind = lastAction.outcome.startsWith("find_");
-              const isFight = lastAction.outcome === "fight" || lastAction.outcome === "thug_fight";
-              const isHazard = lastAction.outcome === "hazard";
-              const isQuest = lastAction.outcome === "find_quest";
-              const isDungeon = lastAction.outcome === "find_dungeon";
-              const bg = isFight ? "rgba(220,38,38,0.15)"
-                : isFind ? "rgba(74,222,128,0.1)"
-                : isHazard ? "rgba(251,191,36,0.1)"
-                : "rgba(255,255,255,0.05)";
-              const border = isFight ? "rgba(220,38,38,0.3)"
-                : isFind ? "rgba(74,222,128,0.2)"
-                : "rgba(251,191,36,0.2)";
-              // Friendly outcome label (hide "find_" prefix details)
-              const label = lastAction.outcome === "thug_fight" ? "AMBUSH" : isFight ? "COMBAT" : isHazard ? "HAZARD"
-                : lastAction.outcome === "avoided_danger" ? "AVOIDED DANGER"
-                : lastAction.outcome === "find_food" ? "FORAGED"
-                : lastAction.outcome === "find_coins" ? "FOUND COINS"
-                : lastAction.outcome === "find_valuable" ? "FOUND SOMETHING VALUABLE"
-                : lastAction.outcome === "find_rare" ? "RARE DISCOVERY"
-                : isQuest ? "QUEST DISCOVERED"
-                : isDungeon ? "DUNGEON FOUND"
-                : "NOTHING FOUND";
-              return (
-                <div className="mt-1.5 px-2 py-1.5 rounded" style={{ background: bg, border: `1px solid ${border}`, fontSize: "0.5rem", color: "rgba(232,213,176,0.7)", lineHeight: 1.4 }}>
-                  <div className="flex items-center justify-between mb-0.5">
-                    <span className="font-bold" style={{ fontSize: "0.45rem", color: (isQuest || isDungeon) ? "rgba(168,85,247,0.8)" : "rgba(232,213,176,0.5)" }}>
-                      {lastAction.skillUsed ? lastAction.skillUsed.toUpperCase() : lastAction.interaction.toUpperCase()} — {label}
-                    </span>
-                    <span style={{ fontSize: "0.4rem", color: "rgba(96,165,250,0.6)", fontFamily: "monospace" }}>
-                      Skill: {lastAction.skillRoll}
-                    </span>
-                  </div>
-                  {lastAction.description}
-                  {lastAction.encounter && (
-                    <div className="mt-0.5" style={{ fontSize: "0.45rem", color: "rgba(220,38,38,0.7)" }}>
-                      {lastAction.encounter.monsters.map((m, i) => (
-                        <span key={i}>
-                          {m.count > 1 ? `${m.count}x ` : ""}{m.monster.name}
-                          {" "}(HP:{m.monster.hp} AC:{m.monster.ac} ATK:{m.monster.attack})
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                  {lastAction.loot && lastAction.loot.items.length > 0 && (
-                    <div className="mt-0.5" style={{ fontSize: "0.45rem", color: "rgba(74,222,128,0.7)" }}>
-                      {lastAction.loot.items.map((item, i) => (
-                        <div key={i}>{item.name} ({item.value}g) — {item.description}</div>
-                      ))}
-                    </div>
-                  )}
-                  {(isQuest || isDungeon) && (
-                    <div className="mt-0.5" style={{ fontSize: "0.4rem", color: "rgba(168,85,247,0.6)" }}>
-                      {isQuest ? "A new quest has been revealed!" : "A dungeon entrance has been discovered!"}
-                    </div>
-                  )}
-                  {/* Quest battle button (rats, etc.) */}
-                  {isQuest && pendingQuest && (
-                    <button onClick={() => onQuestBattle(pendingQuest)}
-                      className="mt-1 w-full px-3 py-2 rounded text-xs font-bold uppercase tracking-widest"
-                      style={{ background: "rgba(220,38,38,0.15)", color: "rgba(220,38,38,0.9)", border: "1px solid rgba(220,38,38,0.4)" }}>
-                      {pendingQuest.questName} ({pendingQuest.enemies.length} enemies)
-                    </button>
-                  )}
-                  {/* Thug ambush — fight button */}
-                  {lastAction.outcome === "thug_fight" && pendingQuest && (
-                    <button onClick={() => onQuestBattle(pendingQuest)}
-                      className="mt-1 w-full px-3 py-2 rounded text-xs font-bold uppercase tracking-widest"
-                      style={{ background: "rgba(220,38,38,0.2)", color: "rgba(220,38,38,0.9)", border: "1px solid rgba(220,38,38,0.5)" }}>
-                      Fight! ({pendingQuest.enemies.length} Thugs)
-                    </button>
-                  )}
-                  {lastAction.treasureDesc && (
-                    <div className="mt-0.5" style={{ fontSize: "0.4rem", color: "rgba(201,168,76,0.7)" }}>
-                      {lastAction.treasureDesc}
-                    </div>
-                  )}
-                  <div className="flex flex-wrap gap-2 mt-0.5" style={{ color: "rgba(232,213,176,0.5)" }}>
-                    {lastAction.hpChange !== 0 && <span>{lastAction.hpChange > 0 ? "+" : ""}{lastAction.hpChange} HP</span>}
-                    {lastAction.coinReward && (lastAction.coinReward.gp > 0 || lastAction.coinReward.sp > 0 || lastAction.coinReward.cp > 0) && (
-                      <span>+{formatCoins(lastAction.coinReward)}</span>
-                    )}
-                    {lastAction.goldChange > 0 && <span>+{formatCoins(cpToCoins(lastAction.goldChange))} (gems/art)</span>}
-                    {lastAction.foodChange > 0 && <span>+{lastAction.foodChange} food</span>}
-                    {lastAction.xpChange > 0 && <span>+{lastAction.xpChange} XP</span>}
-                  </div>
-                </div>
-              );
-            })()}
           </div>
 
           {/* Selected hex info */}
-          {selectedHex && !(selectedHex.q === save.map_hex.q && selectedHex.r === save.map_hex.r) && (
+          {selectedHex && !(selectedHex.q === activeMapHex.q && selectedHex.r === activeMapHex.r) && (
             <div className="px-3 py-2 rounded-lg" style={{ background: "rgba(0,0,0,0.3)", border: "1px solid rgba(251,191,36,0.2)" }}>
               <div className="flex items-center justify-between mb-1">
                 <span className="text-xs font-black tracking-widest uppercase" style={{ color: "rgba(251,191,36,0.8)", fontSize: "0.55rem" }}>
@@ -2840,7 +3710,7 @@ export function WorldMap({ save, character, onTravel, onAction, onBuyItem, onBat
                 })()}
               </div>
               {(() => {
-                const dist = hexDistance(save.map_hex, selectedHex);
+                const dist = hexDistance(activeMapHex, selectedHex);
                 if (dist === 0) return null;
                 const hexCost = travelCost(dist, selectedHex);
                 const hours = travelHours(dist, selectedHex);
@@ -2877,34 +3747,67 @@ export function WorldMap({ save, character, onTravel, onAction, onBuyItem, onBat
             </div>
           )}
 
-          {/* Supplies */}
-          <div className="px-3 py-2 rounded-lg" style={{ background: "rgba(0,0,0,0.2)", border: "1px solid rgba(201,168,76,0.1)" }}>
-            <div className="text-xs font-bold tracking-widest uppercase mb-1" style={{ color: "rgba(201,168,76,0.5)", fontSize: "0.5rem" }}>Supplies</div>
-            <div className="grid grid-cols-2 gap-0.5" style={{ fontSize: "0.55rem", color: "rgba(232,213,176,0.6)" }}>
-              <span>{"\u{1F356}"} Food</span><span className="font-bold">{save.food} ({Math.floor(save.food / 3)} days)</span>
-              <span>{"\u2764\uFE0F"} Health</span><span className="font-bold">{save.current_hp}/{save.max_hp}</span>
-              <span>{"\u{1FA99}"} Purse</span><span className="font-bold">{formatCoins(save.coins)}</span>
-              <span>{"\u{1F4C5}"} Day</span><span className="font-bold">{Math.floor((save.hour ?? 0) / 24) + 1}</span>
-              <span>{"\u2B50"} XP</span><span className="font-bold">{save.xp}</span>
-              <span>{"\u{1F3AF}"} Heal/day</span><span className="font-bold">{Math.floor(con / 2) + save.level} HP</span>
-            </div>
-          </div>
+        </div>
+      </div>
 
-          {/* Character info */}
-          {character && (
-            <div className="px-3 py-2 rounded-lg" style={{ background: "rgba(0,0,0,0.2)", border: "1px solid rgba(201,168,76,0.1)" }}>
-              <div className="text-xs font-bold tracking-widest uppercase mb-1" style={{ color: "rgba(201,168,76,0.5)", fontSize: "0.5rem" }}>Character</div>
-              <div className="text-xs font-bold" style={{ color: "rgba(232,213,176,0.8)" }}>{character.name}</div>
-              <div className="flex flex-wrap gap-1 mt-1" style={{ fontSize: "0.45rem", color: "rgba(232,213,176,0.4)" }}>
-                <span>STR {character.stats.str.toFixed(0)}</span>
-                <span>DEX {character.stats.dex.toFixed(0)}</span>
-                <span>CON {character.stats.con.toFixed(0)}</span>
-                <span>INT {character.stats.int.toFixed(0)}</span>
-                <span>WIS {character.stats.wis.toFixed(0)}</span>
-                <span>CHA {character.stats.cha.toFixed(0)}</span>
-              </div>
-            </div>
+      {/* ── Game Log Footer ── */}
+      <div className="rounded-lg overflow-hidden" style={{ background: "rgba(0,0,0,0.3)", border: "1px solid rgba(201,168,76,0.15)", minHeight: 80, maxHeight: 180 }}>
+        <div className="flex items-center justify-between px-3 py-1" style={{ background: "rgba(0,0,0,0.2)", borderBottom: "1px solid rgba(201,168,76,0.1)" }}>
+          <span className="text-xs font-bold uppercase tracking-widest" style={{ color: "rgba(201,168,76,0.5)", fontSize: "0.5rem" }}>Game Log</span>
+          {gameLog.length > 0 && (
+            <button onClick={() => setGameLog([])} className="px-1.5 py-0.5 rounded"
+              style={{ fontSize: "0.4rem", background: "rgba(220,38,38,0.1)", color: "rgba(220,38,38,0.5)", border: "1px solid rgba(220,38,38,0.15)" }}>
+              Clear
+            </button>
           )}
+        </div>
+        <div className="overflow-y-auto px-3 py-1 flex flex-col gap-1" style={{ maxHeight: 148 }}>
+          {gameLog.length === 0 && (
+            <div style={{ fontSize: "0.5rem", color: "rgba(232,213,176,0.3)", padding: "8px 0" }}>No actions yet. Travel, rest, or use a skill to begin.</div>
+          )}
+          {gameLog.map((entry, idx) => {
+            const isFind = entry.outcome.startsWith("find_");
+            const isFight = entry.outcome === "fight" || entry.outcome === "thug_fight";
+            const isHazard = entry.outcome === "hazard";
+            const isQuest = entry.outcome === "find_quest";
+            const isDungeon = entry.outcome === "find_dungeon";
+            const bg = isFight ? "rgba(220,38,38,0.1)" : isFind ? "rgba(74,222,128,0.06)" : isHazard ? "rgba(251,191,36,0.06)" : "rgba(255,255,255,0.02)";
+            const border = isFight ? "rgba(220,38,38,0.2)" : isFind ? "rgba(74,222,128,0.15)" : "rgba(201,168,76,0.08)";
+            const label = entry.outcome === "thug_fight" ? "AMBUSH" : isFight ? "COMBAT" : isHazard ? "HAZARD"
+              : entry.outcome === "avoided_danger" ? "AVOIDED" : entry.outcome === "find_food" ? "FORAGED"
+              : entry.outcome === "find_coins" ? "COINS" : entry.outcome === "find_valuable" ? "VALUABLE"
+              : entry.outcome === "find_rare" ? "RARE" : isQuest ? "QUEST" : isDungeon ? "DUNGEON" : "—";
+            return (
+              <div key={idx} className="flex gap-2 items-start px-2 py-1 rounded" style={{ background: bg, border: `1px solid ${border}`, fontSize: "0.5rem", color: "rgba(232,213,176,0.7)", lineHeight: 1.4 }}>
+                <div className="shrink-0 flex flex-col items-center" style={{ minWidth: 44 }}>
+                  <span className="font-bold" style={{ fontSize: "0.4rem", color: (isQuest || isDungeon) ? "rgba(168,85,247,0.8)" : isFight ? "rgba(220,38,38,0.7)" : "rgba(201,168,76,0.5)" }}>
+                    {label}
+                  </span>
+                  <span style={{ fontSize: "0.4rem", color: "rgba(96,165,250,0.5)", fontFamily: "monospace" }}>
+                    {entry.skillUsed ?? entry.interaction}
+                  </span>
+                </div>
+                <div className="flex-1">
+                  <span>{entry.description}</span>
+                  <span className="ml-2" style={{ color: "rgba(232,213,176,0.4)", fontSize: "0.45rem" }}>
+                    {entry.hpChange !== 0 && <>{entry.hpChange > 0 ? "+" : ""}{entry.hpChange}HP </>}
+                    {entry.coinReward && (entry.coinReward.gp > 0 || entry.coinReward.sp > 0 || entry.coinReward.cp > 0) && <>+{formatCoins(entry.coinReward)} </>}
+                    {entry.goldChange > 0 && <>+{formatCoins(cpToCoins(entry.goldChange))} </>}
+                    {entry.foodChange > 0 && <>+{entry.foodChange}food </>}
+                    {entry.xpChange > 0 && <>+{entry.xpChange}XP </>}
+                    {entry.fameChange && entry.fameChange > 0 && <span style={{ color: "rgba(251,191,36,0.6)" }}>+{entry.fameChange}Fame </span>}
+                  </span>
+                </div>
+                {idx === 0 && (isQuest || entry.outcome === "thug_fight") && pendingQuest && (
+                  <button onClick={() => onQuestBattle(pendingQuest)}
+                    className="shrink-0 px-2 py-1 rounded text-xs font-bold uppercase"
+                    style={{ background: "rgba(220,38,38,0.15)", color: "rgba(220,38,38,0.9)", border: "1px solid rgba(220,38,38,0.4)", fontSize: "0.45rem" }}>
+                    Fight!
+                  </button>
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>

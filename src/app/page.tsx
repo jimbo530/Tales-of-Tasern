@@ -24,7 +24,9 @@ import { SKILLS, abilityMod, type Skill } from "@/lib/skills";
 import { FEATS, getAvailableFeats, getStartingFeatCount, type Feat } from "@/lib/feats";
 import { SPELLS, SPELL_SCHOOLS, SPECIALIZABLE_SCHOOLS, getClassSpells, getSpellsKnown, type Spell, type SpellSchool } from "@/lib/spells";
 import { DOMAINS, type Domain } from "@/lib/domains";
-import { formatCoins, addCp, subtractCp, totalCp, addCoinsRaw } from "@/lib/saveSystem";
+import { formatCoins, addCp, subtractCp, totalCp, addCoinsRaw, setQuestCooldown, setQuestCooldownDays, getExhaustionPoints, lowestExhaustedStat } from "@/lib/saveSystem";
+import { changeRep } from "@/lib/factions";
+import { allPartiesActed, resetPartyRound, nextUnactedParty } from "@/lib/party";
 import { downloadAndCache, getCacheCount, clearImageCache } from "@/lib/imageCache";
 import { resolveImage, toHttp } from "@/lib/resolveImage";
 
@@ -961,6 +963,7 @@ export default function Home() {
   if (view === "battle") return subPage(questEncounter ? questEncounter.questName : "Battle", <HexBattle characters={characters}
     questEncounter={questEncounter ?? undefined}
     playerFeats={save?.feats}
+    playerWeapon={save?.equipment?.weapon}
     onExit={() => {
       if (lastBattleRewards) setLastBattleRewards(null);
       setQuestEncounter(null);
@@ -969,6 +972,38 @@ export default function Home() {
     onBattleEnd={async (outcome, difficulty, enemies, rounds) => {
       const result = await recordBattle({ difficulty, enemies, outcome, rounds });
       if (result) setLastBattleRewards({ xp: result.rewards.xp, goldCp: result.rewards.goldCp, levelsGained: result.levelsGained });
+      // Quest completion: set cooldowns (repeatable) or flags (one-time rumors)
+      if (outcome === "victory" && questEncounter && save) {
+        const qid = questEncounter.questId;
+        const questUpdates: Record<string, unknown> = {};
+        // Repeatable tavern quests — cooldown in minutes
+        // Real-time cooldowns (minutes) for tavern quests
+        const cooldowns: Record<string, number> = {
+          tavern_rats: 60, tavern_pests: 120, tavern_thugs: 180, tavern_undead: 360, tavern_wolves: 240,
+        };
+        // In-game-day cooldowns for world quests
+        const dayCooldowns: Record<string, number> = {
+          goblin_hills_raid: 60,
+        };
+        if (cooldowns[qid]) {
+          questUpdates.quest_cooldowns = setQuestCooldown(save.quest_cooldowns ?? {}, qid, cooldowns[qid]);
+        }
+        if (dayCooldowns[qid]) {
+          const currentDay = Math.floor((save.hour ?? 0) / 24) + 1;
+          const base = (questUpdates.quest_cooldowns as Record<string, string> | undefined) ?? save.quest_cooldowns ?? {};
+          questUpdates.quest_cooldowns = setQuestCooldownDays(base, qid, currentDay, dayCooldowns[qid]);
+        }
+        // One-time rumor quests — set flag so they don't appear again
+        const rumorFlags: Record<string, string> = {
+          rumor_smugglers: "heard_smuggler_rumor", rumor_haunted_manor: "heard_manor_rumor",
+          rumor_cultists: "heard_cultist_rumor", rumor_bounty: "heard_bounty_rumor",
+          rumor_lost_caravan: "heard_caravan_rumor",
+        };
+        if (rumorFlags[qid]) {
+          questUpdates.quest_flags = { ...(save.quest_flags ?? {}), [rumorFlags[qid]]: true };
+        }
+        if (Object.keys(questUpdates).length > 0) updateSave(questUpdates);
+      }
     }}
     onDefeatChoice={async (choice) => {
       if (!save) return;
@@ -1135,21 +1170,55 @@ export default function Home() {
     <WorldMap
       save={save}
       character={playerCharacter}
+      characters={characters}
+      onSwitchParty={(newIndex) => {
+        if (!save.parties || newIndex === save.active_party_index) return;
+        updateSave({ active_party_index: newIndex });
+      }}
       onTravel={(hex, result, destHex, encounter) => {
         const updates: Record<string, unknown> = {
           map_hex: hex,
-          hour: result.newHour,
-          day: result.newDay,
           food: result.newFood,
-          current_hp: Math.min(save.max_hp, Math.max(1, result.newHp + encounter.hpChange)),
+          current_hp: Math.min(save.max_hp, Math.max(1, result.newHp + (encounter.hpChange ?? 0))),
         };
+        // If food was consumed during travel, update last_ate_hour
+        if (result.newFood < save.food) updates.last_ate_hour = result.newHour;
         if (encounter.coinReward) updates.coins = addCoinsRaw(save.coins, encounter.coinReward);
-        if (encounter.goldChange > 0) {
+        if ((encounter.goldChange ?? 0) > 0) {
           const base = (updates.coins as { gp: number; sp: number; cp: number } | undefined) ?? save.coins;
-          updates.coins = addCp(base, encounter.goldChange);
+          updates.coins = addCp(base, encounter.goldChange!);
         }
-        if (encounter.foodChange > 0) updates.food = (updates.food as number) + encounter.foodChange;
-        if (encounter.xpChange > 0) updates.xp = save.xp + encounter.xpChange;
+        if ((encounter.foodChange ?? 0) > 0) {
+          updates.food = (updates.food as number) + encounter.foodChange!;
+          updates.last_ate_hour = result.newHour; // found food = fed
+        }
+        if ((encounter.xpChange ?? 0) > 0) updates.xp = save.xp + encounter.xpChange!;
+
+        // Multi-party: move this party's hex and mark as acted
+        if (save.parties && save.parties.length > 1) {
+          const idx = save.active_party_index ?? 0;
+          const updatedParties = save.parties.map((p, i) =>
+            i === idx ? { ...p, map_hex: hex, has_acted: true } : p
+          );
+          // Check if all parties acted → advance time + reset round
+          if (allPartiesActed(updatedParties)) {
+            updates.hour = result.newHour;
+            updates.day = result.newDay;
+            updates.parties = resetPartyRound(updatedParties);
+            updates.active_party_index = 0;
+          } else {
+            updates.parties = updatedParties;
+            updates.active_party_index = nextUnactedParty(updatedParties, idx);
+          }
+        } else {
+          updates.hour = result.newHour;
+          updates.day = result.newDay;
+          // Single party: also update the party's hex position
+          if (save.parties?.[0]) {
+            updates.parties = [{ ...save.parties[0], map_hex: hex }];
+          }
+        }
+
         updateSave(updates);
         if (encounter.outcome === "fight" && encounter.difficulty) {
           setLastBattleRewards(null);
@@ -1158,35 +1227,32 @@ export default function Home() {
       }}
       onAction={(result: WorldLuckResult) => {
         const newHour = (save.hour ?? 0) + 8;  // 8 hours per rest/search
-        const updates: Record<string, unknown> = {
-          hour: newHour,
-          day: Math.floor(newHour / 24) + 1,
-        };
+        const updates: Record<string, unknown> = {};
         const isInnRest = result.interaction === "rest" && result.worldRoll === 0 && result.goldChange < 0;
 
         if (isInnRest) {
-          // Inn rest: costs coins, includes meal (no food consumed), healing from hpChange
           updates.coins = subtractCp(save.coins, Math.abs(result.goldChange)) ?? { gp: 0, sp: 0, cp: 0 };
           updates.current_hp = Math.min(save.max_hp, save.current_hp + result.hpChange);
+          updates.last_rest_hour = newHour;
+          updates.last_ate_hour = newHour; // inn provides a meal
         } else if (result.interaction === "rest") {
-          // Wilderness/street rest: consumes 1 food per 8hr rest
           const foodCost = Math.min(save.food, 1);
           updates.food = save.food - foodCost;
           if (foodCost >= 1) {
             const healPerRest = Math.floor(Math.max(1, playerCharacter?.stats.con ?? 1) / 2) + save.level;
             updates.current_hp = Math.min(save.max_hp, save.current_hp + healPerRest + result.hpChange);
+            updates.last_ate_hour = newHour; // ate food while resting
           } else {
-            // Starving: no heal, take world luck damage only
             updates.current_hp = Math.min(save.max_hp, Math.max(1, save.current_hp + result.hpChange));
           }
+          updates.last_rest_hour = newHour;
         } else {
-          // Search: costs 1 food
           const foodCost = Math.min(save.food, 1);
           updates.food = save.food - foodCost;
+          if (foodCost >= 1) updates.last_ate_hour = newHour; // ate food during action
           if (result.hpChange !== 0) updates.current_hp = Math.min(save.max_hp, Math.max(1, save.current_hp + result.hpChange));
         }
         if (result.foodChange > 0) updates.food = ((updates.food as number) ?? save.food) + result.foodChange;
-        // Coin rewards: coinReward preserves denominations (raw add), goldChange auto-consolidates
         const coinBase = (updates.coins as { gp: number; sp: number; cp: number } | undefined) ?? save.coins;
         if (result.coinReward) {
           updates.coins = addCoinsRaw(coinBase, result.coinReward);
@@ -1196,6 +1262,32 @@ export default function Home() {
           updates.coins = addCp(base2, result.goldChange);
         }
         if (result.xpChange > 0) updates.xp = save.xp + result.xpChange;
+        if (result.fameChange && result.fameChange > 0) updates.fame = (save.fame ?? 0) + result.fameChange;
+        if (result.factionRepChange) {
+          const { newRep } = changeRep(save.faction_rep ?? {}, result.factionRepChange.factionId, result.factionRepChange.amount);
+          updates.faction_rep = newRep;
+        }
+
+        // Multi-party: mark current party as acted, auto-advance
+        if (save.parties && save.parties.length > 1) {
+          const idx = save.active_party_index ?? 0;
+          const updatedParties = save.parties.map((p, i) =>
+            i === idx ? { ...p, has_acted: true } : p
+          );
+          if (allPartiesActed(updatedParties)) {
+            updates.hour = newHour;
+            updates.day = Math.floor(newHour / 24) + 1;
+            updates.parties = resetPartyRound(updatedParties);
+            updates.active_party_index = 0;
+          } else {
+            updates.parties = updatedParties;
+            updates.active_party_index = nextUnactedParty(updatedParties, idx);
+          }
+        } else {
+          updates.hour = newHour;
+          updates.day = Math.floor(newHour / 24) + 1;
+        }
+
         updateSave(updates);
         if (result.outcome === "fight" && result.difficulty) {
           setLastBattleRewards(null);
@@ -1205,6 +1297,16 @@ export default function Home() {
       onBuyItem={(item) => {
         const newCoins = subtractCp(save.coins, item.buyPrice);
         if (newCoins) {
+          // Food items convert directly to food supply (not inventory items)
+          // 1 day = 3 food (FOOD_PER_DAY), individual meals = 1 food each
+          const foodItems: Record<string, number> = {
+            shop_rations_1: 3, shop_rations_5: 15, shop_rations_7: 21, shop_rations_10: 30,
+            shop_bread: 1, shop_cheese: 1, shop_meat_chunk: 1, shop_banquet: 3,
+          };
+          if (foodItems[item.id]) {
+            updateSave({ coins: newCoins, food: save.food + foodItems[item.id], last_ate_hour: save.hour ?? 0 });
+            return;
+          }
           const existing = save.inventory.find((i) => i.id === item.id);
           const newInventory = existing
             ? save.inventory.map((i) => i.id === item.id ? { ...i, qty: i.qty + 1 } : i)
@@ -1222,8 +1324,42 @@ export default function Home() {
           playerChar: playerCharacter ?? undefined,
           playerClass: cls,
           playerFeats: save?.feats,
+          playerWeapon: save?.equipment?.weapon,
         });
         cycleView("battle");
+      }}
+      onExhaustionCollapse={(isSafe) => {
+        // Collapse from exhaustion — reset rest timer
+        const updates: Record<string, unknown> = {
+          last_rest_hour: save.hour ?? 0,
+          last_ate_hour: save.hour ?? 0, // infirmary/recovery feeds you
+          current_hp: Math.max(1, Math.floor(save.max_hp * 0.25)), // wake up at 25% HP
+        };
+        if (isSafe) {
+          // Town/farm: found by locals, taken to infirmary. Rested but lose random items.
+          const lostItems: string[] = [];
+          let newInventory = [...save.inventory];
+          // Lose ~30% of inventory items (at least 1 if any exist)
+          const loseCount = Math.max(1, Math.floor(newInventory.length * 0.3));
+          for (let i = 0; i < loseCount && newInventory.length > 0; i++) {
+            const idx = Math.floor(Math.random() * newInventory.length);
+            lostItems.push(newInventory[idx].name ?? newInventory[idx].id);
+            newInventory = newInventory.filter((_, j) => j !== idx);
+          }
+          updates.inventory = newInventory;
+          // Also lose some coins (thieves while unconscious)
+          const lostCp = Math.floor(totalCp(save.coins) * 0.2);
+          if (lostCp > 0) {
+            updates.coins = subtractCp(save.coins, lostCp) ?? { gp: 0, sp: 0, cp: 0 };
+          }
+          alert(`You collapse from exhaustion! Locals find you and carry you to the infirmary.\n\nYou wake up rested but some of your belongings are missing:\n${lostItems.length > 0 ? lostItems.join(", ") : "nothing"}${lostCp > 0 ? `\nSome coins were also taken (${lostCp}cp)` : ""}`);
+        } else {
+          // Wilderness: you collapse where you fall. Forced rest, no item loss but danger.
+          // Lose more HP from exposure
+          updates.current_hp = Math.max(1, Math.floor(save.max_hp * 0.1));
+          alert("You collapse from exhaustion in the wilderness!\n\nYou pass out where you fall. Hours later you wake, battered and barely alive.\n\nYou need to rest properly and get to safety.");
+        }
+        updateSave(updates);
       }}
       onInventory={() => cycleView("inventory")}
       onBack={() => cycleView("adventure")}

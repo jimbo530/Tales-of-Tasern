@@ -893,6 +893,127 @@ const MERCENARY_GUILD: Shop = {
 };
 
 // ============================================================
+//  10. CLOTHIER  👘  (PHB + Arms & Equipment Guide clothing)
+// ============================================================
+
+const CLOTHIER: Shop = {
+  id: "shop_clothier",
+  name: "Clothier",
+  category: "general",
+  emoji: "👘",
+  description:
+    "Bolts of cloth, leather scraps, and finished garments crowd every surface. The tailor eyes your measurements before you even ask.",
+  items: [
+    // ---- Individual Clothing Items (A&E Guide) ----
+    shopItem("shop_sandals", "Sandals", "gear", 0.05, 0.5, "Simple leather sandals. Better than bare feet.", {
+      effect: "Basic footwear",
+    }),
+    shopItem("shop_boots_soft", "Boots, Soft", "gear", 1, 1, "Supple leather boots that muffle footsteps.", {
+      effect: "Quiet footwear; no penalty to Move Silently",
+    }),
+    shopItem("shop_boots_riding", "Boots, Riding", "gear", 3, 3, "Tall leather boots with a hard heel for stirrups.", {
+      effect: "+1 circumstance bonus on Ride checks",
+    }),
+    shopItem("shop_boots_winter", "Boots, Winter", "gear", 3, 3, "Fur-lined boots with thick soles for snow and ice.", {
+      effect: "No penalty to movement on ice/snow",
+    }),
+    shopItem("shop_cap", "Cap/Hat", "gear", 0.1, 0, "A simple wool or felt cap.", {
+      effect: "Keeps rain off your face",
+    }),
+    shopItem("shop_hat_wide", "Wide-Brimmed Hat", "gear", 0.5, 0.5, "A broad hat that shades the face and neck.", {
+      effect: "+1 circumstance bonus on Fort saves vs. sun/heat",
+    }),
+    shopItem("shop_cloak_common", "Cloak, Common", "gear", 0.5, 1, "A plain wool cloak with a simple clasp.", {
+      effect: "Basic protection from wind and rain",
+    }),
+    shopItem("shop_cloak_winter", "Cloak, Winter", "gear", 5, 3, "A heavy fur-lined cloak for bitter cold.", {
+      effect: "+2 circumstance bonus on Fort saves vs. cold weather",
+    }),
+    shopItem("shop_gloves", "Gloves", "gear", 1, 0, "Fitted leather gloves.", {
+      effect: "Protects hands; no penalty to fine manipulation",
+    }),
+    shopItem("shop_belt", "Belt", "gear", 0.5, 0, "A sturdy leather belt with a simple buckle.", {
+      effect: "Holds pouches, scabbards, and tools",
+    }),
+    shopItem("shop_scarf", "Scarf", "gear", 0.2, 0, "A long woolen scarf.", {
+      effect: "Warmth; can serve as an improvised bandage or gag",
+    }),
+    shopItem("shop_sash", "Sash", "gear", 0.1, 0.5, "A wide cloth sash worn at the waist.", {
+      effect: "Can conceal a dagger or small pouch",
+    }),
+    shopItem("shop_linen_shirt", "Linen Shirt", "gear", 0.2, 0.5, "A simple undyed linen shirt.", {
+      effect: "Basic garment",
+    }),
+    shopItem("shop_tunic", "Tunic", "gear", 0.8, 1, "A knee-length woolen tunic.", {
+      effect: "Common daily wear",
+    }),
+    shopItem("shop_vest", "Vest", "gear", 0.3, 0.5, "A sleeveless leather vest.", {
+      effect: "Casual wear; pockets for small items",
+    }),
+    shopItem("shop_doublet", "Doublet", "gear", 1, 1, "A fitted, padded jacket worn over a shirt.", {
+      effect: "Respectable town wear",
+    }),
+    shopItem("shop_jerkin", "Leather Jerkin", "gear", 0.5, 1, "A tough leather jerkin worn over lighter clothes.", {
+      effect: "No AC bonus but protects clothes from wear",
+    }),
+    shopItem("shop_hose", "Hose", "gear", 0.1, 0.5, "Wool or linen hose worn as leg coverings.", {
+      effect: "Basic legwear",
+    }),
+    shopItem("shop_surcoat", "Surcoat", "gear", 3, 3, "A long sleeveless overgarment, often bearing a coat of arms.", {
+      effect: "Can display heraldry or faction allegiance",
+    }),
+    shopItem("shop_tabard", "Tabard", "gear", 2, 2, "A short overgarment with open sides, often bearing insignia.", {
+      effect: "Displays affiliation; quick to put on over armor",
+    }),
+    shopItem("shop_robe_common", "Robe, Common", "gear", 1, 2, "A plain full-length robe with a rope belt.", {
+      effect: "Scholar or priest's daily wear; many pockets",
+    }),
+
+    // ---- Full Outfits (PHB + A&E Guide) ----
+    shopItem("shop_outfit_peasant", "Peasant's Outfit", "gear", 0.1, 2, "A loose shirt, breeches, and cloth shoes. Rough but serviceable.", {
+      effect: "Marks wearer as common folk",
+    }),
+    shopItem("shop_outfit_artisan", "Artisan's Outfit", "gear", 1, 4, "Sturdy work clothes with tool loops and stain-resistant apron.", {
+      effect: "Appropriate for skilled laborers and craftsmen",
+    }),
+    shopItem("shop_outfit_traveler", "Traveler's Outfit", "gear", 1, 5, "Sturdy boots, wool trousers, a linen shirt, and a cloak — built for the road.", {
+      effect: "Standard adventurer wear; no penalties in any terrain",
+    }),
+    shopItem("shop_outfit_entertainer", "Entertainer's Outfit", "gear", 3, 4, "Flashy garments in bright colors with ribbon trim.", {
+      effect: "+1 circumstance bonus on Perform checks",
+    }),
+    shopItem("shop_outfit_explorer", "Explorer's Outfit", "gear", 10, 8, "Reinforced clothing with many pockets, a wide hat, and high boots.", {
+      effect: "+1 circumstance bonus on Survival checks in the wild",
+    }),
+    shopItem("shop_outfit_scholar", "Scholar's Outfit", "gear", 5, 6, "A long robe over fine linen, with ink-stained cuffs.", {
+      effect: "+1 circumstance bonus on Knowledge checks in libraries",
+    }),
+    shopItem("shop_outfit_monk", "Monk's Outfit", "gear", 5, 2, "A simple, functional garment that allows full freedom of movement.", {
+      effect: "No armor check penalty; suitable for martial arts",
+    }),
+    shopItem("shop_outfit_cleric", "Cleric's Vestments", "gear", 5, 6, "Ceremonial robes appropriate to a specific deity.", {
+      effect: "+1 circumstance bonus on Diplomacy with faithful",
+    }),
+    shopItem("shop_outfit_cold_weather", "Cold Weather Outfit", "gear", 8, 7, "A wool coat, linen shirt, heavy cloak, and fur-lined gloves and boots.", {
+      effect: "+5 circumstance bonus on Fort saves vs. cold weather",
+    }),
+    shopItem("shop_outfit_courtier", "Courtier's Outfit", "gear", 30, 6, "Tailored clothing in fine fabric, suitable for audiences with nobility.", {
+      effect: "+2 circumstance bonus on Diplomacy with nobility",
+      minLevel: 5,
+    }),
+    shopItem("shop_outfit_noble", "Noble's Outfit", "gear", 75, 10, "Silk shirt, velvet doublet, fur-trimmed cloak, and jeweled accessories.", {
+      effect: "+4 circumstance bonus on Diplomacy with nobility; marks wearer as aristocracy",
+      minLevel: 10,
+    }),
+    shopItem("shop_outfit_royal", "Royal Outfit", "gear", 200, 15, "Ermine-trimmed robes, jeweled crown, and cloth-of-gold sash.", {
+      effect: "+6 circumstance bonus on Diplomacy with all; Intimidate +2 vs. commoners",
+      minLevel: 20,
+      kardovOnly: true,
+    }),
+  ],
+};
+
+// ============================================================
 //  ALL SHOPS
 // ============================================================
 
@@ -903,6 +1024,7 @@ export const ALL_SHOPS: Shop[] = [
   PROVISIONS,
   ALCHEMIST,
   STABLES,
+  CLOTHIER,
   ARCANE_EMPORIUM,
   PET_STORE,
   MERCENARY_GUILD,

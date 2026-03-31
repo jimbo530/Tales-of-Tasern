@@ -1097,7 +1097,7 @@ const PASSIVE_BONUS_MAP: Record<string, Partial<FeatBonuses>> = {
   "improved-shield-bash":         { ac: 1 },           // keep shield AC when bashing
   "improved-natural-armor":       { ac: 1 },           // +1 natural armor
   "blind-fight":                  { atkBonus: 1 },     // re-roll concealment miss → +1 atk
-  "point-blank-shot":             { atkBonus: 1, damage: 1 }, // +1 atk/dmg within 30ft → always active
+  // point-blank-shot: REMOVED from passive — applied conditionally in resolveAttack (within 6 hexes / 30ft)
   // ── General feats ──
   "toughness":                    { hp: 3 },           // +3 HP
   "endurance":                    { hp: 2 },           // +4 CON checks → simplified +2 HP
@@ -1129,6 +1129,11 @@ export type FeatCombatFlags = {
   improvedCritical: boolean;   // crit on 19-20 instead of only 20
   cleave: boolean;             // free attack on adjacent enemy after kill
   greatCleave: boolean;        // unlimited cleave chain
+  // ── Ranged ──
+  pointBlankShot: boolean;     // +1 atk, +1 dmg within 6 hexes (30ft)
+  preciseShot: boolean;        // no -4 for shooting into melee
+  rapidShot: boolean;          // one extra ranged attack at -2 to all
+  farShot: boolean;            // range increment penalty halved (-1 instead of -2)
 };
 
 /** Extract active combat flags from feat ID list */
@@ -1138,5 +1143,9 @@ export function getFeatCombatFlags(featIds: string[]): FeatCombatFlags {
     improvedCritical: s.has("improved-critical"),
     cleave: s.has("cleave"),
     greatCleave: s.has("great-cleave"),
+    pointBlankShot: s.has("point-blank-shot"),
+    preciseShot: s.has("precise-shot"),
+    rapidShot: s.has("rapid-shot"),
+    farShot: s.has("far-shot"),
   };
 }

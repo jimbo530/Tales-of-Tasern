@@ -1,5 +1,5 @@
 import { supabase } from "./supabase";
-import { type Party, defaultParty } from "./party";
+import { type Party, type AdventureParty, defaultParty, createAdventureParty } from "./party";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -130,9 +130,15 @@ export type CharacterSave = {
   current_hp: number;                       // current HP (persists between battles)
   max_hp: number;                           // max HP (recalculated from stats + class)
   coins: Coins;                           // purse — separate gp/sp/cp (50 coins = 1 lb)
+  fame: number;                     // performer renown (0+), unlocks venues & tips
+  last_rest_hour: number;           // hour when the player last rested (for exhaustion)
+  last_ate_hour: number;            // hour when the player last ate (for starvation exhaustion)
   battles_won: number;
   battles_lost: number;
   total_play_time: number;
+  // ── Multi-Party Adventuring ──
+  parties: AdventureParty[];         // multiple parties exploring independently
+  active_party_index: number;        // which party is currently selected
   created_at: string;
   updated_at: string;
 };
@@ -172,6 +178,40 @@ export function addXp(currentLevel: number, currentXp: number, gained: number): 
 
 export const HOURS_PER_ACTION = 8;  // travel 1 hex, rest, or search
 export const FOOD_PER_DAY = 3;      // legacy compat — 3 food = 1 full day (3 actions)
+
+// ── Exhaustion ─────────────────────────────────────────────────────────────
+// Two sources of exhaustion, both stack:
+//   Sleep: +1 point per 24 hours without rest
+//   Hunger: +1 point per 24 hours without food (after 24h grace period, so first at 48h)
+// Each point = −1 to ALL ability scores (min 1 — won't kill, but warns).
+// Forced marches are always allowed.
+
+export function getExhaustionPoints(
+  currentHour: number,
+  lastRestHour: number,
+  lastAteHour?: number,
+): { points: number; sleepPoints: number; hungerPoints: number; hoursAwake: number; hoursSinceFood: number } {
+  const hoursAwake = Math.max(0, currentHour - lastRestHour);
+  const hoursSinceFood = Math.max(0, currentHour - (lastAteHour ?? currentHour));
+  const sleepPoints = Math.floor(hoursAwake / 24);
+  // 24h grace before starvation kicks in, then +1 per 24h after that
+  const hungerPoints = hoursSinceFood > 24 ? Math.floor((hoursSinceFood - 24) / 24) : 0;
+  return { points: sleepPoints + hungerPoints, sleepPoints, hungerPoints, hoursAwake, hoursSinceFood };
+}
+
+/** Apply exhaustion to a stat value (floor 1) */
+export function exhaustedStat(base: number, exhaustionPoints: number): number {
+  return Math.max(1, Math.floor(base) - exhaustionPoints);
+}
+
+/** How close is the lowest stat to bottoming out? Returns the minimum effective stat. */
+export function lowestExhaustedStat(stats: Record<string, number>, exhaustionPoints: number): number {
+  let min = Infinity;
+  for (const key of ["str", "dex", "con", "int", "wis", "cha"]) {
+    min = Math.min(min, exhaustedStat(stats[key] ?? 10, exhaustionPoints));
+  }
+  return min;
+}
 
 export type TravelResult = {
   hoursElapsed: number;
@@ -269,9 +309,14 @@ export function defaultSave(
     current_hp: 12,
     max_hp: 12,
     coins: { gp: 0, sp: 0, cp: 0 },
+    fame: 0,
+    last_rest_hour: 0,
+    last_ate_hour: 0,
     battles_won: 0,
     battles_lost: 0,
     total_play_time: 0,
+    parties: [createAdventureParty("party-0", "Main Party", nftAddress, { q: 36, r: 32 })],
+    active_party_index: 0,
   };
 }
 
@@ -414,6 +459,27 @@ export function isQuestOnCooldown(cooldowns: Record<string, string>, questId: st
 export function setQuestCooldown(cooldowns: Record<string, string>, questId: string, minutes: number): Record<string, string> {
   const expiry = new Date(Date.now() + minutes * 60 * 1000).toISOString();
   return { ...cooldowns, [questId]: expiry };
+}
+
+/** Set a quest cooldown based on in-game days (stores "day:X" in the cooldown slot) */
+export function setQuestCooldownDays(cooldowns: Record<string, string>, questId: string, currentDay: number, daysUntilReset: number): Record<string, string> {
+  return { ...cooldowns, [questId]: `day:${currentDay + daysUntilReset}` };
+}
+
+/** Check if a quest is on in-game-day cooldown (format "day:X") */
+export function isQuestOnDayCooldown(cooldowns: Record<string, string>, questId: string, currentDay: number): boolean {
+  const val = cooldowns[questId];
+  if (!val || !val.startsWith("day:")) return false;
+  const expiryDay = parseInt(val.slice(4), 10);
+  return currentDay < expiryDay;
+}
+
+/** Days remaining on an in-game-day cooldown */
+export function dayCooldownRemaining(cooldowns: Record<string, string>, questId: string, currentDay: number): number {
+  const val = cooldowns[questId];
+  if (!val || !val.startsWith("day:")) return 0;
+  const expiryDay = parseInt(val.slice(4), 10);
+  return Math.max(0, expiryDay - currentDay);
 }
 
 export function cooldownRemaining(cooldowns: Record<string, string>, questId: string): number {

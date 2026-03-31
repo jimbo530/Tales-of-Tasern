@@ -8,11 +8,12 @@ import {
   hexToPixel,
   hexPolygonPoints,
   gridPixelDimensions,
+  hexDistance,
   HEX_SIZE,
   type HexCoord,
 } from "@/lib/hexGrid";
 import { CLASSES, type CharacterClass } from "@/lib/classes";
-import type { EnemySpec } from "@/lib/hexCombat";
+import { isCharge, type EnemySpec } from "@/lib/hexCombat";
 
 export type QuestEncounter = {
   questId: string;
@@ -23,12 +24,14 @@ export type QuestEncounter = {
   playerChar?: NftCharacter;              // pre-selected from save
   playerClass?: CharacterClass;           // pre-selected from save
   playerFeats?: string[];                 // feat IDs for combat mechanics
+  playerWeapon?: string;                  // equipped weapon name (determines range)
 };
 
 type Props = {
   characters: NftCharacter[];
   questEncounter?: QuestEncounter;   // if set, skip selection and auto-start
   playerFeats?: string[];           // feat IDs from save for combat bonuses
+  playerWeapon?: string;            // equipped weapon name (determines range)
   onExit: () => void;
   onBattleEnd?: (outcome: "victory" | "defeat" | "retreat", difficulty: "easy" | "medium" | "hard", enemies: string[], rounds: number) => void;
   onDefeatChoice?: (choice: "perish" | "rescue") => void;  // death penalty choice
@@ -110,7 +113,7 @@ function phaseLabel(phase: BattlePhase): string {
 
 // ── Main Component ───────────────────────────────────────────────────────────
 
-export function HexBattle({ characters, questEncounter, playerFeats, onExit, onBattleEnd, onDefeatChoice }: Props) {
+export function HexBattle({ characters, questEncounter, playerFeats, playerWeapon, onExit, onBattleEnd, onDefeatChoice }: Props) {
   const ownedChars = useMemo(() => characters.filter(c => c.owned && c.stats.con > 0), [characters]);
   const [selectedChar, setSelectedChar] = useState<NftCharacter | null>(null);
   const [selectedClass, setSelectedClass] = useState<CharacterClass | null>(null);
@@ -118,7 +121,7 @@ export function HexBattle({ characters, questEncounter, playerFeats, onExit, onB
   const logEndRef = useRef<HTMLDivElement>(null);
   const questStarted = useRef(false);
 
-  const { state, activeUnit, isPlayerTurn, startBattle, startQuestBattle, clickHex, playerRoll, endTurn } = useHexBattle();
+  const { state, activeUnit, isPlayerTurn, startBattle, startQuestBattle, clickHex, playerRoll, skipMove, readyAttack, endTurn } = useHexBattle();
 
   // Auto-scroll combat log
   useEffect(() => { logEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [state.combatLog.length]);
@@ -130,7 +133,7 @@ export function HexBattle({ characters, questEncounter, playerFeats, onExit, onB
       const cls = questEncounter.playerClass ?? selectedClass;
       if (char && cls) {
         questStarted.current = true;
-        startQuestBattle(char, questEncounter.enemies, cls, questEncounter.playerFeats ?? playerFeats);
+        startQuestBattle(char, questEncounter.enemies, cls, questEncounter.playerFeats ?? playerFeats, questEncounter.playerWeapon ?? playerWeapon);
       }
     }
   }, [questEncounter, selectedChar, selectedClass, state.phase, startQuestBattle]);
@@ -138,7 +141,7 @@ export function HexBattle({ characters, questEncounter, playerFeats, onExit, onB
   // Normal battle: start when all selections made
   useEffect(() => {
     if (!questEncounter && selectedChar && selectedClass && difficulty && state.phase === "setup") {
-      startBattle(selectedChar, difficulty, selectedClass, characters, playerFeats);
+      startBattle(selectedChar, difficulty, selectedClass, characters, playerFeats, playerWeapon);
     }
   }, [questEncounter, selectedChar, selectedClass, difficulty, state.phase, startBattle, characters]);
 
@@ -289,10 +292,13 @@ export function HexBattle({ characters, questEncounter, playerFeats, onExit, onB
               const unit = state.units.find(u => u.currentHp > 0 && u.position.q === hex.q && u.position.r === hex.r);
               const isActiveUnit = unit && activeUnit && unit.id === activeUnit.id;
 
+              const isRangedTarget = isAttackable && activeUnit && hexDistance(activeUnit.position, hex) > 1;
+
               let fill = "rgba(201,168,76,0.04)";
               let stroke = "rgba(201,168,76,0.12)";
               if (isReachable) { fill = "rgba(74,222,128,0.15)"; stroke = "rgba(74,222,128,0.4)"; }
-              if (isAttackable) { fill = "rgba(220,38,38,0.2)"; stroke = "rgba(220,38,38,0.5)"; }
+              if (isAttackable && isRangedTarget) { fill = "rgba(251,146,60,0.2)"; stroke = "rgba(251,146,60,0.5)"; }  // orange for ranged
+              else if (isAttackable) { fill = "rgba(220,38,38,0.2)"; stroke = "rgba(220,38,38,0.5)"; }  // red for melee
               if (isActiveUnit) { fill = "rgba(96,165,250,0.15)"; stroke = "rgba(96,165,250,0.5)"; }
 
               return (
@@ -394,37 +400,62 @@ export function HexBattle({ characters, questEncounter, playerFeats, onExit, onB
 
           {/* Phase-specific actions */}
           {state.phase === "playerMove" && (
-            <div className="px-4 py-3 rounded-lg text-center" style={{ background: "rgba(74,222,128,0.08)", border: "1px solid rgba(74,222,128,0.2)" }}>
+            <div className="px-4 py-3 rounded-lg flex items-center justify-between gap-2" style={{ background: "rgba(74,222,128,0.08)", border: "1px solid rgba(74,222,128,0.2)" }}>
               <span className="text-xs font-bold tracking-widest uppercase" style={{ color: "rgba(74,222,128,0.8)" }}>
                 Click a green hex to move ({Math.floor((activeUnit?.stats.speed ?? 30) / 5)} hexes)
               </span>
+              <button onClick={skipMove} className="px-3 py-1 rounded text-xs font-bold uppercase tracking-widest shrink-0"
+                style={{ background: "rgba(201,168,76,0.15)", color: "rgba(201,168,76,0.8)", border: "1px solid rgba(201,168,76,0.3)" }}>
+                Hold
+              </button>
             </div>
           )}
 
           {state.phase === "playerAction" && state.attackableEnemies.length > 0 && (
-            <div className="px-4 py-3 rounded-lg text-center" style={{ background: "rgba(220,38,38,0.08)", border: "1px solid rgba(220,38,38,0.2)" }}>
+            <div className="px-4 py-3 rounded-lg flex items-center justify-between gap-2" style={{ background: "rgba(220,38,38,0.08)", border: "1px solid rgba(220,38,38,0.2)" }}>
               <span className="text-xs font-bold tracking-widest uppercase" style={{ color: "rgba(220,38,38,0.8)" }}>
-                Click an adjacent enemy to attack
+                {activeUnit && activeUnit.weaponProperties.includes("charge") && state.attackableEnemies.some(eid => {
+                  const enemy = state.units.find(u => u.id === eid);
+                  return enemy && isCharge(activeUnit, enemy);
+                })
+                  ? "CHARGE! Click enemy for x2 damage"
+                  : activeUnit && activeUnit.attackRange > 1
+                    ? `Click an enemy to attack (range ${activeUnit.attackRange} hex)`
+                    : "Click an adjacent enemy to attack"}
               </span>
+              <button onClick={readyAttack} className="px-3 py-1 rounded text-xs font-bold uppercase tracking-widest shrink-0"
+                style={{ background: "rgba(168,85,247,0.15)", color: "rgba(168,85,247,0.8)", border: "1px solid rgba(168,85,247,0.3)" }}
+                title={activeUnit?.weaponProperties.includes("brace") ? "Set against charge — x2 damage when enemies approach" : "Hold attack until an enemy moves into range"}>
+                {activeUnit?.weaponProperties.includes("brace") ? "Set" : "Ready"}
+              </button>
             </div>
           )}
 
           {state.phase === "playerAction" && state.attackableEnemies.length === 0 && (
-            <div className="px-4 py-3 rounded-lg text-center" style={{ background: "rgba(201,168,76,0.08)", border: "1px solid rgba(201,168,76,0.15)" }}>
+            <div className="px-4 py-3 rounded-lg flex items-center justify-between gap-2" style={{ background: "rgba(201,168,76,0.08)", border: "1px solid rgba(201,168,76,0.15)" }}>
               <span className="text-xs tracking-widest uppercase" style={{ color: "rgba(201,168,76,0.5)" }}>
-                No enemies in melee range
+                No enemies in {activeUnit && activeUnit.attackRange > 1 ? "range" : "melee range"}
               </span>
+              <button onClick={readyAttack} className="px-3 py-1 rounded text-xs font-bold uppercase tracking-widest shrink-0"
+                style={{ background: "rgba(168,85,247,0.15)", color: "rgba(168,85,247,0.8)", border: "1px solid rgba(168,85,247,0.3)" }}
+                title={activeUnit?.weaponProperties.includes("brace") ? "Set against charge — x2 damage when enemies approach" : "Hold attack until an enemy moves into range"}>
+                {activeUnit?.weaponProperties.includes("brace") ? "Set" : "Ready"}
+              </button>
             </div>
           )}
 
-          {state.phase === "playerRoll" && target && (
+          {state.phase === "playerRoll" && target && (() => {
+            const dist = activeUnit ? hexDistance(activeUnit.position, target.position) : 1;
+            const charging = activeUnit?.weaponProperties.includes("charge") && activeUnit && isCharge(activeUnit, target);
+            return (
             <div className="flex flex-col items-center gap-3">
-              <div className="text-xs font-bold tracking-widest uppercase" style={{ color: "rgba(220,38,38,0.8)" }}>
-                Attacking {target.name} (AC {target.stats.ac})
+              <div className="text-xs font-bold tracking-widest uppercase" style={{ color: charging ? "rgba(251,146,60,0.9)" : dist > 1 ? "rgba(251,146,60,0.8)" : "rgba(220,38,38,0.8)" }}>
+                {charging ? "LANCE CHARGE (x2 damage) — " : dist > 1 ? `Ranged attack (${dist} hex) — ` : ""}Attacking {target.name} (AC {target.stats.ac})
               </div>
               <D20RollButton onRoll={playerRoll} disabled={false} />
             </div>
-          )}
+            );
+          })()}
 
           {state.phase === "playerResult" && state.lastRollNatural !== null && state.lastAttackResult && (
             <RollResult natural={state.lastRollNatural} result={state.lastAttackResult} />

@@ -237,6 +237,58 @@ export function defaultParty(nftAddress: string): Party {
   };
 }
 
+// ── Multi-Party Adventuring ─────────────────────────────────────────────────
+// Multiple parties can explore the world simultaneously.
+// Each party has its own map position and acts independently.
+// After one party acts, the next is auto-selected before time advances.
+
+export type AdventureParty = {
+  id: string;                          // unique party ID (e.g. "party-0")
+  name: string;                        // player-visible name
+  heroes: PartyHero[];                 // at least 1 NFT hero
+  map_hex: { q: number; r: number };   // independent position on world map
+  map_region: string;
+  map_node: string;
+  has_acted: boolean;                  // true after this party acts in the current round
+};
+
+/** Create a default adventure party */
+export function createAdventureParty(
+  id: string,
+  name: string,
+  nftAddress: string,
+  hex?: { q: number; r: number },
+): AdventureParty {
+  return {
+    id,
+    name,
+    heroes: [{ nft_address: nftAddress.toLowerCase(), isLeader: true, followers: [] }],
+    map_hex: hex ?? { q: 36, r: 32 },
+    map_region: "kardovs-gate",
+    map_node: "tavern",
+    has_acted: false,
+  };
+}
+
+/** Check if all parties have acted this round */
+export function allPartiesActed(parties: AdventureParty[]): boolean {
+  return parties.length > 0 && parties.every(p => p.has_acted);
+}
+
+/** Reset all parties' acted flags for a new round */
+export function resetPartyRound(parties: AdventureParty[]): AdventureParty[] {
+  return parties.map(p => ({ ...p, has_acted: false }));
+}
+
+/** Find next party that hasn't acted yet */
+export function nextUnactedParty(parties: AdventureParty[], currentIndex: number): number {
+  for (let i = 1; i <= parties.length; i++) {
+    const idx = (currentIndex + i) % parties.length;
+    if (!parties[idx].has_acted) return idx;
+  }
+  return currentIndex;
+}
+
 // ── Daily Upkeep (called when a new in-game day starts) ─────────────────────
 //
 // Mercenaries charge per day. At the start of each new day:

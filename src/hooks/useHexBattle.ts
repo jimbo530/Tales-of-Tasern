@@ -1,7 +1,7 @@
 "use client";
 
 import { useReducer, useCallback, useEffect, useRef } from "react";
-import { type HexCoord, hexesInRange, isAdjacent } from "@/lib/hexGrid";
+import { type HexCoord, hexDistance, hexesInRange, isAdjacent } from "@/lib/hexGrid";
 import {
   type BattleUnit,
   type CombatLogEntry,
@@ -14,8 +14,9 @@ import {
   rollD20,
   resolveAttack,
   computeEnemyMove,
+  canAttack,
+  isCharge,
 } from "@/lib/hexCombat";
-import { computeStats } from "@/lib/battleStats";
 import { getFeatCombatFlags } from "@/lib/feats";
 import type { NftCharacter } from "@/hooks/useNftStats";
 import type { CharacterClass } from "@/lib/classes";
@@ -56,8 +57,10 @@ type Action =
   | { type: "ROLL"; natural: number }
   | { type: "APPLY_RESULT" }
   | { type: "END_TURN" }
+  | { type: "READY_ATTACK" }
   | { type: "ENEMY_MOVE"; unitId: string; hex: HexCoord }
   | { type: "ENEMY_ATTACK"; unitId: string; natural: number; result: AttackResult }
+  | { type: "READIED_TRIGGER"; attackerId: string; targetId: string; natural: number; result: AttackResult }
   | { type: "NEXT_TURN" };
 
 function addLog(state: BattleState, text: string, logType: CombatLogEntry["type"]): BattleState {
@@ -78,7 +81,7 @@ function calcReachable(unit: BattleUnit, units: BattleUnit[]): HexCoord[] {
 
 function calcAttackable(unit: BattleUnit, units: BattleUnit[]): string[] {
   return units
-    .filter(u => u.currentHp > 0 && u.isPlayer !== unit.isPlayer && isAdjacent(unit.position, u.position))
+    .filter(u => u.currentHp > 0 && u.isPlayer !== unit.isPlayer && hexDistance(unit.position, u.position) <= unit.attackRange)
     .map(u => u.id);
 }
 
@@ -105,9 +108,10 @@ function advanceTurn(state: BattleState): BattleState {
   const nextUnit = state.units.find(u => u.id === state.turnOrder[idx]);
   if (!nextUnit || nextUnit.currentHp <= 0) return { ...state, phase: "victory" };
 
-  // Reset turn flags
+  // Reset turn flags — clear readiedAttack when it's your turn again (unused ready expires)
+  // Save turnStartPos for charge detection
   const units = state.units.map(u =>
-    u.id === nextUnit.id ? { ...u, hasMoved: false, hasActed: false } : u
+    u.id === nextUnit.id ? { ...u, hasMoved: false, hasActed: false, readiedAttack: false, turnStartPos: u.position } : u
   );
 
   const phase: BattlePhase = nextUnit.isPlayer ? "playerMove" : "enemyTurn";
@@ -178,10 +182,17 @@ function reducer(state: BattleState, action: Action): BattleState {
       const activeId = state.turnOrder[state.currentTurnIndex];
       const attacker = state.units.find(u => u.id === activeId)!;
       const target = state.units.find(u => u.id === state.pendingTargetId)!;
-      const result = resolveAttack(attacker, target, action.natural);
+      const dist = hexDistance(attacker.position, target.position);
+      const result = resolveAttack(attacker, target, action.natural, dist);
+      const charged = attacker.weaponProperties.includes("charge") && isCharge(attacker, target);
       let s: BattleState = { ...state, lastRollNatural: action.natural, lastAttackResult: result, phase: "playerResult" };
       const logType: CombatLogEntry["type"] = !result.hit ? (action.natural === 1 ? "miss" : "miss") : (action.natural === 20 ? "crit" : "hit");
-      s = addLog(s, `${attacker.name} attacks ${target.name}: ${result.breakdown}`, logType);
+      const rangeTag = dist > 1 ? ` at ${dist} hex range` : "";
+      const chargeTag = charged ? " (Lance charge!)" : "";
+      s = addLog(s, `${attacker.name} attacks ${target.name}${rangeTag}${chargeTag}: ${result.breakdown}`, logType);
+      if (charged && result.hit && result.damage > 0) {
+        s = addLog(s, `Charge! Double damage: ${result.damage * 2}!`, "crit");
+      }
       return s;
     }
 
@@ -193,8 +204,14 @@ function reducer(state: BattleState, action: Action): BattleState {
         const units = state.units.map(u => u.id === active.id ? { ...u, hasActed: true } : u);
         return checkEnd({ ...state, units, phase: "playerAction", attackableEnemies: [], pendingTargetId: null });
       }
+      // Lance charge: double damage when attacker has charge property and moved 2+ hexes toward target
+      const activeId2 = state.turnOrder[state.currentTurnIndex];
+      const attacker2 = state.units.find(u => u.id === activeId2)!;
+      const target2 = state.units.find(u => u.id === state.pendingTargetId)!;
+      const charged = attacker2.weaponProperties.includes("charge") && isCharge(attacker2, target2);
+      const finalDamage = charged ? damage * 2 : damage;
       let units = state.units.map(u =>
-        u.id === state.pendingTargetId ? { ...u, currentHp: Math.max(0, u.currentHp - damage) } : u
+        u.id === state.pendingTargetId ? { ...u, currentHp: Math.max(0, u.currentHp - finalDamage) } : u
       );
       const target = units.find(u => u.id === state.pendingTargetId)!;
       const activeId = state.turnOrder[state.currentTurnIndex];
@@ -212,7 +229,7 @@ function reducer(state: BattleState, action: Action): BattleState {
           );
           if (cleaveTarget) {
             const cleaveRoll = rollD20();
-            const cleaveResult = resolveAttack(attacker, cleaveTarget, cleaveRoll);
+            const cleaveResult = resolveAttack(attacker, cleaveTarget, cleaveRoll, 1);
             const logType: CombatLogEntry["type"] = !cleaveResult.hit ? "miss" : (cleaveResult.damage > 0 ? "hit" : "miss");
             s = addLog(s, `Cleave! ${attacker.name} swings at ${cleaveTarget.name}: ${cleaveResult.breakdown}`, logType);
             if (cleaveResult.hit) {
@@ -237,11 +254,54 @@ function reducer(state: BattleState, action: Action): BattleState {
       return advanceTurn(state);
     }
 
+    case "READY_ATTACK": {
+      // Player holds action — attack triggers when an enemy enters range
+      const activeId = state.turnOrder[state.currentTurnIndex];
+      const units = state.units.map(u =>
+        u.id === activeId ? { ...u, hasActed: true, readiedAttack: true } : u
+      );
+      const active = units.find(u => u.id === activeId)!;
+      const hasBrace = active.weaponProperties.includes("brace");
+      let s: BattleState = { ...state, units };
+      s = addLog(s, `${active.name} readies an attack${hasBrace ? " (set against charge — x2 damage)" : ""}.`, "system");
+      return advanceTurn(s);
+    }
+
     case "ENEMY_MOVE": {
       const units = state.units.map(u =>
         u.id === action.unitId ? { ...u, position: action.hex, hasMoved: true } : u
       );
       return { ...state, units };
+    }
+
+    case "READIED_TRIGGER": {
+      // A readied attack fires — brace weapons deal double damage
+      const attacker = state.units.find(u => u.id === action.attackerId)!;
+      const target = state.units.find(u => u.id === action.targetId)!;
+      const hasBrace = attacker.weaponProperties.includes("brace");
+      let s = state;
+      const logType: CombatLogEntry["type"] = !action.result.hit ? "miss" : (action.result.damage > 0 ? "hit" : "miss");
+      const label = hasBrace ? "Set against charge! " : "Readied attack! ";
+      s = addLog(s, `${label}${attacker.name} strikes ${target.name}: ${action.result.breakdown}`, logType);
+
+      if (action.result.hit) {
+        // Brace weapons deal double on a readied trigger
+        const finalDmg = hasBrace ? action.result.damage * 2 : action.result.damage;
+        if (hasBrace && action.result.damage > 0) {
+          s = addLog(s, `Brace! Double damage: ${finalDmg}!`, "crit");
+        }
+        const units = s.units.map(u =>
+          u.id === action.targetId ? { ...u, currentHp: Math.max(0, u.currentHp - finalDmg) } : u
+        );
+        s = { ...s, units };
+        const hit = units.find(u => u.id === action.targetId)!;
+        if (hit.currentHp <= 0) {
+          s = addLog(s, `${hit.name} is defeated!`, "kill");
+        }
+      }
+      // Clear readied flag
+      s = { ...s, units: s.units.map(u => u.id === action.attackerId ? { ...u, readiedAttack: false } : u) };
+      return checkEnd(s);
     }
 
     case "ENEMY_ATTACK": {
@@ -302,8 +362,8 @@ export function useHexBattle() {
     ? state.units.find(u => u.id === state.turnOrder[state.currentTurnIndex]) ?? null
     : null;
 
-  const startBattle = useCallback((character: NftCharacter, difficulty: "easy" | "medium" | "hard", charClass?: CharacterClass, allCharacters?: NftCharacter[], featIds?: string[]) => {
-    const player = createPlayerUnit(character, { q: 1, r: 5 }, charClass, featIds ?? []);
+  const startBattle = useCallback((character: NftCharacter, difficulty: "easy" | "medium" | "hard", charClass?: CharacterClass, allCharacters?: NftCharacter[], featIds?: string[], weaponName?: string) => {
+    const player = createPlayerUnit(character, { q: 1, r: 5 }, charClass, featIds ?? [], weaponName);
     const specs = generateEncounter(difficulty, allCharacters ?? []);
     const startPositions: HexCoord[] = [{ q: 8, r: 4 }, { q: 8, r: 6 }, { q: 7, r: 5 }];
     const enemies = specs.map((s, i) => createEnemyUnit(s, startPositions[i], i));
@@ -311,9 +371,9 @@ export function useHexBattle() {
   }, []);
 
   /** Start a quest battle with pre-built enemy specs (bypasses encounter generation) */
-  const startQuestBattle = useCallback((character: NftCharacter, specs: EnemySpec[], charClass?: CharacterClass, featIds?: string[]) => {
+  const startQuestBattle = useCallback((character: NftCharacter, specs: EnemySpec[], charClass?: CharacterClass, featIds?: string[], weaponName?: string) => {
     const playerPos = { q: 1, r: 5 };
-    const player = createPlayerUnit(character, playerPos, charClass, featIds ?? []);
+    const player = createPlayerUnit(character, playerPos, charClass, featIds ?? [], weaponName);
     const spawnPositions = generateSpawnPositions(specs.length, playerPos);
     const enemies = specs.map((s, i) => createEnemyUnit(s, spawnPositions[i], i));
     dispatch({ type: "INIT", player, enemies });
@@ -356,6 +416,12 @@ export function useHexBattle() {
     }
   }, [state.phase]);
 
+  const readyAttack = useCallback(() => {
+    if (state.phase === "playerAction") {
+      dispatch({ type: "READY_ATTACK" });
+    }
+  }, [state.phase]);
+
   // ── Enemy AI auto-play ───────────────────────────────────────────────────
   // Only re-trigger on phase/turn changes — NOT on units changes (which
   // ENEMY_MOVE and ENEMY_ATTACK cause), otherwise duplicate timer chains
@@ -378,17 +444,47 @@ export function useHexBattle() {
     // Enemy move
     const newPos = computeEnemyMove(enemy, player, state.units);
     const moved = newPos.q !== enemy.position.q || newPos.r !== enemy.position.r;
+    const wasInRange = hexDistance(enemy.position, player.position) <= player.attackRange;
+    const nowInRange = hexDistance(newPos, player.position) <= player.attackRange;
 
     timerRef.current = setTimeout(() => {
       if (cancelled) return;
       if (moved) dispatch({ type: "ENEMY_MOVE", unitId: enemy.id, hex: newPos });
 
-      // Check if adjacent after move, then attack
+      // Readied attack trigger — fires when enemy enters player's threat range
+      const playerNow = state.units.find(u => u.isPlayer);
+      if (playerNow?.readiedAttack && moved && !wasInRange && nowInRange && playerNow.currentHp > 0) {
+        timerRef.current = setTimeout(() => {
+          if (cancelled) return;
+          const dist = hexDistance(newPos, playerNow.position);
+          const natural = rollD20();
+          const result = resolveAttack(playerNow, enemy, natural, dist);
+          dispatch({ type: "READIED_TRIGGER", attackerId: playerNow.id, targetId: enemy.id, natural, result });
+
+          // After readied attack resolves, enemy still gets their attack if alive
+          timerRef.current = setTimeout(() => {
+            if (cancelled) return;
+            const distAfter = hexDistance(newPos, playerNow.position);
+            if (distAfter <= enemy.attackRange) {
+              const n2 = rollD20();
+              const r2 = resolveAttack(enemy, playerNow, n2, distAfter);
+              dispatch({ type: "ENEMY_ATTACK", unitId: enemy.id, natural: n2, result: r2 });
+              timerRef.current = setTimeout(() => { if (!cancelled) dispatch({ type: "NEXT_TURN" }); }, 1000);
+            } else {
+              dispatch({ type: "NEXT_TURN" });
+            }
+          }, 1200);
+        }, moved ? 500 : 100);
+        return;
+      }
+
+      // Normal: check if in range after move, then attack
       timerRef.current = setTimeout(() => {
         if (cancelled) return;
-        if (isAdjacent(newPos, player.position)) {
+        const dist = hexDistance(newPos, player.position);
+        if (dist <= enemy.attackRange) {
           const natural = rollD20();
-          const result = resolveAttack(enemy, player, natural);
+          const result = resolveAttack(enemy, player, natural, dist);
           dispatch({ type: "ENEMY_ATTACK", unitId: enemy.id, natural, result });
           timerRef.current = setTimeout(() => {
             if (!cancelled) dispatch({ type: "NEXT_TURN" });
@@ -412,6 +508,7 @@ export function useHexBattle() {
     clickHex,
     playerRoll,
     skipMove,
+    readyAttack,
     endTurn,
   };
 }

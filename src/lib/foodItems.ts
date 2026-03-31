@@ -54,8 +54,30 @@ export const COMMON_FOOD: FoodItem[] = [
 
   // Drink
   { id: "food_ale_gallon",      name: "Ale (gallon)",        priceCp: 20,   weight: 8, foodValue: 0, category: "drink",    desc: "Common brown ale. Safer than water." },
+  { id: "food_ale_mug",         name: "Ale (mug)",           priceCp: 4,    weight: 1, foodValue: 0, category: "drink",    desc: "A mug of common brown ale." },
   { id: "food_wine_common",     name: "Common Wine (bottle)", priceCp: 20,  weight: 2, foodValue: 0, category: "drink",    desc: "Cheap table wine. Slightly vinegary." },
   { id: "food_mead",            name: "Mead (pint)",         priceCp: 50,   weight: 1, foodValue: 0, category: "drink",    desc: "Honey wine. Sweet and strong." },
+  { id: "food_grog",            name: "Grog",                priceCp: 3,    weight: 1, foodValue: 0, category: "drink",    desc: "Watered-down rum. A sailor's staple." },
+  { id: "food_tea",             name: "Tea (pot)",           priceCp: 2,    weight: 0, foodValue: 0, category: "drink",    desc: "Dried herb tea. Calming and warm." },
+
+  // Fresh produce & meals (Arms & Equipment Guide)
+  { id: "food_fruit",           name: "Fresh Fruit",         priceCp: 1,    weight: 0, foodValue: 1, category: "produce",  desc: "An apple, pear, or plum. Simple and refreshing." },
+  { id: "food_vegetables",      name: "Vegetables (bag)",    priceCp: 1,    weight: 1, foodValue: 1, category: "produce",  desc: "Root vegetables — turnips, carrots, parsnips." },
+  { id: "food_eggs",            name: "Eggs (dozen)",        priceCp: 2,    weight: 1, foodValue: 2, category: "dairy",    desc: "Fresh hen's eggs. Versatile and nutritious." },
+  { id: "food_porridge",        name: "Porridge (bowl)",     priceCp: 3,    weight: 1, foodValue: 1, category: "prepared", desc: "Hot oat porridge. Filling and cheap." },
+  { id: "food_soup",            name: "Soup (bowl)",         priceCp: 3,    weight: 1, foodValue: 1, category: "prepared", desc: "Thin broth with whatever was handy." },
+  { id: "food_meat_mutton",     name: "Mutton Leg",          priceCp: 20,   weight: 2, foodValue: 2, category: "meat",     desc: "A leg of roasted mutton. Common fare." },
+  { id: "food_meat_venison",    name: "Venison Steak",       priceCp: 50,   weight: 1, foodValue: 2, category: "meat",     desc: "Wild deer meat. Rich and gamey." },
+  { id: "food_meat_poultry",    name: "Roast Chicken",       priceCp: 15,   weight: 2, foodValue: 2, category: "meat",     desc: "A whole roasted chicken, seasoned with herbs." },
+  { id: "food_pickled_cabbage", name: "Pickled Cabbage",     priceCp: 5,    weight: 1, foodValue: 1, category: "produce",  desc: "Fermented cabbage in brine. Keeps forever." },
+  { id: "food_dried_beans",     name: "Dried Beans",         priceCp: 5,    weight: 1, foodValue: 2, category: "grain",    desc: "Dried lentils and beans. Need soaking but very filling." },
+  { id: "food_salt_pork",       name: "Salt Pork (slab)",    priceCp: 50,   weight: 2, foodValue: 3, category: "meat",     desc: "A thick slab of salt-cured pork. Trail essential." },
+  { id: "food_hardtack",        name: "Hardtack (10 pieces)", priceCp: 5,   weight: 1, foodValue: 2, category: "grain",    desc: "Rock-hard biscuits. Nearly indestructible." },
+  { id: "food_inn_poor",        name: "Inn Meal (poor)",     priceCp: 10,   weight: 0, foodValue: 1, category: "prepared", desc: "Stale bread, thin soup, and water." },
+  { id: "food_inn_common",      name: "Inn Meal (common)",   priceCp: 30,   weight: 0, foodValue: 2, category: "prepared", desc: "Bread, stew, and ale. Decent fare." },
+  { id: "food_inn_good",        name: "Inn Meal (good)",     priceCp: 50,   weight: 0, foodValue: 3, category: "prepared", desc: "Roast meat, fresh bread, wine. A proper meal." },
+  { id: "food_milk",            name: "Milk (pint)",         priceCp: 1,    weight: 1, foodValue: 1, category: "dairy",    desc: "Fresh cow's milk. Best drunk quickly." },
+  { id: "food_goat_cheese",     name: "Goat Cheese",         priceCp: 10,   weight: 1, foodValue: 1, category: "dairy",    desc: "Tangy soft cheese from goat's milk." },
 ];
 
 // ── Valuable / Exotic Food (city markets, wealthy bandits) ──────────────────
@@ -83,14 +105,30 @@ export function rollCommonFood(): FoodItem {
   return COMMON_FOOD[Math.floor(Math.random() * COMMON_FOOD.length)];
 }
 
+/** Farm-appropriate food categories for random selection */
+const FARM_FOODS = () => COMMON_FOOD.filter(f =>
+  f.category === "grain" || f.category === "produce" || f.category === "dairy" || f.category === "meat" || f.category === "prepared");
+
 /** Roll 1-3 food items for a farm encounter */
 export function rollFarmDrop(): FoodItem[] {
   const count = Math.floor(Math.random() * 3) + 1;
   const items: FoodItem[] = [];
-  const farmFoods = COMMON_FOOD.filter(f =>
-    f.category === "grain" || f.category === "produce" || f.category === "dairy" || f.category === "meat");
+  const pool = FARM_FOODS();
   for (let i = 0; i < count; i++) {
-    items.push(farmFoods[Math.floor(Math.random() * farmFoods.length)]);
+    items.push(pool[Math.floor(Math.random() * pool.length)]);
+  }
+  return items;
+}
+
+/** Roll 1-2 food items for low-level wilderness finds (foraging, hunting) */
+export function rollWildernessFoodDrop(): FoodItem[] {
+  const count = Math.floor(Math.random() * 2) + 1;
+  const items: FoodItem[] = [];
+  // Wilderness finds: wild produce, hunted meat, foraged nuts/mushrooms — no prepared or dairy
+  const wildFoods = COMMON_FOOD.filter(f =>
+    f.category === "meat" || f.category === "produce" || f.category === "grain");
+  for (let i = 0; i < count; i++) {
+    items.push(wildFoods[Math.floor(Math.random() * wildFoods.length)]);
   }
   return items;
 }
