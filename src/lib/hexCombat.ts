@@ -4,6 +4,7 @@ import type { NftCharacter } from "@/hooks/useNftStats";
 import type { CharacterClass } from "./classes";
 import type { Monster } from "./monsters";
 import { getFeatCombatFlags } from "./feats";
+import type { SpellBattleEffect } from "./spells";
 
 // ── Weapon Range & Properties System ─────────────────────────────────────────
 // 1 hex = 5ft (matches movement: speed 30 = 6 hexes).
@@ -108,6 +109,31 @@ export function rangePenalty(distance: number, increment: number, farShot: boole
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
+export type ActiveSpellEffect = {
+  spellId: string;
+  spellName: string;
+  sourceId: string;
+  remainingRounds: number;  // -1 = until end of combat, 0 = instant (shouldn't be stored)
+  buffAC?: number;
+  buffAtk?: number;
+  buffDmg?: number;
+  buffSave?: number;
+  buffSpeed?: number;
+  debuffAC?: number;
+  debuffAtk?: number;
+  debuffDmg?: number;
+  condition?: string;  // dazed, frightened, stunned, fatigued, entangled, charmed
+};
+
+export type SpellCastResult = {
+  success: boolean;
+  damage?: number;
+  healing?: number;
+  breakdown: string;
+  effect?: ActiveSpellEffect;
+  targetSaved?: boolean;
+};
+
 export type BattleUnit = {
   id: string;
   name: string;
@@ -129,6 +155,15 @@ export type BattleUnit = {
   weaponProperties: WeaponProperty[];  // brace, reach, trip, etc.
   readiedAttack: boolean;  // true if holding action for approaching enemies
   turnStartPos: HexCoord;  // position at start of turn (for charge detection)
+  reactionUsed: boolean;   // true if used their reaction this round (AoO)
+  // ── Spell combat fields ──
+  activeEffects: ActiveSpellEffect[];
+  rawAbilities: { str: number; dex: number; con: number; int: number; wis: number; cha: number };
+  spellSlots?: number[];          // max spell slots per level [0th, 1st, ...]
+  spellSlotsUsed?: number[];      // slots used this battle
+  availableSpells?: string[];     // spell IDs available to cast (known or prepared)
+  casterLevel?: number;           // for damage scaling and DC
+  castingAbilityMod?: number;     // ability modifier for spell DC
 };
 
 export type AttackResult = {
@@ -275,9 +310,17 @@ export function generateSpawnPositions(count: number, playerPos: HexCoord): HexC
 
 // ── Unit Creation ────────────────────────────────────────────────────────────
 
+export type SpellUnitInfo = {
+  spellSlots: number[];
+  spellSlotsUsed: number[];
+  availableSpells: string[];
+  casterLevel: number;
+  castingAbilityMod: number;
+};
+
 export function createPlayerUnit(
   char: NftCharacter, position: HexCoord, charClass?: CharacterClass,
-  featIds: string[] = [], weaponName?: string,
+  featIds: string[] = [], weaponName?: string, spellInfo?: SpellUnitInfo,
 ): BattleUnit {
   const stats = computeStats(char.stats, charClass, 1, featIds);
   const wr = getWeaponRange(weaponName);
@@ -301,6 +344,16 @@ export function createPlayerUnit(
     weaponProperties: wr.properties,
     readiedAttack: false,
     turnStartPos: position,
+    reactionUsed: false,
+    activeEffects: [],
+    rawAbilities: { str: char.stats.str, dex: char.stats.dex, con: char.stats.con, int: char.stats.int, wis: char.stats.wis, cha: char.stats.cha },
+    ...(spellInfo ? {
+      spellSlots: spellInfo.spellSlots,
+      spellSlotsUsed: spellInfo.spellSlotsUsed,
+      availableSpells: spellInfo.availableSpells,
+      casterLevel: spellInfo.casterLevel,
+      castingAbilityMod: spellInfo.castingAbilityMod,
+    } : {}),
   };
 }
 
@@ -327,6 +380,9 @@ export function createEnemyUnit(spec: EnemySpec, position: HexCoord, index: numb
     weaponProperties: [],
     readiedAttack: false,
     turnStartPos: position,
+    reactionUsed: false,
+    activeEffects: [],
+    rawAbilities: { str: spec.stats.str, dex: spec.stats.dex, con: spec.stats.con, int: spec.stats.int, wis: spec.stats.wis, cha: spec.stats.cha },
   };
 }
 
@@ -338,11 +394,168 @@ export function isCharge(unit: BattleUnit, target: BattleUnit): boolean {
   return hexesMoved >= 2 && distAfter < distBefore;
 }
 
-// ── Combat Resolution ────────────────────────────────────────────────────────
+// ── Dice & Spell Resolution ──────────────────────────────────────────────────
 
 export function rollD20(): number {
   return Math.floor(Math.random() * 20) + 1;
 }
+
+/** Ability modifier: our stats are D&D stats -10, so mod = floor(stat/2) */
+export function abilityMod(stat: number): number {
+  return Math.floor(Math.max(0, stat) / 2);
+}
+
+/** Roll a dice expression like "1d6", "2d4+1", "1d4/level" */
+export function rollDice(expr: string, casterLevel: number = 1): { total: number; breakdown: string } {
+  const trimmed = expr.trim();
+  // Flat number
+  if (/^\d+$/.test(trimmed)) {
+    const n = parseInt(trimmed);
+    return { total: n, breakdown: `${n}` };
+  }
+  const perLevel = trimmed.includes("/level");
+  const clean = trimmed.replace("/level", "").trim();
+  const m = clean.match(/^(\d+)d(\d+)(?:\+(\d+))?$/);
+  if (!m) return { total: 0, breakdown: "0" };
+
+  let numDice = parseInt(m[1]);
+  const dieSize = parseInt(m[2]);
+  const bonus = m[3] ? parseInt(m[3]) : 0;
+  if (perLevel) numDice = Math.min(numDice * casterLevel, 10);
+
+  let total = bonus;
+  const rolls: number[] = [];
+  for (let i = 0; i < numDice; i++) {
+    const roll = Math.floor(Math.random() * dieSize) + 1;
+    rolls.push(roll);
+    total += roll;
+  }
+  total = Math.max(1, total);
+  const diceStr = `${numDice}d${dieSize}[${rolls.join(",")}]`;
+  const bonusStr = bonus > 0 ? `+${bonus}` : "";
+  return { total, breakdown: `${diceStr}${bonusStr}=${total}` };
+}
+
+/** Get total buff/debuff modifier for a stat across all active effects */
+function sumEffects(unit: BattleUnit, key: keyof ActiveSpellEffect): number {
+  return unit.activeEffects.reduce((sum, e) => sum + ((e[key] as number) ?? 0), 0);
+}
+
+/** Check if a unit has an active condition */
+export function hasCondition(unit: BattleUnit, condition: string): boolean {
+  return unit.activeEffects.some(e => e.condition === condition && e.remainingRounds !== 0);
+}
+
+/** Resolve a spell cast in combat */
+export function resolveSpellCast(
+  caster: BattleUnit,
+  target: BattleUnit,
+  spellId: string,
+  spellName: string,
+  spellLevel: number,
+  effect: SpellBattleEffect,
+): SpellCastResult {
+  const casterLvl = caster.casterLevel ?? 1;
+  const casterMod = caster.castingAbilityMod ?? 0;
+  const dc = 10 + spellLevel + casterMod;
+
+  // Saving throw check
+  let saved = false;
+  let saveRoll = 0;
+  let saveTotal = 0;
+  if (effect.save) {
+    const saveAbility = effect.save === "fort" ? target.rawAbilities.con
+      : effect.save === "ref" ? target.rawAbilities.dex
+      : target.rawAbilities.wis;
+    const saveMod = abilityMod(saveAbility) + sumEffects(target, "buffSave");
+    saveRoll = rollD20();
+    saveTotal = saveRoll + saveMod;
+    saved = saveTotal >= dc;
+  }
+
+  const saveStr = effect.save ? ` (${effect.save.toUpperCase()} save: d20(${saveRoll})+${abilityMod(effect.save === "fort" ? target.rawAbilities.con : effect.save === "ref" ? target.rawAbilities.dex : target.rawAbilities.wis)} = ${saveTotal} vs DC ${dc}${saved ? " — SAVED" : " — FAILED"})` : "";
+
+  // ── Damage spells ──
+  if (effect.type === "damage" && effect.damage) {
+    const { total, breakdown } = rollDice(effect.damage, casterLvl);
+    const finalDmg = saved ? Math.max(1, Math.floor(total / 2)) : total;
+    const dmgTypeStr = effect.damageType ? ` ${effect.damageType}` : "";
+    return {
+      success: true,
+      damage: finalDmg,
+      breakdown: `${spellName}: ${breakdown}${dmgTypeStr} damage${saved ? " (halved)" : ""}${saveStr}`,
+    };
+  }
+
+  // ── Healing spells ──
+  if (effect.type === "healing" && effect.healing) {
+    const { total, breakdown } = rollDice(effect.healing, casterLvl);
+    return {
+      success: true,
+      healing: total,
+      breakdown: `${spellName}: heals ${breakdown} HP`,
+    };
+  }
+
+  // ── Buff spells ──
+  if (effect.type === "buff") {
+    const dur = effect.durationRounds ?? 1;
+    const eff: ActiveSpellEffect = {
+      spellId, spellName, sourceId: caster.id, remainingRounds: dur,
+      buffAC: effect.buffAC, buffAtk: effect.buffAtk, buffDmg: effect.buffDmg,
+      buffSave: effect.buffSave, buffSpeed: effect.buffSpeed,
+    };
+    const parts: string[] = [];
+    if (effect.buffAC) parts.push(`+${effect.buffAC} AC`);
+    if (effect.buffAtk) parts.push(`+${effect.buffAtk} ATK`);
+    if (effect.buffDmg) parts.push(`+${effect.buffDmg} DMG`);
+    if (effect.buffSave) parts.push(`+${effect.buffSave} saves`);
+    if (effect.buffSpeed) parts.push(`+${effect.buffSpeed} speed`);
+    return {
+      success: true,
+      effect: eff,
+      breakdown: `${spellName}: ${parts.join(", ")} for ${dur === -1 ? "combat" : dur + " rounds"}`,
+    };
+  }
+
+  // ── Debuff spells ──
+  if (effect.type === "debuff") {
+    if (saved) return { success: false, breakdown: `${spellName}: target resists${saveStr}`, targetSaved: true };
+    const dur = effect.durationRounds ?? 1;
+    const eff: ActiveSpellEffect = {
+      spellId, spellName, sourceId: caster.id, remainingRounds: dur,
+      debuffAC: effect.debuffAC, debuffAtk: effect.debuffAtk, debuffDmg: effect.debuffDmg,
+    };
+    const parts: string[] = [];
+    if (effect.debuffAC) parts.push(`${effect.debuffAC} AC`);
+    if (effect.debuffAtk) parts.push(`${effect.debuffAtk} ATK`);
+    if (effect.debuffDmg) parts.push(`${effect.debuffDmg} DMG`);
+    return {
+      success: true,
+      effect: eff,
+      breakdown: `${spellName}: ${parts.join(", ")} for ${dur === -1 ? "combat" : dur + " rounds"}${saveStr}`,
+    };
+  }
+
+  // ── Condition spells ──
+  if (effect.type === "condition" && effect.condition) {
+    if (saved) return { success: false, breakdown: `${spellName}: target resists${saveStr}`, targetSaved: true };
+    const dur = effect.durationRounds ?? 1;
+    const eff: ActiveSpellEffect = {
+      spellId, spellName, sourceId: caster.id, remainingRounds: dur,
+      condition: effect.condition,
+    };
+    return {
+      success: true,
+      effect: eff,
+      breakdown: `${spellName}: target is ${effect.condition} for ${dur === -1 ? "combat" : dur + " rounds"}${saveStr}`,
+    };
+  }
+
+  return { success: false, breakdown: `${spellName}: no battle effect` };
+}
+
+// ── Combat Resolution ────────────────────────────────────────────────────────
 
 export function resolveAttack(
   attacker: BattleUnit,
@@ -357,7 +570,13 @@ export function resolveAttack(
   const pbsBonus = (flags.pointBlankShot && distance <= 6) ? 1 : 0; // +1 atk within 30ft
   const pbsDmg   = (flags.pointBlankShot && distance <= 6) ? 1 : 0; // +1 dmg within 30ft
 
-  const atkMod = attacker.stats.atkBonus + rPenalty + pbsBonus;
+  // ── Active effect modifiers ──
+  const atkBuff = sumEffects(attacker, "buffAtk") + sumEffects(attacker, "debuffAtk");
+  const acBuff = sumEffects(target, "buffAC") + sumEffects(target, "debuffAC");
+  const dmgBuff = sumEffects(attacker, "buffDmg") + sumEffects(attacker, "debuffDmg");
+  const effectiveAC = target.stats.ac + acBuff;
+
+  const atkMod = attacker.stats.atkBonus + rPenalty + pbsBonus + atkBuff;
   const modified = natural + atkMod;
   const isCrit = natural === 20 || (flags.improvedCritical && natural === 19);
   const isCritMiss = natural === 1;
@@ -366,23 +585,25 @@ export function resolveAttack(
   const modParts: string[] = [`${attacker.stats.atkBonus}`];
   if (rPenalty !== 0) modParts.push(`${rPenalty} range`);
   if (pbsBonus > 0)  modParts.push(`+${pbsBonus} PBS`);
+  if (atkBuff !== 0)  modParts.push(`${atkBuff > 0 ? "+" : ""}${atkBuff} spell`);
   const modStr = modParts.join(" ");
 
   if (isCritMiss) {
     return { hit: false, damage: 0, breakdown: `d20(1) — Critical Miss!` };
   }
 
-  if (!isCrit && modified < target.stats.ac) {
+  if (!isCrit && modified < effectiveAC) {
     return {
       hit: false,
       damage: 0,
-      breakdown: `d20(${natural}) + ${modStr} = ${modified} vs AC ${target.stats.ac} — Miss!`,
+      breakdown: `d20(${natural}) + ${modStr} = ${modified} vs AC ${effectiveAC}${acBuff !== 0 ? ` (${target.stats.ac}${acBuff > 0 ? "+" : ""}${acBuff})` : ""} — Miss!`,
     };
   }
 
-  let damage = attacker.stats.attack + pbsDmg;
+  let damage = attacker.stats.attack + pbsDmg + dmgBuff;
   const parts: string[] = [`${attacker.stats.attack} STR`];
   if (pbsDmg > 0) parts.push(`+${pbsDmg} PBS`);
+  if (dmgBuff !== 0) parts.push(`${dmgBuff > 0 ? "+" : ""}${dmgBuff} spell`);
 
   if (attacker.subtypes.includes("electric") && attacker.stats.lightningDmg > 0) {
     damage += attacker.stats.lightningDmg;
@@ -399,10 +620,11 @@ export function resolveAttack(
   const dmgStr = parts.join(" + ");
   const critStr = isCrit ? " CRITICAL HIT! " : "";
   const rangeStr = distance > 1 ? ` (${distance} hex)` : "";
+  const acStr = acBuff !== 0 ? `${effectiveAC} (${target.stats.ac}${acBuff > 0 ? "+" : ""}${acBuff})` : `${effectiveAC}`;
   return {
     hit: true,
     damage,
-    breakdown: `d20(${natural}) + ${modStr} = ${modified} vs AC ${target.stats.ac}${rangeStr} —${critStr} ${damage} damage (${dmgStr}${isCrit ? " x2" : ""})`,
+    breakdown: `d20(${natural}) + ${modStr} = ${modified} vs AC ${acStr}${rangeStr} —${critStr} ${damage} damage (${dmgStr}${isCrit ? " x2" : ""})`,
   };
 }
 
@@ -451,4 +673,33 @@ export function computeEnemyMove(
 /** Check if a unit can attack a target from its current position */
 export function canAttack(attacker: BattleUnit, target: BattleUnit): boolean {
   return hexDistance(attacker.position, target.position) <= attacker.attackRange;
+}
+
+// ── Attacks of Opportunity ──────────────────────────────────────────────────
+// D&D 3.5: AoO when entering threatened area.  D&D 5e: AoO when leaving.
+// We use both, with one reaction per round per unit.
+
+/** Return opponents eligible to take an AoO against a moving unit */
+export function getAoOThreats(
+  mover: BattleUnit,
+  oldPos: HexCoord,
+  newPos: HexCoord,
+  allUnits: BattleUnit[],
+): BattleUnit[] {
+  const threats: BattleUnit[] = [];
+  for (const u of allUnits) {
+    if (u.id === mover.id || u.currentHp <= 0 || u.isPlayer === mover.isPlayer) continue;
+    if (u.reactionUsed || u.isRanged) continue;  // ranged weapons can't AoO
+    if (hasCondition(u, "stunned") || hasCondition(u, "dazed")) continue;
+
+    const threatRange = u.weaponProperties.includes("reach") ? 2 : 1;
+    const wasInRange = hexDistance(oldPos, u.position) <= threatRange;
+    const isInRange = hexDistance(newPos, u.position) <= threatRange;
+
+    // Entering OR leaving threatened area triggers AoO
+    if ((!wasInRange && isInRange) || (wasInRange && !isInRange)) {
+      threats.push(u);
+    }
+  }
+  return threats;
 }

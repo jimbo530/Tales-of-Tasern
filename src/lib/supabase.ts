@@ -128,6 +128,140 @@ export async function getActiveListings(): Promise<Listing[]> {
   return (data ?? []) as Listing[];
 }
 
+// ── Shared NFT/LP Registry ─────────────────────────────────────────────────
+
+export type NftRow = {
+  id: string;
+  name: string;
+  contract_address: string;
+  chain: "base" | "polygon";
+};
+
+export type LpPairRow = {
+  id: string;
+  pair_address: string;
+  chain: "base" | "polygon";
+  label: string | null;
+};
+
+let _nftCache: NftRow[] | null = null;
+let _lpCache: { base: string[]; polygon: string[] } | null = null;
+
+export async function getSharedNfts(): Promise<NftRow[]> {
+  if (_nftCache) return _nftCache;
+  const { data, error } = await supabase
+    .from("nfts")
+    .select("id, name, contract_address, chain")
+    .order("created_at", { ascending: true });
+  if (error) { console.error("getSharedNfts:", error); return []; }
+  _nftCache = (data ?? []) as NftRow[];
+  return _nftCache;
+}
+
+export async function getSharedLpPairs(): Promise<{ base: `0x${string}`[]; polygon: `0x${string}`[] }> {
+  if (_lpCache) return _lpCache as { base: `0x${string}`[]; polygon: `0x${string}`[] };
+  const { data, error } = await supabase
+    .from("lp_pairs")
+    .select("pair_address, chain")
+    .order("created_at", { ascending: true });
+  if (error) { console.error("getSharedLpPairs:", error); return { base: [], polygon: [] }; }
+  const rows = (data ?? []) as LpPairRow[];
+  const result = {
+    base: rows.filter(r => r.chain === "base").map(r => r.pair_address as `0x${string}`),
+    polygon: rows.filter(r => r.chain === "polygon").map(r => r.pair_address as `0x${string}`),
+  };
+  _lpCache = { base: result.base as string[], polygon: result.polygon as string[] };
+  return result;
+}
+
+// ── Chain Data Queries (read from update-chain-data cron) ───────────────────
+
+export type TokenAmountRow = {
+  nft_address: string;
+  token_address: string;
+  symbol: string;
+  raw_amount: number;
+  usd_value: number;
+  decimals: number;
+};
+
+export type TokenPriceRow = {
+  token_address: string;
+  symbol: string;
+  usd_price: number;
+  decimals: number;
+  category: string;
+};
+
+export type NftSummaryRow = {
+  nft_address: string;
+  name: string;
+  chain: string;
+  usd_backing: number;
+  usd_traditional: number;
+  usd_game: number;
+  usd_impact: number;
+};
+
+export type SellerOwnershipRow = {
+  nft_address: string;
+  chain: string;
+  balance: number;
+};
+
+export type NftImageRow = {
+  nft_address: string;
+  chain: string;
+  metadata_uri: string | null;
+  image_url: string | null;
+};
+
+/** All token amounts for every NFT (for stat computation) */
+export async function getTokenAmounts(): Promise<TokenAmountRow[]> {
+  const { data, error } = await supabase
+    .from("nft_token_amounts")
+    .select("nft_address, token_address, symbol, raw_amount, usd_value, decimals");
+  if (error) { console.error("getTokenAmounts:", error); return []; }
+  return (data ?? []) as TokenAmountRow[];
+}
+
+/** Token USD prices and categories */
+export async function getTokenPrices(): Promise<TokenPriceRow[]> {
+  const { data, error } = await supabase
+    .from("token_prices")
+    .select("token_address, symbol, usd_price, decimals, category");
+  if (error) { console.error("getTokenPrices:", error); return []; }
+  return (data ?? []) as TokenPriceRow[];
+}
+
+/** Per-NFT summary with USD backing breakdown */
+export async function getNftSummaries(): Promise<NftSummaryRow[]> {
+  const { data, error } = await supabase
+    .from("nft_summary")
+    .select("nft_address, name, chain, usd_backing, usd_traditional, usd_game, usd_impact");
+  if (error) { console.error("getNftSummaries:", error); return []; }
+  return (data ?? []) as NftSummaryRow[];
+}
+
+/** Which NFTs the seller wallet owns */
+export async function getSellerOwnership(): Promise<SellerOwnershipRow[]> {
+  const { data, error } = await supabase
+    .from("seller_ownership")
+    .select("nft_address, chain, balance")
+    .gt("balance", 0);
+  if (error) { console.error("getSellerOwnership:", error); return []; }
+  return (data ?? []) as SellerOwnershipRow[];
+}
+
+/** Cached NFT images */
+export async function getNftImages(): Promise<NftImageRow[]> {
+  const { data, error } = await supabase
+    .from("nft_images")
+    .select("nft_address, chain, metadata_uri, image_url");
+  if (error) { console.error("getNftImages:", error); return []; }
+  return (data ?? []) as NftImageRow[];
+}
+
 // ── Adventure Saves ─────────────────────────────────────────────────────────
 
 export type AdventureSave = {

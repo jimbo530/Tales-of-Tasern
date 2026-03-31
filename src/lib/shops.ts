@@ -785,107 +785,107 @@ const MERCENARY_GUILD: Shop = {
   kardovOnly: true, // also available at fortress hexes
   items: [
     // ---- Foot Skirmishers (cheap, hit-and-run) ----
-    shopItem("merc_skirmisher", "Skirmisher, Foot", "gear", 2, 0, "A lightly armed harasser with sling and halfspear. Hit-and-run only.", {
+    shopItem("merc_skirmisher", "Skirmisher, Foot", "gear", 12, 0, "A lightly armed harasser with sling and halfspear. Hit-and-run only.", {
       effect: "\u{1F4B0} UPKEEP: 2sp/day + 1 food/day | +1 ranged support. Flees if engaged in melee. Padded armor, sling, halfspear",
     }),
-    shopItem("merc_skirmisher_archer", "Skirmisher, Archer", "gear", 4, 0, "A mobile bowman in leather armor. Good at softening targets.", {
+    shopItem("merc_skirmisher_archer", "Skirmisher, Archer", "gear", 50, 0, "A mobile bowman in leather armor. Good at softening targets.", {
       effect: "\u{1F4B0} UPKEEP: 4sp/day + 1 food/day | +2 ranged support. Light crossbow, handaxe, leather armor. Retreats when pressed",
     }),
 
     // ---- Light Foot (frontline infantry) ----
-    shopItem("merc_light_foot", "Light Footman", "gear", 3, 0, "A basic soldier with shield and sword. Holds the line.", {
+    shopItem("merc_light_foot", "Light Footman", "gear", 25, 0, "A basic soldier with shield and sword. Holds the line.", {
       effect: "\u{1F4B0} UPKEEP: 3sp/day + 1 food/day | +1 melee support, absorbs 1 hit/fight. Studded leather, short sword, shield",
     }),
-    shopItem("merc_light_archer", "Light Archer", "gear", 4, 0, "An archer trained to march in formation and hold position.", {
+    shopItem("merc_light_archer", "Light Archer", "gear", 90, 0, "An archer trained to march in formation and hold position.", {
       effect: "\u{1F4B0} UPKEEP: 4sp/day + 1 food/day | +2 ranged support. Leather, longbow, dagger. Covering fire",
     }),
 
     // ---- Medium Foot (professional soldiers) ----
-    shopItem("merc_medium_foot", "Medium Footman", "gear", 8, 0, "A well-armed, well-armored professional soldier. City guard quality.", {
+    shopItem("merc_medium_foot", "Medium Footman", "gear", 65, 0, "A well-armed, well-armored professional soldier. City guard quality.", {
       effect: "\u{1F4B0} UPKEEP: 8sp/day + 1 food/day | +2 melee support, absorbs 2 hits/fight. Chain shirt, longsword, shield",
       minLevel: 5,
     }),
-    shopItem("merc_pikeman", "Pikeman", "gear", 10, 0, "A spear-wielding soldier trained to counter cavalry charges.", {
+    shopItem("merc_pikeman", "Pikeman", "gear", 115, 0, "A spear-wielding soldier trained to counter cavalry charges.", {
       effect: "\u{1F4B0} UPKEEP: 1gp/day + 1 food/day | +3 melee support vs mounted, set against charge. Scale mail, longspear",
       minLevel: 5,
     }),
 
     // ---- Heavy Foot (shock troops) ----
-    shopItem("merc_heavy_foot", "Heavy Footman", "gear", 20, 0, "A heavily armored shock trooper. First into the breach.", {
+    shopItem("merc_heavy_foot", "Heavy Footman", "gear", 850, 0, "A heavily armored shock trooper. First into the breach.", {
       effect: "\u{1F4B0} UPKEEP: 2gp/day + 1 food/day | +3 melee support, absorbs 3 hits/fight. Half-plate, greatsword, heavy shield",
       minLevel: 15,
     }),
 
     // ---- Mounted (require stabling) ----
-    shopItem("merc_light_mounted", "Light Cavalry", "gear", 16, 0, "A fast rider in leather armor. Exploits flanks and weak spots.", {
+    shopItem("merc_light_mounted", "Light Cavalry", "gear", 230, 0, "A fast rider in leather armor. Exploits flanks and weak spots.", {
       effect: "\u{1F4B0} UPKEEP: 1.6gp/day + 1 food/day | +2 melee support, mobile flanking. Leather, lance, short sword, light warhorse",
       minLevel: 10,
     }),
-    shopItem("merc_medium_mounted", "Medium Cavalry", "gear", 36, 0, "An armored lancer on a barded warhorse. Serious combat power.", {
+    shopItem("merc_medium_mounted", "Medium Cavalry", "gear", 530, 0, "An armored lancer on a barded warhorse. Serious combat power.", {
       effect: "\u{1F4B0} UPKEEP: 3.6gp/day + 1 food/day | +4 melee support, devastating charge. Chain, lance, longsword, heavy warhorse w/ barding",
       minLevel: 20,
     }),
-    shopItem("merc_heavy_mounted", "Heavy Cavalry", "gear", 48, 0, "A knight-grade heavy lancer. Masters of the battlefield.", {
+    shopItem("merc_heavy_mounted", "Heavy Cavalry", "gear", 830, 0, "A knight-grade heavy lancer. Masters of the battlefield.", {
       effect: "\u{1F4B0} UPKEEP: 4.8gp/day + 1 food/day | +5 melee support, charge breaks lines. Half-plate, heavy lance, heavy warhorse w/ heavy barding",
       minLevel: 25,
     }),
 
     // ---- Exotic Troops ----
-    shopItem("merc_goblin", "Goblin Scouts", "gear", 1, 0, "Cheap, expendable scouts. Useful for scouting ahead and setting ambushes.", {
+    shopItem("merc_goblin", "Goblin Scouts", "gear", 3, 0, "Cheap, expendable scouts. Useful for scouting ahead and setting ambushes.", {
       effect: "\u{1F4B0} UPKEEP: 1sp/day + 1 food/day | +1 scouting, reveals dangers 1 hex ahead. Leather, morningstar, javelins",
     }),
-    shopItem("merc_hobgoblin", "Hobgoblin Soldiers", "gear", 4, 0, "Disciplined and well-organized. Better troops than their cost suggests.", {
+    shopItem("merc_hobgoblin", "Hobgoblin Soldiers", "gear", 15, 0, "Disciplined and well-organized. Better troops than their cost suggests.", {
       effect: "\u{1F4B0} UPKEEP: 2sp/day + 1 food/day | +2 melee support, fight in formation. Leather, longsword, shield, javelins",
       minLevel: 5,
     }),
-    shopItem("merc_gnoll", "Gnoll Brutes", "gear", 4, 0, "Towering hyena-headed warriors. Brutal in close combat.", {
+    shopItem("merc_gnoll", "Gnoll Brutes", "gear", 15, 0, "Towering hyena-headed warriors. Brutal in close combat.", {
       effect: "\u{1F4B0} UPKEEP: 2sp/day + 1 food/day | +3 melee support but -1 discipline. Scale mail, battleaxe, shortbow",
       minLevel: 5,
     }),
-    shopItem("merc_bugbear", "Bugbear Enforcers", "gear", 40, 0, "Large, stealthy, and savage. Excellent ambush troops.", {
+    shopItem("merc_bugbear", "Bugbear Enforcers", "gear", 80, 0, "Large, stealthy, and savage. Excellent ambush troops.", {
       effect: "\u{1F4B0} UPKEEP: 4gp/day + 1 food/day | +3 melee, +2 ambush/stealth. Leather, morningstar, javelins. Move Silently +4",
       minLevel: 10,
     }),
-    shopItem("merc_ogre", "Ogre Mercenary", "gear", 40, 0, "A dim-witted giant that hits like a battering ram. Requires extra feeding.", {
+    shopItem("merc_ogre", "Ogre Mercenary", "gear", 100, 0, "A dim-witted giant that hits like a battering ram. Requires extra feeding.", {
       effect: "\u{1F4B0} UPKEEP: 4gp/day + 3 food/day | +5 melee support, can break barriers. Huge greatclub, hide armor",
       minLevel: 15,
     }),
-    shopItem("merc_centaur", "Centaur Lancer", "gear", 60, 0, "A noble half-horse warrior with lance and bow. Proud and self-sufficient.", {
+    shopItem("merc_centaur", "Centaur Lancer", "gear", 150, 0, "A noble half-horse warrior with lance and bow. Proud and self-sufficient.", {
       effect: "\u{1F4B0} UPKEEP: 6gp/day + 1 food/day | +4 melee/+3 ranged, mobile. Heavy lance, composite longbow (+4 Str), shield",
       minLevel: 20,
     }),
-    shopItem("merc_minotaur", "Minotaur Champion", "gear", 80, 0, "A massive bull-headed warrior wielding an enormous axe. Terrifying on the battlefield.", {
+    shopItem("merc_minotaur", "Minotaur Champion", "gear", 200, 0, "A massive bull-headed warrior wielding an enormous axe. Terrifying on the battlefield.", {
       effect: "\u{1F4B0} UPKEEP: 8gp/day + 1 food/day | +6 melee support, charge attack, natural cunning (never gets lost). Huge greataxe",
       minLevel: 25,
     }),
 
     // ---- Specialist Hirelings ----
-    shopItem("merc_guide", "Wilderness Guide", "gear", 3, 0, "A weathered local who knows the trails, water sources, and dangers of the region.", {
+    shopItem("merc_guide", "Wilderness Guide", "gear", 5, 0, "A weathered local who knows the trails, water sources, and dangers of the region.", {
       effect: "\u{1F4B0} UPKEEP: 3sp/day + 1 food/day | +4 Survival/Knowledge(local). Reduces hazard chance. Reveals terrain 2 hexes out",
     }),
-    shopItem("merc_healer", "Field Healer", "gear", 5, 0, "An adept with basic divine magic. Keeps the party patched up on the road.", {
+    shopItem("merc_healer", "Field Healer", "gear", 10, 0, "An adept with basic divine magic. Keeps the party patched up on the road.", {
       effect: "\u{1F4B0} UPKEEP: 5sp/day + 1 food/day | Cure Light Wounds 2x/day (1d8+1). +2 Heal checks in camp",
       minLevel: 3,
     }),
-    shopItem("merc_cook", "Camp Cook", "gear", 1, 0, "A skilled cook who can stretch rations and forage for ingredients.", {
+    shopItem("merc_cook", "Camp Cook", "gear", 2, 0, "A skilled cook who can stretch rations and forage for ingredients.", {
       effect: "\u{1F4B0} UPKEEP: 1sp/day + 1 food/day | Reduces party food consumption by 1/day. +1 morale on rest healing",
     }),
-    shopItem("merc_animal_trainer", "Animal Trainer", "gear", 8, 0, "An expert handler who can train and care for exotic beasts.", {
+    shopItem("merc_animal_trainer", "Animal Trainer", "gear", 15, 0, "An expert handler who can train and care for exotic beasts.", {
       effect: "\u{1F4B0} UPKEEP: 8sp/day + 1 food/day | Required to train exotic pets/mounts. +8 Handle Animal. Calms hostile animals",
       minLevel: 5,
     }),
-    shopItem("merc_sage", "Sage", "gear", 20, 0, "A learned scholar who can identify items, lore, and magical phenomena.", {
+    shopItem("merc_sage", "Sage", "gear", 50, 0, "A learned scholar who can identify items, lore, and magical phenomena.", {
       effect: "\u{1F4B0} UPKEEP: 2gp/day + 1 food/day | +10 Knowledge (any). Identifies magic items and texts. Sedentary \u2014 won't travel",
       minLevel: 10,
     }),
-    shopItem("merc_teamster", "Teamster", "gear", 3, 0, "A driver with a cart or wagon who handles pack animals and cargo.", {
+    shopItem("merc_teamster", "Teamster", "gear", 5, 0, "A driver with a cart or wagon who handles pack animals and cargo.", {
       effect: "\u{1F4B0} UPKEEP: 3sp/day + 1 food/day | +50% carry capacity for party. Handles mounts and pack animals. Cart not included",
     }),
-    shopItem("merc_interpreter", "Interpreter", "gear", 3, 0, "A polyglot who speaks several regional and exotic languages.", {
+    shopItem("merc_interpreter", "Interpreter", "gear", 5, 0, "A polyglot who speaks several regional and exotic languages.", {
       effect: "\u{1F4B0} UPKEEP: 3sp/day + 1 food/day | Translates 3+ languages. +2 Diplomacy with foreign NPCs",
       minLevel: 5,
     }),
-    shopItem("merc_siege_engineer", "Siege Engineer", "gear", 20, 0, "A specialist in fortification assault and construction. Invaluable for strongholds.", {
+    shopItem("merc_siege_engineer", "Siege Engineer", "gear", 50, 0, "A specialist in fortification assault and construction. Invaluable for strongholds.", {
       effect: "\u{1F4B0} UPKEEP: 2gp/day + 1 food/day | Builds/operates siege equipment, assesses fortifications. Knowledge(tactics) +8",
       minLevel: 20,
     }),

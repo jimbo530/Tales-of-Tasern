@@ -144,12 +144,11 @@ export type CharacterSave = {
 };
 
 // ── XP & Leveling ────────────────────────────────────────────────────────────
-// XP curve: each level costs more. Level 1→2 = 100 XP, doubles every 5 levels.
+// D&D 3.5 PHB Table 3-2: XP needed from level N to N+1 = N × 1,000.
+// Total XP at level N = N*(N-1)/2 * 1000.
 
 export function xpForLevel(level: number): number {
-  const bracket = Math.floor((level - 1) / 5);
-  const base = 100 * Math.pow(2, bracket);
-  return base;
+  return level * 1000;
 }
 
 export function xpToNextLevel(currentLevel: number, currentXp: number): { needed: number; progress: number } {
@@ -258,11 +257,13 @@ export function travel(
 
 // ── Battle Rewards ───────────────────────────────────────────────────────────
 
+// D&D 3.5 DMG Table 2-6 (simplified): CR = level → 300 XP per character.
+// Easy ≈ CR below level, Medium ≈ CR equal, Hard ≈ CR above.
 export function battleRewards(difficulty: "easy" | "medium" | "hard", playerLevel: number): { xp: number; goldCp: number } {
-  const base = { easy: 25, medium: 60, hard: 120 };
+  const base = { easy: 150, medium: 300, hard: 600 };
   const goldBase = { easy: 500, medium: 1500, hard: 3000 }; // in copper
-  // Scale slightly with level so grinding stays worthwhile
-  const scale = 1 + (playerLevel - 1) * 0.1;
+  // Scale with level so higher-level fights stay rewarding
+  const scale = 1 + (playerLevel - 1) * 0.15;
   return {
     xp: Math.round(base[difficulty] * scale),
     goldCp: Math.round(goldBase[difficulty] * scale),

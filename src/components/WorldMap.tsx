@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useRef, useEffect, useCallback } from "react";
-import { type CharacterSave, type Coins, type Equipment, travel, HOURS_PER_ACTION, formatCoins, totalCp, canAfford, cpToCoins, coinWeight, isQuestOnCooldown, isQuestOnDayCooldown, dayCooldownRemaining, xpToNextLevel, getExhaustionPoints, exhaustedStat, lowestExhaustedStat } from "@/lib/saveSystem";
+import { type CharacterSave, type Coins, type Equipment, travel, HOURS_PER_ACTION, formatCoins, totalCp, canAfford, cpToCoins, coinWeight, exchangeUp, isQuestOnCooldown, isQuestOnDayCooldown, dayCooldownRemaining, xpToNextLevel, getExhaustionPoints, exhaustedStat, lowestExhaustedStat } from "@/lib/saveSystem";
 import type { NftCharacter } from "@/hooks/useNftStats";
 import { getZone, getLevelRange, generateFightEncounter, generateLootDrop, type EncounterData, type LootDrop } from "@/lib/encounters";
 import { getShopsForLocation, getAvailableItems, type Shop, type ShopItem } from "@/lib/shops";
@@ -9,7 +9,7 @@ import { SKILLS, abilityMod as calcAbilityMod } from "@/lib/skills";
 import { rollFieldTreasure, rollTreasure, d, nd } from "@/lib/treasure";
 import { MONSTERS } from "@/lib/monsters";
 import { createMonsterSpec, type EnemySpec } from "@/lib/hexCombat";
-import { FEATS } from "@/lib/feats";
+import { FEATS, getSkillFocusBonus } from "@/lib/feats";
 import { getClassById } from "@/lib/classes";
 import { getCarryThresholds, getEncumbrance } from "@/lib/battleStats";
 import { getItemInfo, getItemWeight } from "@/lib/itemRegistry";
@@ -106,6 +106,8 @@ export type FieldSkillId = keyof typeof FIELD_SKILLS;
 export type WorldLuckResult = {
   worldRoll: number;          // d20 world luck — HIDDEN from player (DM knowledge)
   skillRoll: number;          // d20 + ability mod + ranks — SHOWN to player
+  rawD20?: number;            // the raw d20 roll (shown to player)
+  skillMod?: number;          // total modifier (ranks + ability mod + feats)
   skillUsed?: string;         // which skill was used (shown to player)
   skillDC: number;            // difficulty to beat (internal)
   interaction: HexInteraction;
@@ -242,6 +244,7 @@ export function rollWorldLuck(
   partySize?: number,             // number of heroes in party (for thug encounters)
   fame?: number,                  // performer renown (for Perform skill)
   exhaustionPoints?: number,      // each point = -1 to all stats
+  feats?: string[],               // feat IDs for skill bonuses (e.g. "skill-focus:diplomacy")
 ): WorldLuckResult {
   // ── Two rolls: world (hidden) + skill check (shown to player) ──
   const worldRoll = Math.floor(Math.random() * 20) + 1;
@@ -249,21 +252,26 @@ export function rollWorldLuck(
   const exh = exhaustionPoints ?? 0;
   const exhStat = (v: number) => Math.max(1, Math.floor(v) - exh);
 
-  // Compute skill check: d20 + ability mod (exhaustion-reduced) + ranks
+  // Compute skill check: d20 + ability mod (exhaustion-reduced) + ranks + feat bonuses
   let skillRoll: number;
   let skillName: string | undefined;
+  let skillMod = 0;
   if (interaction === "skill" && fieldSkillId) {
     const fs = FIELD_SKILLS[fieldSkillId];
     const abilScore = exhStat(stats[fs.ability] ?? 10);
     const ranks = skillRanks[fs.id] ?? 0;
-    skillRoll = rawD20 + calcAbilityMod(abilScore) + ranks;
+    const focusBonus = feats ? getSkillFocusBonus(feats, fs.id) : 0;
+    skillMod = calcAbilityMod(abilScore) + ranks + focusBonus;
+    skillRoll = rawD20 + skillMod;
     skillName = fs.name;
   } else if (interaction === "rest") {
     // Rest uses WIS with a penalty
-    skillRoll = rawD20 + calcAbilityMod(exhStat(stats.wis ?? 10)) - 2;
+    skillMod = calcAbilityMod(exhStat(stats.wis ?? 10)) - 2;
+    skillRoll = rawD20 + skillMod;
   } else {
     // Travel uses WIS
-    skillRoll = rawD20 + calcAbilityMod(exhStat(stats.wis ?? 10));
+    skillMod = calcAbilityMod(exhStat(stats.wis ?? 10));
+    skillRoll = rawD20 + skillMod;
   }
 
   const isFarm = hex.tags?.includes("farm");
@@ -275,8 +283,8 @@ export function rollWorldLuck(
 
   // ── Helpers used by multiple branches ──
   const sid = fieldSkillId ?? "search";
-  const r = (o: Omit<WorldLuckResult, "worldRoll" | "skillRoll" | "skillUsed" | "interaction">): WorldLuckResult =>
-    ({ worldRoll, skillRoll, skillUsed: skillName, interaction, ...o });
+  const r = (o: Omit<WorldLuckResult, "worldRoll" | "skillRoll" | "rawD20" | "skillMod" | "skillUsed" | "interaction">): WorldLuckResult =>
+    ({ worldRoll, skillRoll, rawD20, skillMod, skillUsed: skillName, interaction, ...o });
 
   // ── World roll determines DANGER (hidden from player) ──
   // Towns are mostly safe — but thugs lurk in alleys
@@ -2042,6 +2050,7 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
   const [markedHexes, setMarkedHexes] = useState<Set<string>>(new Set());
   const [lastAction, setLastAction] = useState<WorldLuckResult | null>(null);
   const [pendingQuest, setPendingQuest] = useState<QuestEncounter | null>(null);
+  const [escapeResult, setEscapeResult] = useState<{ roll: number; dc: number; success: boolean } | null>(null);
   const [cityDistrict, setCityDistrict] = useState<string | null>(null); // "market" | "temple" | "high" | "low"
   const [cityShop, setCityShop] = useState<string | null>(null);         // shop or temple id
   const [leftPanel, setLeftPanel] = useState<"sheet" | "inventory">("sheet");
@@ -2056,7 +2065,10 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
 
   // Append to game log when a new action happens
   useEffect(() => {
-    if (lastAction) setGameLog(prev => [lastAction, ...prev].slice(0, 50));
+    if (lastAction) {
+      setGameLog(prev => [lastAction, ...prev].slice(0, 50));
+      setEscapeResult(null);
+    }
   }, [lastAction]);
 
   // Generate quest/encounter data when lastAction changes (stable, doesn't re-roll on re-render)
@@ -2232,8 +2244,33 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
       return;
     }
 
+    // Random encounter fight — build enemies from encounter data
+    if (lastAction.outcome === "fight" && lastAction.encounter) {
+      const enemies: EnemySpec[] = [];
+      const terrainEmoji: Record<string, string> = {
+        forest: "\u{1F43B}", desert: "\u{1F982}", jungle: "\u{1F40D}", swamp: "\u{1F40A}",
+        mountain: "\u{1F9CC}", plains: "\u{1F43A}", coast: "\u{1F419}", town: "\u{1F5E1}\u{FE0F}",
+      };
+      const hex = ALL_HEXES.find(h => h.q === activeMapHex.q && h.r === activeMapHex.r);
+      const emoji = terrainEmoji[hex?.type ?? "plains"] ?? "\u{1F47E}";
+      for (const group of lastAction.encounter.monsters) {
+        for (let i = 0; i < group.count; i++) {
+          enemies.push(createMonsterSpec(group.monster, emoji));
+        }
+      }
+      if (enemies.length > 0) {
+        setPendingQuest({
+          questId: "random_encounter",
+          questName: "Encounter",
+          enemies,
+          difficulty: lastAction.difficulty ?? "easy",
+        });
+        return;
+      }
+    }
+
     setPendingQuest(null);
-  }, [lastAction, save.party.heroes.length, save.level]);
+  }, [lastAction, save.party.heroes.length, save.level, activeMapHex.q, activeMapHex.r]);
 
   const [selectedSkill, setSelectedSkill] = useState<FieldSkillId>("search");
   const currentHex = ALL_HEXES.find(h => h.q === activeMapHex.q && h.r === activeMapHex.r);
@@ -2248,6 +2285,24 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
   // For existing saves without last_rest_hour/last_ate_hour, treat as fresh
   const exhaustion = getExhaustionPoints(save.hour ?? 0, save.last_rest_hour ?? (save.hour ?? 0), save.last_ate_hour ?? (save.hour ?? 0));
   const exhPts = exhaustion.points;  // -1 to all stats per point
+
+  // Encumbrance check — blocks travel when overloaded
+  // Followers with carry_bonus abilities increase party capacity
+  const playerStr = character ? Math.max(1, character.stats.str) : 10;
+  const followerCarryBonus = save.party.heroes.reduce((sum, h) =>
+    h.followers.filter(f => f.alive).reduce((s, f) => {
+      if (f.abilities.includes("carry_bonus_50")) return s + 0.5;
+      if (f.abilities.includes("carry_bonus_30")) return s + 0.3;
+      return s;
+    }, sum), 0);
+  const effectiveStr = Math.round(playerStr * (1 + followerCarryBonus));
+  const playerInvWeight = save.inventory.reduce((s, it) => s + getItemWeight(it.id) * it.qty, 0);
+  const playerEqWeight = (["weapon", "armor", "shield", "accessory"] as (keyof Equipment)[]).reduce((s, sl) => {
+    const id = save.equipment[sl as keyof Equipment]; return id ? s + getItemWeight(id) : s;
+  }, 0);
+  const playerCoinWeight = coinWeight(save.coins);
+  const playerTotalWeight = playerInvWeight + playerEqWeight + playerCoinWeight;
+  const playerEncumbrance = getEncumbrance(effectiveStr, playerTotalWeight);
 
   // Auto-collapse when any stat hits 1 from exhaustion (only on change, not mount)
   const prevExhPts = useRef(exhPts);
@@ -2282,7 +2337,7 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
     // Convert player viewBox coords to fraction of map, then offset so player is centered
     const px = -(playerPx.x / VB) * VB * zoom + rect.width / 2;
     const py = -(playerPx.y / VB) * VB * zoom + rect.height / 2;
-    setPan({ x: px, y: py });
+    setPan(clampPan({ x: px, y: py }));
   }, [zoom, playerPx.x, playerPx.y]);
 
   // Auto-center on mount and when player moves
@@ -2312,15 +2367,17 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
 
       // Zoom toward cursor: adjust pan so the point under cursor stays fixed
       const scale = newZoom / oldZoom;
-      setPan(p => ({
-        x: mx - scale * (mx - p.x),
-        y: my - scale * (my - p.y),
-      }));
+      const newMapSize = VB * newZoom;
+      const newP = { x: mx - scale * (mx - pan.x), y: my - scale * (my - pan.y) };
+      // Clamp inline since mapSize changes with new zoom
+      newP.x = Math.min(0, Math.max(rect.width - newMapSize, newP.x));
+      newP.y = Math.min(0, Math.max(rect.height - newMapSize, newP.y));
+      setPan(newP);
       setZoom(newZoom);
     }
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
-  }, [zoom]);
+  }, [zoom, pan]);
 
   // Click+drag to pan (suppress hex click if dragged > 5px)
   const wasDrag = useRef(false);
@@ -2335,7 +2392,7 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
     const dx = e.clientX - dragRef.current.startX;
     const dy = e.clientY - dragRef.current.startY;
     if (Math.abs(dx) > 5 || Math.abs(dy) > 5) wasDrag.current = true;
-    setPan({ x: dragRef.current.panX - dx, y: dragRef.current.panY - dy });
+    setPan(clampPan({ x: dragRef.current.panX - dx, y: dragRef.current.panY - dy }));
   }
   function onPointerUp() {
     dragRef.current = null;
@@ -2370,12 +2427,13 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
 
   function handleTravel() {
     if (!selectedHex) return;
+    if (playerEncumbrance === "over") return; // overloaded — cannot travel
     const dist = hexDistance(activeMapHex, selectedHex);
     if (dist === 0 || dist > MAX_TRAVEL) return;
     const effectiveHexes = travelCost(dist, selectedHex);
     const result = travel(effectiveHexes, save, con);
     const destDist = hexDistance(selectedHex, CITY_CENTER);
-    const encounter = rollWorldLuck(selectedHex, "travel", charStats, skillRanks, destDist, undefined, heroCount, save.fame ?? 0, exhPts);
+    const encounter = rollWorldLuck(selectedHex, "travel", charStats, skillRanks, destDist, undefined, heroCount, save.fame ?? 0, exhPts, save.feats);
     onTravel({ q: selectedHex.q, r: selectedHex.r }, result, selectedHex, encounter);
     setSelectedHex(null);
   }
@@ -2388,11 +2446,27 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
     const oldZoom = zoom;
     const newZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, +(oldZoom + delta).toFixed(1)));
     const scale = newZoom / oldZoom;
-    setPan(p => ({ x: cx - scale * (cx - p.x), y: cy - scale * (cy - p.y) }));
+    const newMapSize = VB * newZoom;
+    setPan(p => {
+      const nx = cx - scale * (cx - p.x);
+      const ny = cy - scale * (cy - p.y);
+      return { x: Math.min(0, Math.max(rect.width - newMapSize, nx)), y: Math.min(0, Math.max(rect.height - newMapSize, ny)) };
+    });
     setZoom(newZoom);
   }
 
   const mapSize = VB * zoom;
+
+  /** Clamp pan so the map always covers the visible container (no empty edges) */
+  const clampPan = useCallback((p: { x: number; y: number }) => {
+    const el = containerRef.current;
+    if (!el) return p;
+    const rect = el.getBoundingClientRect();
+    return {
+      x: Math.min(0, Math.max(rect.width - mapSize, p.x)),
+      y: Math.min(0, Math.max(rect.height - mapSize, p.y)),
+    };
+  }, [mapSize]);
 
   return (
     <div className="flex flex-col gap-2">
@@ -2533,6 +2607,25 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
                       <span>Speed</span><span className="font-bold">{stats.speed} ft</span>
                     </div>
                   </div>
+                  {/* Carry Weight */}
+                  {(() => {
+                    const thresh = getCarryThresholds(effectiveStr);
+                    const encCol = playerEncumbrance === "over" ? "rgba(220,38,38,0.8)" : playerEncumbrance === "heavy" ? "rgba(251,191,36,0.8)" : playerEncumbrance === "medium" ? "rgba(251,191,36,0.6)" : "rgba(74,222,128,0.6)";
+                    return (
+                      <div>
+                        <div className="flex justify-between mb-1">
+                          <span className="font-bold uppercase tracking-widest" style={{ fontSize: "0.45rem", color: "rgba(201,168,76,0.5)" }}>Carry Weight</span>
+                          <span className="font-bold" style={{ color: encCol }}>{playerTotalWeight.toFixed(1)}/{thresh.heavy} lbs</span>
+                        </div>
+                        <div style={{ height: 4, background: "rgba(255,255,255,0.05)", borderRadius: 2 }}>
+                          <div style={{ width: `${Math.min(100, (playerTotalWeight / Math.max(1, thresh.heavy)) * 100)}%`, height: "100%", background: encCol, borderRadius: 2 }} />
+                        </div>
+                        {playerEncumbrance === "over" && <div style={{ fontSize: "0.4rem", color: "rgba(220,38,38,0.9)", marginTop: 2 }}>OVERLOADED — cannot travel!</div>}
+                        {playerEncumbrance === "heavy" && <div style={{ fontSize: "0.4rem", color: "rgba(251,191,36,0.7)", marginTop: 2 }}>Heavy load — movement slowed</div>}
+                        {followerCarryBonus > 0 && <div style={{ fontSize: "0.4rem", color: "rgba(96,165,250,0.6)", marginTop: 1 }}>+{Math.round(followerCarryBonus * 100)}% from followers</div>}
+                      </div>
+                    );
+                  })()}
                   {/* Supplies */}
                   <div>
                     <div className="font-bold uppercase tracking-widest mb-1" style={{ fontSize: "0.45rem", color: "rgba(201,168,76,0.5)" }}>Supplies</div>
@@ -2616,28 +2709,21 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
               );
             })()}
             {leftPanel === "inventory" && (() => {
-              const str = character ? Math.max(1, character.stats.str) : 10;
-              const thresholds = getCarryThresholds(str);
-              const invWeight = save.inventory.reduce((sum, item) => sum + getItemWeight(item.id) * item.qty, 0);
-              const eqWeight = (["weapon", "armor", "shield", "accessory"] as (keyof Equipment)[]).reduce((sum, slot) => {
-                const id = save.equipment[slot];
-                return id ? sum + getItemWeight(id) : sum;
-              }, 0);
-              const cWeight = coinWeight(save.coins);
-              const totalWeight = invWeight + eqWeight + cWeight;
-              const enc = getEncumbrance(str, totalWeight);
-              const encColor = enc === "over" ? "rgba(220,38,38,0.8)" : enc === "heavy" ? "rgba(251,191,36,0.8)" : enc === "medium" ? "rgba(251,191,36,0.6)" : "rgba(74,222,128,0.6)";
+              const thresholds = getCarryThresholds(effectiveStr);
+              const encColor = playerEncumbrance === "over" ? "rgba(220,38,38,0.8)" : playerEncumbrance === "heavy" ? "rgba(251,191,36,0.8)" : playerEncumbrance === "medium" ? "rgba(251,191,36,0.6)" : "rgba(74,222,128,0.6)";
+              const cWeight = playerCoinWeight;
               return (
                 <div className="p-2 flex flex-col gap-2" style={{ fontSize: "0.55rem", color: "rgba(232,213,176,0.7)" }}>
                   {/* Carry weight bar */}
                   <div>
                     <div className="flex justify-between mb-1">
                       <span className="font-bold uppercase tracking-widest" style={{ fontSize: "0.45rem", color: "rgba(201,168,76,0.5)" }}>Carry Weight</span>
-                      <span className="font-bold" style={{ color: encColor }}>{totalWeight.toFixed(1)} / {thresholds.heavy} lbs ({enc})</span>
+                      <span className="font-bold" style={{ color: encColor }}>{playerTotalWeight.toFixed(1)} / {thresholds.heavy} lbs ({playerEncumbrance})</span>
                     </div>
                     <div style={{ height: 6, background: "rgba(255,255,255,0.05)", borderRadius: 3 }}>
-                      <div style={{ width: `${Math.min(100, (totalWeight / thresholds.heavy) * 100)}%`, height: "100%", background: encColor, borderRadius: 3 }} />
+                      <div style={{ width: `${Math.min(100, (playerTotalWeight / Math.max(1, thresholds.heavy)) * 100)}%`, height: "100%", background: encColor, borderRadius: 3 }} />
                     </div>
+                    {followerCarryBonus > 0 && <div style={{ fontSize: "0.4rem", color: "rgba(96,165,250,0.6)", marginTop: 2 }}>+{Math.round(followerCarryBonus * 100)}% capacity from followers</div>}
                   </div>
                   {/* Coin purse */}
                   <div>
@@ -2958,7 +3044,7 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
                       <div className="flex gap-1">
                         {(
                           <button onClick={() => {
-                              const result = rollWorldLuck(currentHex, "skill", charStats, skillRanks, distFromCity, selectedSkill, heroCount, save.fame ?? 0, exhPts);
+                              const result = rollWorldLuck(currentHex, "skill", charStats, skillRanks, distFromCity, selectedSkill, heroCount, save.fame ?? 0, exhPts, save.feats);
                               setLastAction(result); onAction(result);
                             }}
                             className="flex-1 px-2 py-1 rounded text-xs font-bold uppercase tracking-widest"
@@ -2967,7 +3053,7 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
                           </button>
                         )}
                         <button onClick={() => {
-                            const result = rollWorldLuck(currentHex, "rest", charStats, skillRanks, distFromCity, undefined, heroCount, save.fame ?? 0, exhPts);
+                            const result = rollWorldLuck(currentHex, "rest", charStats, skillRanks, distFromCity, undefined, heroCount, save.fame ?? 0, exhPts, save.feats);
                             setLastAction(result); onAction(result);
                           }}
                           disabled={save.food === 0 && save.current_hp >= save.max_hp}
@@ -3052,6 +3138,29 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
                         );
                       })}
                     </div>
+                    {/* Money Changer — merchants take 5% */}
+                    <button onClick={() => {
+                        const total = totalCp(save.coins);
+                        if (total <= 0) return;
+                        const newCoins = exchangeUp(save.coins, 0.05);
+                        const fee = total - totalCp(newCoins);
+                        const result: WorldLuckResult = {
+                          worldRoll: 0, skillRoll: 0, skillDC: 0,
+                          interaction: "rest", outcome: "nothing",
+                          description: `The jeweler exchanges your coin. ${formatCoins(save.coins)} → ${formatCoins(newCoins)} (5% fee).`,
+                          hpChange: 0, goldChange: -fee, foodChange: 0, xpChange: 0,
+                        };
+                        setLastAction(result); onAction(result);
+                      }}
+                      disabled={save.coins.sp + save.coins.cp <= 0}
+                      className="px-2 py-1.5 rounded text-xs font-bold mt-1"
+                      style={{
+                        background: "rgba(251,191,36,0.08)", color: "rgba(251,191,36,0.7)",
+                        border: "1px solid rgba(251,191,36,0.2)", fontSize: "0.5rem",
+                        opacity: save.coins.sp + save.coins.cp <= 0 ? 0.4 : 1,
+                      }}>
+                      {"\u{1F48E}"} Jeweler&apos;s Exchange (5% fee — consolidate coin)
+                    </button>
                   </div>
                 );
               }
@@ -3127,9 +3236,30 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
                           }}>
                           Healing Prayer ({formatCoins(cpToCoins(blessingCost))}) — Full HP
                         </button>
-                        <div style={{ fontSize: "0.35rem", color: "rgba(232,213,176,0.3)" }}>
-                          More blessings coming soon...
-                        </div>
+                        {/* Money Changer — temples take 10% but grant favor */}
+                        <button onClick={() => {
+                            const total = totalCp(save.coins);
+                            if (total <= 0) return;
+                            const newCoins = exchangeUp(save.coins, 0.10);
+                            const fee = total - totalCp(newCoins);
+                            const result: WorldLuckResult = {
+                              worldRoll: 0, skillRoll: 0, skillDC: 0,
+                              interaction: "rest", outcome: "nothing",
+                              description: `The temple changes your coin. ${formatCoins(save.coins)} → ${formatCoins(newCoins)} (10% tithe).`,
+                              hpChange: 0, goldChange: -fee, foodChange: 0, xpChange: 0,
+                              factionRepChange: { factionId: temple.id, amount: Math.max(1, Math.floor(fee / 100)) },
+                            };
+                            setLastAction(result); onAction(result);
+                          }}
+                          disabled={save.coins.sp + save.coins.cp <= 0}
+                          className="px-2 py-1.5 rounded text-xs font-bold"
+                          style={{
+                            background: "rgba(251,191,36,0.08)", color: "rgba(251,191,36,0.7)",
+                            border: "1px solid rgba(251,191,36,0.2)", fontSize: "0.5rem",
+                            opacity: save.coins.sp + save.coins.cp <= 0 ? 0.4 : 1,
+                          }}>
+                          Money Changer (10% tithe — earns temple favor)
+                        </button>
                       </div>
                     )}
                     {isPower && (
@@ -3530,7 +3660,7 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
                     <div className="flex gap-1 mt-1">
                       {(
                         <button onClick={() => {
-                            const result = rollWorldLuck(currentHex, "skill", charStats, skillRanks, distFromCity, selectedSkill, heroCount, save.fame ?? 0, exhPts);
+                            const result = rollWorldLuck(currentHex, "skill", charStats, skillRanks, distFromCity, selectedSkill, heroCount, save.fame ?? 0, exhPts, save.feats);
                             setLastAction(result); onAction(result);
                           }}
                           className="flex-1 px-2 py-1 rounded text-xs font-bold"
@@ -3539,7 +3669,7 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
                         </button>
                       )}
                       <button onClick={() => {
-                          const result = rollWorldLuck(currentHex, "rest", charStats, skillRanks, distFromCity, undefined, heroCount, save.fame ?? 0, exhPts);
+                          const result = rollWorldLuck(currentHex, "rest", charStats, skillRanks, distFromCity, undefined, heroCount, save.fame ?? 0, exhPts, save.feats);
                           setLastAction(result); onAction(result);
                         }}
                         disabled={save.food === 0 && save.current_hp >= save.max_hp}
@@ -3608,7 +3738,7 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
                   {(
                     <button
                       onClick={() => {
-                        const result = rollWorldLuck(currentHex, "skill", charStats, skillRanks, distFromCity, selectedSkill, heroCount, save.fame ?? 0, exhPts);
+                        const result = rollWorldLuck(currentHex, "skill", charStats, skillRanks, distFromCity, selectedSkill, heroCount, save.fame ?? 0, exhPts, save.feats);
                         setLastAction(result);
                         onAction(result);
                       }}
@@ -3623,7 +3753,7 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
                   )}
                   <button
                     onClick={() => {
-                      const result = rollWorldLuck(currentHex, "rest", charStats, skillRanks, distFromCity, undefined, heroCount, save.fame ?? 0, exhPts);
+                      const result = rollWorldLuck(currentHex, "rest", charStats, skillRanks, distFromCity, undefined, heroCount, save.fame ?? 0, exhPts, save.feats);
                       setLastAction(result);
                       onAction(result);
                     }}
@@ -3725,7 +3855,12 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
                       <span>Travel time:</span><span className="font-bold">{timeStr} ({speedLabel})</span>
                       <span>Food cost:</span><span className="font-bold">{hexCost} {"\u{1F356}"}{preview.starving ? " (!)" : ""}</span>
                     </div>
-                    {dist <= MAX_TRAVEL && (
+                    {playerEncumbrance === "over" && (
+                      <div className="mt-1 text-center px-2 py-1 rounded" style={{ fontSize: "0.5rem", color: "rgba(220,38,38,0.9)", background: "rgba(220,38,38,0.1)", border: "1px solid rgba(220,38,38,0.3)" }}>
+                        Overloaded! Drop items or give to followers before traveling.
+                      </div>
+                    )}
+                    {dist <= MAX_TRAVEL && playerEncumbrance !== "over" && (
                       <button onClick={handleTravel}
                         className="mt-1 w-full px-3 py-1.5 rounded text-xs font-bold uppercase tracking-widest"
                         style={{
@@ -3736,7 +3871,7 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
                         {"\u{1F6B6}"} Travel ({timeStr})
                       </button>
                     )}
-                    {dist > MAX_TRAVEL && (
+                    {dist > MAX_TRAVEL && playerEncumbrance !== "over" && (
                       <div className="mt-1 text-center" style={{ fontSize: "0.5rem", color: "rgba(201,168,76,0.4)" }}>
                         Too far — max {MAX_TRAVEL} hexes per move
                       </div>
@@ -3789,6 +3924,11 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
                 </div>
                 <div className="flex-1">
                   <span>{entry.description}</span>
+                  {entry.rawD20 != null && (
+                    <span className="ml-1" style={{ color: "rgba(168,85,247,0.7)", fontSize: "0.45rem", fontFamily: "monospace" }}>
+                      [d20({entry.rawD20}){entry.skillMod != null ? `${entry.skillMod >= 0 ? "+" : ""}${entry.skillMod}` : ""}={entry.skillRoll}]
+                    </span>
+                  )}
                   <span className="ml-2" style={{ color: "rgba(232,213,176,0.4)", fontSize: "0.45rem" }}>
                     {entry.hpChange !== 0 && <>{entry.hpChange > 0 ? "+" : ""}{entry.hpChange}HP </>}
                     {entry.coinReward && (entry.coinReward.gp > 0 || entry.coinReward.sp > 0 || entry.coinReward.cp > 0) && <>+{formatCoins(entry.coinReward)} </>}
@@ -3804,6 +3944,42 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
                     style={{ background: "rgba(220,38,38,0.15)", color: "rgba(220,38,38,0.9)", border: "1px solid rgba(220,38,38,0.4)", fontSize: "0.45rem" }}>
                     Fight!
                   </button>
+                )}
+                {idx === 0 && entry.outcome === "fight" && pendingQuest && !escapeResult && (
+                  <div className="shrink-0 flex flex-col gap-1">
+                    <button onClick={() => onQuestBattle(pendingQuest)}
+                      className="px-2 py-1 rounded text-xs font-bold uppercase"
+                      style={{ background: "rgba(220,38,38,0.15)", color: "rgba(220,38,38,0.9)", border: "1px solid rgba(220,38,38,0.4)", fontSize: "0.45rem" }}>
+                      Fight!
+                    </button>
+                    <button onClick={() => {
+                      const dexScore = character ? Math.max(1, character.stats.dex) : 10;
+                      const roll = Math.floor(Math.random() * 20) + 1;
+                      const total = roll + calcAbilityMod(dexScore);
+                      const dc = entry.skillDC ?? 12;
+                      if (total >= dc) {
+                        setEscapeResult({ roll: total, dc, success: true });
+                        setPendingQuest(null);
+                        setGameLog(prev => [{ ...prev[0], outcome: "avoided_danger" as const, description: `You slip away unseen! (DEX check ${total} vs DC ${dc})` }, ...prev.slice(1)]);
+                      } else {
+                        setEscapeResult({ roll: total, dc, success: false });
+                      }
+                    }}
+                      className="px-2 py-1 rounded text-xs font-bold uppercase"
+                      style={{ background: "rgba(96,165,250,0.15)", color: "rgba(96,165,250,0.9)", border: "1px solid rgba(96,165,250,0.4)", fontSize: "0.45rem" }}>
+                      Escape
+                    </button>
+                  </div>
+                )}
+                {idx === 0 && entry.outcome === "fight" && escapeResult && !escapeResult.success && pendingQuest && (
+                  <div className="shrink-0 flex flex-col gap-1 items-center">
+                    <span style={{ fontSize: "0.4rem", color: "rgba(220,38,38,0.8)" }}>Escape failed! ({escapeResult.roll} vs DC {escapeResult.dc})</span>
+                    <button onClick={() => { setEscapeResult(null); onQuestBattle(pendingQuest); }}
+                      className="px-2 py-1 rounded text-xs font-bold uppercase"
+                      style={{ background: "rgba(220,38,38,0.15)", color: "rgba(220,38,38,0.9)", border: "1px solid rgba(220,38,38,0.4)", fontSize: "0.45rem" }}>
+                      Fight!
+                    </button>
+                  </div>
                 )}
               </div>
             );

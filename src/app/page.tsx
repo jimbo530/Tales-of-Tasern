@@ -19,14 +19,14 @@ import { PowerUp } from "@/components/PowerUp";
 import { HexBattle, type QuestEncounter } from "@/components/HexBattle";
 import { WorldMap, type WorldLuckResult } from "@/components/WorldMap";
 import { PlayerInventory } from "@/components/PlayerInventory";
-import { CLASSES, getClassById, type CharacterClass, type SpellcastingInfo } from "@/lib/classes";
+import { CLASSES, getClassById, HIT_DIE_VALUES, type CharacterClass, type SpellcastingInfo } from "@/lib/classes";
 import { SKILLS, abilityMod, type Skill } from "@/lib/skills";
-import { FEATS, getAvailableFeats, getStartingFeatCount, type Feat } from "@/lib/feats";
-import { SPELLS, SPELL_SCHOOLS, SPECIALIZABLE_SCHOOLS, getClassSpells, getSpellsKnown, type Spell, type SpellSchool } from "@/lib/spells";
+import { FEATS, getAvailableFeats, getStartingFeatCount, featsForLevelUp, featNeedsChoice, parseFeatChoice, type Feat } from "@/lib/feats";
+import { SPELLS, SPELL_SCHOOLS, SPECIALIZABLE_SCHOOLS, getClassSpells, getSpellsKnown, getSpellSlots, type Spell, type SpellSchool } from "@/lib/spells";
 import { DOMAINS, type Domain } from "@/lib/domains";
 import { formatCoins, addCp, subtractCp, totalCp, addCoinsRaw, setQuestCooldown, setQuestCooldownDays, getExhaustionPoints, lowestExhaustedStat } from "@/lib/saveSystem";
 import { changeRep } from "@/lib/factions";
-import { allPartiesActed, resetPartyRound, nextUnactedParty } from "@/lib/party";
+import { allPartiesActed, resetPartyRound, nextUnactedParty, hireFollower, GENERAL_TEMPLATES, maxFollowers } from "@/lib/party";
 import { downloadAndCache, getCacheCount, clearImageCache } from "@/lib/imageCache";
 import { resolveImage, toHttp } from "@/lib/resolveImage";
 
@@ -101,6 +101,347 @@ type SpellConfig = {
   prohibited_schools?: string[];
 };
 
+// ── Level-Up Flow ──────────────────────────────────────────────────────────
+// Shown after battle when levelsGained > 0. Skills, feats, spells selection.
+
+function LevelUpFlow({ save, character, fromLevel, toLevel, onComplete }: {
+  save: import("@/lib/saveSystem").CharacterSave;
+  character: NftCharacter | null;
+  fromLevel: number;
+  toLevel: number;
+  onComplete: (patch: Partial<import("@/lib/saveSystem").CharacterSave>) => void;
+}) {
+  const cls = getClassById(save.class_id);
+  const stats = character?.stats ?? { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 };
+  const intMod = abilityMod(stats.int);
+  const conMod = abilityMod(stats.con);
+  const levelsGained = toLevel - fromLevel;
+
+  // ── HP gain ──
+  const hitDieValue = cls ? HIT_DIE_VALUES[cls.hitDie] : 8;
+  const hpPerLevel = Math.ceil(hitDieValue / 2) + conMod;
+  const totalHpGain = Math.max(levelsGained, hpPerLevel * levelsGained); // min 1 HP/level
+
+  // ── Skill points ──
+  const skillPointsPerLevel = Math.max(1, (cls?.skillPoints ?? 2) + intMod);
+  const totalSkillPoints = skillPointsPerLevel * levelsGained;
+  const classSkillIds = new Set(cls?.classSkills ?? []);
+  const maxClassRank = toLevel + 3;
+  const maxCrossRank = Math.floor((toLevel + 3) / 2);
+
+  // ── Feats ──
+  const { standard: featSlots, fighterBonus } = featsForLevelUp(fromLevel, toLevel, save.class_id);
+  const totalFeatSlots = featSlots + fighterBonus;
+
+  // ── Spells (spontaneous casters) ──
+  const casterType = cls?.spellcasting?.type;
+  const casterClass = cls?.spellcasting ? save.class_id as "sorcerer" | "bard" : null;
+  const isSpontaneous = casterType === "spontaneous" && (casterClass === "sorcerer" || casterClass === "bard");
+  const isWizard = save.class_id === "wizard";
+
+  // Calculate new spells to pick for spontaneous casters
+  let newSpellSlots: { level: number; count: number }[] = [];
+  if (isSpontaneous && casterClass) {
+    const oldKnown = getSpellsKnown(casterClass, fromLevel);
+    const newKnown = getSpellsKnown(casterClass, toLevel);
+    for (let sl = 0; sl < newKnown.length; sl++) {
+      const diff = (newKnown[sl] ?? 0) - (oldKnown[sl] ?? 0);
+      if (diff > 0) newSpellSlots.push({ level: sl, count: diff });
+    }
+  }
+  // Wizard: 2 free spells per level
+  const wizardNewSpells = isWizard ? 2 * levelsGained : 0;
+  const needsSpells = newSpellSlots.length > 0 || wizardNewSpells > 0;
+
+  // ── Steps ──
+  type LuStep = "summary" | "skills" | "feats" | "spells" | "done";
+  const steps: LuStep[] = ["summary", "skills"];
+  if (totalFeatSlots > 0) steps.push("feats");
+  if (needsSpells) steps.push("spells");
+  steps.push("done");
+
+  const [stepIdx, setStepIdx] = useState(0);
+  const step = steps[stepIdx];
+
+  // Skill allocation state
+  const [luSkillRanks, setLuSkillRanks] = useState<Record<string, number>>({});
+  const usedSkillPoints = Object.entries(luSkillRanks).reduce((s, [id, v]) => s + v * (classSkillIds.has(id) ? 1 : 2), 0);
+  const remainingSkillPoints = totalSkillPoints - usedSkillPoints;
+
+  // Feat selection state
+  const [luFeats, setLuFeats] = useState<string[]>([]);
+  const [luPendingFeat, setLuPendingFeat] = useState<string | null>(null);
+  const [luFeatFilter, setLuFeatFilter] = useState<"all" | "combat" | "general" | "magic" | "skill">("all");
+  const allFeats = [...save.feats, ...luFeats];
+  const availableFeats = cls ? getAvailableFeats(toLevel, cls.id, stats as Record<string, number>, allFeats) : [];
+  const filteredFeats = luFeatFilter === "all" ? availableFeats : availableFeats.filter(f => f.category === luFeatFilter);
+
+  // Spell selection state
+  const [luSpells, setLuSpells] = useState<string[]>([]);
+  const totalSpellsNeeded = newSpellSlots.reduce((s, sl) => s + sl.count, 0) + wizardNewSpells;
+
+  // ── Styling helpers ──
+  const gold = "rgba(201,168,76,0.5)";
+  const parchment = "rgba(232,213,176,0.7)";
+  const greenGlow = "rgba(74,222,128,0.9)";
+  const btn = "px-4 py-2 rounded text-sm font-bold uppercase tracking-widest";
+  const btnStyle = { background: "rgba(74,222,128,0.15)", color: greenGlow, border: "1px solid rgba(74,222,128,0.4)" };
+
+  // ── Summary Step ──
+  if (step === "summary") {
+    return (
+      <div className="flex flex-col items-center gap-4 max-w-md mx-auto">
+        <div className="flex flex-col items-center gap-1 px-6 py-4 rounded-lg" style={{ background: "rgba(251,191,36,0.1)", border: "1px solid rgba(251,191,36,0.4)" }}>
+          <span className="text-2xl font-black tracking-widest uppercase" style={{ color: "rgba(251,191,36,0.9)", fontFamily: "'Cinzel Decorative', 'Cinzel', serif" }}>
+            Level Up!
+          </span>
+          <span className="text-lg font-bold" style={{ color: "rgba(251,191,36,0.8)" }}>Level {fromLevel} → {toLevel}</span>
+        </div>
+        <div className="w-full flex flex-col gap-2 px-4 py-3 rounded-lg" style={{ background: "rgba(0,0,0,0.2)", border: "1px solid rgba(201,168,76,0.15)", fontSize: "0.8rem", color: parchment }}>
+          <div className="flex justify-between"><span>HP Gained</span><span className="font-bold" style={{ color: "rgba(74,222,128,0.9)" }}>+{totalHpGain}</span></div>
+          <div className="flex justify-between"><span>Skill Points</span><span className="font-bold" style={{ color: "rgba(96,165,250,0.9)" }}>{totalSkillPoints}</span></div>
+          {totalFeatSlots > 0 && <div className="flex justify-between"><span>Feats</span><span className="font-bold" style={{ color: "rgba(168,85,247,0.9)" }}>{totalFeatSlots}{fighterBonus > 0 ? ` (${featSlots} std + ${fighterBonus} fighter)` : ""}</span></div>}
+          {needsSpells && <div className="flex justify-between"><span>New Spells</span><span className="font-bold" style={{ color: "rgba(251,191,36,0.9)" }}>{totalSpellsNeeded}</span></div>}
+        </div>
+        <button onClick={() => setStepIdx(stepIdx + 1)} className={btn} style={btnStyle}>Allocate Points</button>
+      </div>
+    );
+  }
+
+  // ── Skills Step ──
+  if (step === "skills") {
+    const allSkills = SKILLS;
+    return (
+      <div className="flex flex-col gap-3 max-w-md mx-auto">
+        <div className="text-center">
+          <span className="text-sm font-black tracking-widest uppercase" style={{ color: "rgba(96,165,250,0.9)" }}>Allocate Skill Points</span>
+          <div className="text-xs mt-1" style={{ color: parchment }}>{remainingSkillPoints} / {totalSkillPoints} remaining</div>
+        </div>
+        <div className="flex flex-col gap-1 overflow-y-auto" style={{ maxHeight: "50vh" }}>
+          {allSkills.map(sk => {
+            const isClass = classSkillIds.has(sk.id);
+            const currentRank = save.skill_ranks[sk.id] ?? 0;
+            const addedRank = luSkillRanks[sk.id] ?? 0;
+            const totalRank = currentRank + addedRank;
+            const maxRank = isClass ? maxClassRank : maxCrossRank;
+            const cost = isClass ? 1 : 2;
+            const canAdd = totalRank < maxRank && remainingSkillPoints >= cost;
+            const canRemove = addedRank > 0;
+            return (
+              <div key={sk.id} className="flex items-center justify-between px-2 py-1 rounded" style={{ background: addedRank > 0 ? "rgba(96,165,250,0.08)" : "rgba(255,255,255,0.02)", border: `1px solid ${addedRank > 0 ? "rgba(96,165,250,0.2)" : "rgba(201,168,76,0.08)"}`, fontSize: "0.7rem" }}>
+                <div className="flex-1">
+                  <span style={{ color: isClass ? "rgba(96,165,250,0.9)" : parchment }}>{sk.name}</span>
+                  <span className="ml-1" style={{ fontSize: "0.55rem", color: gold }}>{isClass ? "class" : `cross (${cost}pt)`}</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <span className="font-bold w-8 text-center" style={{ color: parchment }}>{totalRank}/{maxRank}</span>
+                  <button disabled={!canRemove} onClick={() => setLuSkillRanks(prev => ({ ...prev, [sk.id]: (prev[sk.id] ?? 0) - 1 }))}
+                    className="w-6 h-6 rounded text-xs font-bold" style={{ background: canRemove ? "rgba(220,38,38,0.15)" : "rgba(255,255,255,0.03)", color: canRemove ? "rgba(220,38,38,0.9)" : "rgba(255,255,255,0.15)", border: `1px solid ${canRemove ? "rgba(220,38,38,0.3)" : "rgba(255,255,255,0.05)"}` }}>-</button>
+                  <button disabled={!canAdd} onClick={() => setLuSkillRanks(prev => ({ ...prev, [sk.id]: (prev[sk.id] ?? 0) + 1 }))}
+                    className="w-6 h-6 rounded text-xs font-bold" style={{ background: canAdd ? "rgba(74,222,128,0.15)" : "rgba(255,255,255,0.03)", color: canAdd ? "rgba(74,222,128,0.9)" : "rgba(255,255,255,0.15)", border: `1px solid ${canAdd ? "rgba(74,222,128,0.3)" : "rgba(255,255,255,0.05)"}` }}>+</button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <button onClick={() => setStepIdx(stepIdx + 1)} className={btn} style={btnStyle}>
+          {remainingSkillPoints > 0 ? `Skip (${remainingSkillPoints} unspent)` : "Next"}
+        </button>
+      </div>
+    );
+  }
+
+  // ── Feats Step ──
+  if (step === "feats") {
+    return (
+      <div className="flex flex-col gap-3 max-w-md mx-auto">
+        <div className="text-center">
+          <span className="text-sm font-black tracking-widest uppercase" style={{ color: "rgba(168,85,247,0.9)" }}>Choose Feats</span>
+          <div className="text-xs mt-1" style={{ color: parchment }}>{luFeats.length} / {totalFeatSlots} selected</div>
+        </div>
+        {/* Skill Focus sub-picker */}
+        {luPendingFeat === "skill-focus" && (
+          <div className="p-3 rounded-lg" style={{ background: "rgba(96,165,250,0.08)", border: "1px solid rgba(96,165,250,0.3)" }}>
+            <div className="text-xs font-bold mb-2" style={{ color: "rgba(96,165,250,0.9)" }}>Pick a skill for Skill Focus (+3):</div>
+            <div className="flex flex-wrap gap-1">
+              {SKILLS.filter(sk => !allFeats.includes(`skill-focus:${sk.id}`)).map(sk => (
+                <button key={sk.id} onClick={() => { setLuFeats(prev => [...prev, `skill-focus:${sk.id}`]); setLuPendingFeat(null); }}
+                  className="px-2 py-1 rounded text-xs" style={{ background: "rgba(96,165,250,0.1)", color: "rgba(96,165,250,0.9)", border: "1px solid rgba(96,165,250,0.3)" }}>
+                  {sk.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        {/* Filter */}
+        <div className="flex gap-1 justify-center flex-wrap">
+          {(["all", "combat", "general", "magic", "skill"] as const).map(cat => (
+            <button key={cat} onClick={() => setLuFeatFilter(cat)}
+              className="px-2 py-0.5 rounded text-xs uppercase" style={{ background: luFeatFilter === cat ? "rgba(168,85,247,0.15)" : "rgba(255,255,255,0.03)", color: luFeatFilter === cat ? "rgba(168,85,247,0.9)" : gold, border: `1px solid ${luFeatFilter === cat ? "rgba(168,85,247,0.4)" : "rgba(201,168,76,0.1)"}` }}>
+              {cat}
+            </button>
+          ))}
+        </div>
+        {/* Feat list */}
+        <div className="flex flex-col gap-1 overflow-y-auto" style={{ maxHeight: "45vh" }}>
+          {filteredFeats.map(feat => {
+            const picked = luFeats.includes(feat.id) || luFeats.some(f => f.startsWith(feat.id + ":"));
+            const disabled = luFeats.length >= totalFeatSlots && !picked;
+            // Fighter bonus feats must be combat (if all standard slots filled, remaining must be combat)
+            const stdFilled = luFeats.filter(f => { const base = FEATS.find(ff => ff.id === f || f.startsWith(ff.id + ":")); return base ? base.category !== "combat" || luFeats.indexOf(f) < featSlots : true; }).length;
+            return (
+              <button key={feat.id} disabled={disabled && !picked}
+                onClick={() => {
+                  if (picked) {
+                    setLuFeats(prev => prev.filter(f => f !== feat.id && !f.startsWith(feat.id + ":")));
+                  } else if (luFeats.length < totalFeatSlots) {
+                    const choice = featNeedsChoice(feat.id);
+                    if (choice === "skill") { setLuPendingFeat(feat.id); }
+                    else { setLuFeats(prev => [...prev, feat.id]); }
+                  }
+                }}
+                className="flex flex-col px-2 py-1.5 rounded text-left" style={{
+                  background: picked ? "rgba(168,85,247,0.12)" : disabled ? "rgba(255,255,255,0.01)" : "rgba(255,255,255,0.03)",
+                  border: `1px solid ${picked ? "rgba(168,85,247,0.4)" : "rgba(201,168,76,0.08)"}`,
+                  opacity: disabled && !picked ? 0.4 : 1,
+                }}>
+                <span className="text-xs font-bold" style={{ color: picked ? "rgba(168,85,247,0.9)" : parchment }}>{feat.name}</span>
+                <span style={{ fontSize: "0.55rem", color: gold }}>{feat.description.slice(0, 80)}{feat.description.length > 80 ? "..." : ""}</span>
+              </button>
+            );
+          })}
+        </div>
+        <button onClick={() => setStepIdx(stepIdx + 1)} className={btn} style={btnStyle}>
+          {luFeats.length < totalFeatSlots ? `Skip (${totalFeatSlots - luFeats.length} unselected)` : "Next"}
+        </button>
+      </div>
+    );
+  }
+
+  // ── Spells Step ──
+  if (step === "spells") {
+    const casterKey = save.class_id as "sorcerer" | "bard" | "wizard";
+    const alreadyKnown = new Set([...save.known_spells, ...save.spellbook, ...luSpells]);
+    return (
+      <div className="flex flex-col gap-3 max-w-md mx-auto">
+        <div className="text-center">
+          <span className="text-sm font-black tracking-widest uppercase" style={{ color: "rgba(251,191,36,0.9)" }}>Learn New Spells</span>
+          <div className="text-xs mt-1" style={{ color: parchment }}>{luSpells.length} / {totalSpellsNeeded} selected</div>
+        </div>
+        {/* Show needed spells by level */}
+        {isSpontaneous && casterClass && newSpellSlots.map(({ level: sl, count }) => {
+          const picked = luSpells.filter(sid => { const sp = SPELLS.find(s => s.id === sid); return sp && sp.levels[casterClass] === sl; }).length;
+          const spellsAtLevel = getClassSpells(casterClass, sl).filter(s => !alreadyKnown.has(s.id));
+          return (
+            <div key={sl}>
+              <div className="text-xs font-bold mb-1" style={{ color: "rgba(251,191,36,0.8)" }}>
+                {sl === 0 ? "Cantrips" : `Level ${sl} Spells`} — pick {count - picked} more
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {spellsAtLevel.map(sp => {
+                  const sel = luSpells.includes(sp.id);
+                  const full = picked >= count && !sel;
+                  return (
+                    <button key={sp.id} disabled={full && !sel}
+                      onClick={() => sel ? setLuSpells(prev => prev.filter(s => s !== sp.id)) : !full ? setLuSpells(prev => [...prev, sp.id]) : undefined}
+                      className="px-2 py-1 rounded text-xs" style={{
+                        background: sel ? "rgba(251,191,36,0.15)" : "rgba(255,255,255,0.03)",
+                        color: sel ? "rgba(251,191,36,0.9)" : full ? "rgba(255,255,255,0.2)" : parchment,
+                        border: `1px solid ${sel ? "rgba(251,191,36,0.4)" : "rgba(201,168,76,0.1)"}`,
+                      }}>
+                      {sp.name}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+        {isWizard && (() => {
+          const picked = luSpells.length;
+          // Wizard picks from any spell level they can cast
+          const slots = getSpellSlots("wizard", toLevel);
+          const maxSpellLevel = slots.length - 1;
+          const available = SPELLS.filter(s => s.levels.wizard !== undefined && s.levels.wizard <= maxSpellLevel && s.levels.wizard > 0 && !alreadyKnown.has(s.id));
+          return (
+            <div>
+              <div className="text-xs font-bold mb-1" style={{ color: "rgba(251,191,36,0.8)" }}>
+                Add to Spellbook — pick {wizardNewSpells - picked} more
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {available.map(sp => {
+                  const sel = luSpells.includes(sp.id);
+                  const full = picked >= wizardNewSpells && !sel;
+                  return (
+                    <button key={sp.id} disabled={full && !sel}
+                      onClick={() => sel ? setLuSpells(prev => prev.filter(s => s !== sp.id)) : !full ? setLuSpells(prev => [...prev, sp.id]) : undefined}
+                      className="px-2 py-1 rounded text-xs" style={{
+                        background: sel ? "rgba(251,191,36,0.15)" : "rgba(255,255,255,0.03)",
+                        color: sel ? "rgba(251,191,36,0.9)" : full ? "rgba(255,255,255,0.2)" : parchment,
+                        border: `1px solid ${sel ? "rgba(251,191,36,0.4)" : "rgba(201,168,76,0.1)"}`,
+                      }}>
+                      {sp.name} <span style={{ fontSize: "0.5rem", color: gold }}>Lv{sp.levels.wizard ?? "?"}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
+        <button onClick={() => setStepIdx(stepIdx + 1)} className={btn} style={btnStyle}>
+          {luSpells.length < totalSpellsNeeded ? `Skip (${totalSpellsNeeded - luSpells.length} unselected)` : "Confirm"}
+        </button>
+      </div>
+    );
+  }
+
+  // ── Done Step ──
+  if (step === "done") {
+    // Merge skill ranks
+    const mergedRanks = { ...save.skill_ranks };
+    for (const [id, v] of Object.entries(luSkillRanks)) {
+      mergedRanks[id] = (mergedRanks[id] ?? 0) + v;
+    }
+    const mergedFeats = [...save.feats, ...luFeats];
+    const mergedKnown = isSpontaneous ? [...save.known_spells, ...luSpells] : save.known_spells;
+    const mergedSpellbook = isWizard ? [...save.spellbook, ...luSpells] : save.spellbook;
+    const newMaxHp = save.max_hp + totalHpGain;
+
+    return (
+      <div className="flex flex-col items-center gap-4 max-w-md mx-auto">
+        <span className="text-sm font-black tracking-widest uppercase" style={{ color: greenGlow }}>Level Up Complete!</span>
+        <div className="w-full flex flex-col gap-1 px-4 py-3 rounded-lg" style={{ background: "rgba(0,0,0,0.2)", border: "1px solid rgba(201,168,76,0.15)", fontSize: "0.75rem", color: parchment }}>
+          <div>HP: {save.max_hp} → {newMaxHp}</div>
+          {Object.entries(luSkillRanks).filter(([, v]) => v > 0).map(([id, v]) => (
+            <div key={id}>{SKILLS.find(s => s.id === id)?.name ?? id}: +{v}</div>
+          ))}
+          {luFeats.map(fid => {
+            const parsed = parseFeatChoice(fid);
+            const feat = FEATS.find(f => f.id === (parsed?.baseFeatId ?? fid));
+            return <div key={fid}>Feat: {feat?.name ?? fid}{parsed ? ` (${SKILLS.find(s => s.id === parsed.choiceId)?.name ?? parsed.choiceId})` : ""}</div>;
+          })}
+          {luSpells.map(sid => {
+            const sp = SPELLS.find(s => s.id === sid);
+            return <div key={sid}>Spell: {sp?.name ?? sid}</div>;
+          })}
+        </div>
+        <button onClick={() => onComplete({
+          skill_ranks: mergedRanks,
+          feats: mergedFeats,
+          known_spells: mergedKnown,
+          spellbook: mergedSpellbook,
+          max_hp: newMaxHp,
+          current_hp: Math.min(newMaxHp, save.current_hp + totalHpGain),
+        })} className={btn} style={btnStyle}>
+          Continue Adventure
+        </button>
+      </div>
+    );
+  }
+
+  return null;
+}
+
 function NewGameFlow({ ownedChars, onStart }: {
   ownedChars: NftCharacter[];
   onStart: (nft: NftCharacter, classId: string, skillRanks: Record<string, number>, feats: string[], spellConfig?: SpellConfig) => void;
@@ -117,6 +458,8 @@ function NewGameFlow({ ownedChars, onStart }: {
   const [pickedSpecialization, setPickedSpecialization] = useState<SpellSchool | null>(null);
   const [pickedProhibited, setPickedProhibited] = useState<SpellSchool[]>([]);
   const [pickedKnownSpells, setPickedKnownSpells] = useState<string[]>([]);
+  // ── Feat sub-selection state (e.g., which skill for Skill Focus) ──
+  const [pendingFeat, setPendingFeat] = useState<string | null>(null);
 
   const stats = pickedNft ? pickedNft.stats : { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 };
   const intMod = abilityMod(stats.int);
@@ -567,13 +910,17 @@ function NewGameFlow({ ownedChars, onStart }: {
         {pickedFeats.length > 0 && (
           <div className="w-full flex flex-col gap-1">
             {pickedFeats.map(fid => {
-              const feat = FEATS.find(f => f.id === fid);
+              const choice = parseFeatChoice(fid);
+              const feat = FEATS.find(f => f.id === (choice?.baseFeatId ?? fid));
               if (!feat) return null;
+              const choiceSkill = choice ? SKILLS.find(s => s.id === choice.choiceId) : null;
               return (
                 <div key={fid} className="flex items-center gap-2 px-3 py-2 rounded-lg"
                   style={{ background: "rgba(74,222,128,0.08)", border: "1px solid rgba(74,222,128,0.25)" }}>
                   <div className="flex-1">
-                    <div className="text-xs font-bold" style={{ color: "rgba(74,222,128,0.9)" }}>{feat.name}</div>
+                    <div className="text-xs font-bold" style={{ color: "rgba(74,222,128,0.9)" }}>
+                      {feat.name}{choiceSkill ? ` (${choiceSkill.name})` : ""}
+                    </div>
                     <div style={{ fontSize: "0.45rem", color: "rgba(232,213,176,0.5)" }}>{feat.benefit}</div>
                   </div>
                   <button onClick={() => setPickedFeats(prev => prev.filter(id => id !== fid))}
@@ -611,13 +958,24 @@ function NewGameFlow({ ownedChars, onStart }: {
             </div>
           )}
           {filteredFeats.map(feat => {
-            const alreadyPicked = pickedFeats.includes(feat.id);
+            // canTakeMultiple feats (Skill Focus) are "picked" only by exact compound ID
+            const alreadyPicked = feat.canTakeMultiple
+              ? false // always available (different skill choices)
+              : pickedFeats.includes(feat.id);
             const slotsLeft = maxFeatSlots - pickedFeats.length;
             // Fighter bonus slot must be combat
             const needsCombatForBonus = pickedClass?.id === "fighter" && pickedFeats.length === 1 && feat.category !== "combat";
             const disabled = alreadyPicked || slotsLeft <= 0 || needsCombatForBonus;
             return (
-              <button key={feat.id} onClick={() => { if (!disabled) setPickedFeats(prev => [...prev, feat.id]); }}
+              <button key={feat.id} onClick={() => {
+                if (disabled) return;
+                const choice = featNeedsChoice(feat.id);
+                if (choice === "skill") {
+                  setPendingFeat(feat.id);
+                } else {
+                  setPickedFeats(prev => [...prev, feat.id]);
+                }
+              }}
                 disabled={disabled}
                 className="w-full text-left px-3 py-2 rounded-lg transition-all"
                 style={{
@@ -660,6 +1018,46 @@ function NewGameFlow({ ownedChars, onStart }: {
             Next: Skills ({pickedFeats.length}/{maxFeatSlots})
           </button>
         </div>
+
+        {/* ── Skill Focus: pick which skill ── */}
+        {pendingFeat === "skill-focus" && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center"
+            style={{ background: "rgba(0,0,0,0.7)" }}>
+            <div className="w-full max-w-sm mx-4 rounded-xl p-4 flex flex-col gap-2"
+              style={{ background: "rgba(20,20,30,0.98)", border: "1px solid rgba(201,168,76,0.3)" }}>
+              <div className="text-xs font-bold uppercase tracking-widest text-center"
+                style={{ color: "rgba(201,168,76,0.9)" }}>
+                Skill Focus — Choose a Skill
+              </div>
+              <div className="text-center" style={{ fontSize: "0.45rem", color: "rgba(232,213,176,0.5)" }}>
+                +3 bonus on all checks with the selected skill
+              </div>
+              <div className="flex flex-col gap-1 max-h-64 overflow-y-auto pr-1">
+                {SKILLS.filter(sk => {
+                  // Don't allow picking the same skill twice
+                  return !pickedFeats.some(f => f === `skill-focus:${sk.id}`);
+                }).map(sk => (
+                  <button key={sk.id} onClick={() => {
+                    setPickedFeats(prev => [...prev, `skill-focus:${sk.id}`]);
+                    setPendingFeat(null);
+                  }}
+                    className="w-full text-left px-3 py-1.5 rounded-lg"
+                    style={{ background: "rgba(0,0,0,0.2)", border: "1px solid rgba(201,168,76,0.1)" }}>
+                    <span className="text-xs font-bold" style={{ color: "rgba(232,213,176,0.8)" }}>{sk.name}</span>
+                    <span className="ml-2" style={{ fontSize: "0.4rem", color: "rgba(201,168,76,0.5)" }}>
+                      ({sk.ability.toUpperCase()})
+                    </span>
+                  </button>
+                ))}
+              </div>
+              <button onClick={() => setPendingFeat(null)}
+                className="px-3 py-1.5 rounded text-xs mt-1"
+                style={{ color: "rgba(220,38,38,0.7)", border: "1px solid rgba(220,38,38,0.2)" }}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -813,10 +1211,12 @@ function NewGameFlow({ ownedChars, onStart }: {
           <div style={{ fontSize: "0.45rem", color: "rgba(201,168,76,0.5)" }} className="font-bold uppercase mb-1">Abilities</div>
           <div className="flex flex-col gap-0.5">
             {pickedFeats.map(fid => {
-              const feat = FEATS.find(f => f.id === fid);
+              const choice = parseFeatChoice(fid);
+              const feat = FEATS.find(f => f.id === (choice?.baseFeatId ?? fid));
+              const choiceSkill = choice ? SKILLS.find(s => s.id === choice.choiceId) : null;
               return feat ? (
                 <div key={fid} style={{ fontSize: "0.5rem", color: "rgba(251,191,36,0.7)" }}>
-                  {feat.name} — <span style={{ color: "rgba(232,213,176,0.5)" }}>{feat.benefit}</span>
+                  {feat.name}{choiceSkill ? ` (${choiceSkill.name})` : ""} — <span style={{ color: "rgba(232,213,176,0.5)" }}>{feat.benefit}</span>
                 </div>
               ) : null;
             })}
@@ -884,8 +1284,9 @@ export default function Home() {
   const [search, setSearch] = useState("");
 
   // Navigation
-  const [view, setView] = useState<"menu" | "heroes" | "army" | "marketplace" | "powerUp" | "battle" | "worldMap" | "adventure" | "inventory">("menu");
+  const [view, setView] = useState<"menu" | "heroes" | "army" | "marketplace" | "powerUp" | "battle" | "worldMap" | "adventure" | "inventory" | "levelUp">("menu");
   const [lastBattleRewards, setLastBattleRewards] = useState<{ xp: number; goldCp: number; levelsGained: number } | null>(null);
+  const [pendingLevelUp, setPendingLevelUp] = useState<{ fromLevel: number; toLevel: number } | null>(null);
   const [questEncounter, setQuestEncounter] = useState<QuestEncounter | null>(null);
 
   // Character save system
@@ -958,20 +1359,41 @@ export default function Home() {
     </main>
   );
 
+  if (view === "levelUp" && save && pendingLevelUp) return subPage("Level Up", <LevelUpFlow
+    save={save} character={playerCharacter} fromLevel={pendingLevelUp.fromLevel} toLevel={pendingLevelUp.toLevel}
+    onComplete={(patch) => { updateSave(patch); setPendingLevelUp(null); cycleView("worldMap"); }}
+  />);
   if (view === "powerUp") return subPage("Power Up", <PowerUp characters={characters} onBack={() => cycleView("menu")} onStatsRefresh={refreshStats} />);
   if (view === "marketplace") return subPage("Marketplace", <Marketplace characters={characters} onBack={() => cycleView("menu")} />);
   if (view === "battle") return subPage(questEncounter ? questEncounter.questName : "Battle", <HexBattle characters={characters}
     questEncounter={questEncounter ?? undefined}
     playerFeats={save?.feats}
     playerWeapon={save?.equipment?.weapon}
+    playerKnownSpells={save?.known_spells}
+    playerPreparedSpells={save?.prepared_spells}
+    playerSpellSlotsUsed={save?.spell_slots_used}
+    playerLevel={save?.level}
     onExit={() => {
-      if (lastBattleRewards) setLastBattleRewards(null);
       setQuestEncounter(null);
-      cycleView(hasCharacter ? "worldMap" : "menu");
+      if (lastBattleRewards && lastBattleRewards.levelsGained > 0 && save) {
+        const toLevel = save.level;
+        const fromLevel = toLevel - lastBattleRewards.levelsGained;
+        setPendingLevelUp({ fromLevel, toLevel });
+        setLastBattleRewards(null);
+        setView("levelUp");
+      } else {
+        setLastBattleRewards(null);
+        cycleView(hasCharacter ? "worldMap" : "menu");
+      }
     }}
-    onBattleEnd={async (outcome, difficulty, enemies, rounds) => {
+    onBattleEnd={async (outcome, difficulty, enemies, rounds, spellSlotsUsed) => {
       const result = await recordBattle({ difficulty, enemies, outcome, rounds });
-      if (result) setLastBattleRewards({ xp: result.rewards.xp, goldCp: result.rewards.goldCp, levelsGained: result.levelsGained });
+      const rewards = result ? { xp: result.rewards.xp, goldCp: result.rewards.goldCp, levelsGained: result.levelsGained, newLevel: (save?.level ?? 1) + result.levelsGained } : null;
+      if (rewards) setLastBattleRewards(rewards);
+      // Persist spell slots used in battle
+      if (spellSlotsUsed && spellSlotsUsed.length > 0) {
+        updateSave({ spell_slots_used: spellSlotsUsed });
+      }
       // Quest completion: set cooldowns (repeatable) or flags (one-time rumors)
       if (outcome === "victory" && questEncounter && save) {
         const qid = questEncounter.questId;
@@ -1004,6 +1426,7 @@ export default function Home() {
         }
         if (Object.keys(questUpdates).length > 0) updateSave(questUpdates);
       }
+      return rewards;
     }}
     onDefeatChoice={async (choice) => {
       if (!save) return;
@@ -1220,10 +1643,7 @@ export default function Home() {
         }
 
         updateSave(updates);
-        if (encounter.outcome === "fight" && encounter.difficulty) {
-          setLastBattleRewards(null);
-          setTimeout(() => cycleView("battle"), 300);
-        }
+        // Fights from world luck are handled by WorldMap — player chooses Fight or Escape
       }}
       onAction={(result: WorldLuckResult) => {
         const newHour = (save.hour ?? 0) + 8;  // 8 hours per rest/search
@@ -1289,10 +1709,7 @@ export default function Home() {
         }
 
         updateSave(updates);
-        if (result.outcome === "fight" && result.difficulty) {
-          setLastBattleRewards(null);
-          setTimeout(() => cycleView("battle"), 300);
-        }
+        // Fights from world luck are handled by WorldMap — player chooses Fight or Escape
       }}
       onBuyItem={(item) => {
         const newCoins = subtractCp(save.coins, item.buyPrice);
@@ -1306,6 +1723,22 @@ export default function Home() {
           if (foodItems[item.id]) {
             updateSave({ coins: newCoins, food: save.food + foodItems[item.id], last_ate_hour: save.hour ?? 0 });
             return;
+          }
+          // Mercenary items — hire as follower, not inventory
+          if (item.id.startsWith("merc_")) {
+            const template = GENERAL_TEMPLATES.find(t => t.templateId === item.id);
+            if (template) {
+              const hero = save.party.heroes[0];
+              const chaScore = playerCharacter?.stats.cha ?? 10;
+              const maxF = maxFollowers(chaScore, save.level);
+              if (hero.followers.length >= maxF) return; // party full
+              const follower = hireFollower(template);
+              const newHeroes = save.party.heroes.map((h, i) =>
+                i === 0 ? { ...h, followers: [...h.followers, follower] } : h
+              );
+              updateSave({ coins: newCoins, party: { ...save.party, heroes: newHeroes } });
+              return;
+            }
           }
           const existing = save.inventory.find((i) => i.id === item.id);
           const newInventory = existing
