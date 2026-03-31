@@ -192,6 +192,7 @@ export const GAME_NFTS: GameNft[] = [
   { name: "Tharion Rootkeeper",          contractAddress: "0x76D50Fbc46a31aC21855b2b8218F4F642991c25e", chain: "base" },
   { name: "Rook Highbranch",            contractAddress: "0xB9c37Ce29A0966f83B29c905c434905301435D9d", chain: "base" },
   { name: "Captain Blackfeather",      contractAddress: "0x716AdcbEd9Ef58CCf11434Aa7962b0f200A030af", chain: "base" },
+  { name: "Brakkus Thundershade",     contractAddress: "0xA80A6bF549fa41431720F680487872d7B3cF30C4", chain: "polygon" },
   { name: "Yellectric Frog",          contractAddress: "0x9CF5CcAe7ca8Ca68BE185121401ec201D9AD02ad", chain: "polygon" },
   { name: "Mason Ironhorn",          contractAddress: "0x412495cde08733715C2478c6EE00876ABF5e6CE8", chain: "base" },
   { name: "Wolves",                 contractAddress: "0xaF92bc25a44bf43eC4100cAd6eA3620523C7DAce", chain: "base" },
