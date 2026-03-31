@@ -128,6 +128,74 @@ export async function getActiveListings(): Promise<Listing[]> {
   return (data ?? []) as Listing[];
 }
 
+// ── Shared NFT/LP Registry ─────────────────────────────────────────────────
+
+export type NftRow = {
+  id: string;
+  name: string;
+  contract_address: string;
+  chain: "base" | "polygon";
+};
+
+export type LpPairRow = {
+  id: string;
+  pair_address: string;
+  chain: "base" | "polygon";
+  label: string | null;
+};
+
+let _nftCache: NftRow[] | null = null;
+let _lpCache: { base: string[]; polygon: string[] } | null = null;
+
+export async function getSharedNfts(): Promise<NftRow[]> {
+  if (_nftCache) return _nftCache;
+  const { data, error } = await supabase
+    .from("nfts")
+    .select("id, name, contract_address, chain")
+    .order("created_at", { ascending: true });
+  if (error) { console.error("getSharedNfts:", error); return []; }
+  _nftCache = (data ?? []) as NftRow[];
+  return _nftCache;
+}
+
+export async function getSharedLpPairs(): Promise<{ base: `0x${string}`[]; polygon: `0x${string}`[] }> {
+  if (_lpCache) return _lpCache as { base: `0x${string}`[]; polygon: `0x${string}`[] };
+  const { data, error } = await supabase
+    .from("lp_pairs")
+    .select("pair_address, chain")
+    .order("created_at", { ascending: true });
+  if (error) { console.error("getSharedLpPairs:", error); return { base: [], polygon: [] }; }
+  const rows = (data ?? []) as LpPairRow[];
+  const result = {
+    base: rows.filter(r => r.chain === "base").map(r => r.pair_address as `0x${string}`),
+    polygon: rows.filter(r => r.chain === "polygon").map(r => r.pair_address as `0x${string}`),
+  };
+  _lpCache = { base: result.base as string[], polygon: result.polygon as string[] };
+  return result;
+}
+
+export async function addNft(name: string, contractAddress: string, chain: "base" | "polygon"): Promise<NftRow | null> {
+  _nftCache = null; // bust cache
+  const { data, error } = await supabase
+    .from("nfts")
+    .upsert({ name, contract_address: contractAddress.toLowerCase(), chain }, { onConflict: "contract_address,chain" })
+    .select()
+    .single();
+  if (error) { console.error("addNft:", error); return null; }
+  return data as NftRow;
+}
+
+export async function addLpPair(pairAddress: string, chain: "base" | "polygon", label?: string): Promise<LpPairRow | null> {
+  _lpCache = null; // bust cache
+  const { data, error } = await supabase
+    .from("lp_pairs")
+    .upsert({ pair_address: pairAddress.toLowerCase(), chain, label: label ?? null }, { onConflict: "pair_address,chain" })
+    .select()
+    .single();
+  if (error) { console.error("addLpPair:", error); return null; }
+  return data as LpPairRow;
+}
+
 // ── Adventure Saves ─────────────────────────────────────────────────────────
 
 export type AdventureSave = {

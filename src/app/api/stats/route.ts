@@ -1,6 +1,7 @@
 import { createPublicClient, http, formatUnits } from "viem";
 import { base, polygon } from "viem/chains";
-import { GAME_NFTS, KNOWN_LP_PAIRS, V2_PAIR_ABI, ERC1155_ABI, STAT_TOKENS } from "@/lib/contracts";
+import { GAME_NFTS as HARDCODED_NFTS, KNOWN_LP_PAIRS as HARDCODED_LP_PAIRS, V2_PAIR_ABI, ERC1155_ABI, STAT_TOKENS, type GameNft } from "@/lib/contracts";
+import { getSharedNfts, getSharedLpPairs } from "@/lib/supabase";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -116,6 +117,31 @@ const TOKEN_CATEGORY: Record<string, "traditional" | "game" | "impact"> = {
 
 export async function GET() {
   try {
+    // Fetch shared NFT/LP data from Supabase (fallback to hardcoded)
+    let GAME_NFTS: GameNft[];
+    let KNOWN_LP_PAIRS: { base: `0x${string}`[]; polygon: `0x${string}`[] };
+    try {
+      const [nftRows, lpPairs] = await Promise.all([getSharedNfts(), getSharedLpPairs()]);
+      if (nftRows.length > 0) {
+        GAME_NFTS = nftRows.map(r => ({ name: r.name, contractAddress: r.contract_address as `0x${string}`, chain: r.chain }));
+        console.log("[API] Loaded", GAME_NFTS.length, "NFTs from Supabase");
+      } else {
+        GAME_NFTS = HARDCODED_NFTS;
+        console.log("[API] Supabase empty, using", GAME_NFTS.length, "hardcoded NFTs");
+      }
+      if (lpPairs.base.length > 0 || lpPairs.polygon.length > 0) {
+        KNOWN_LP_PAIRS = lpPairs;
+        console.log("[API] Loaded", lpPairs.base.length, "base +", lpPairs.polygon.length, "polygon LP pairs from Supabase");
+      } else {
+        KNOWN_LP_PAIRS = HARDCODED_LP_PAIRS;
+        console.log("[API] Supabase LP empty, using hardcoded pairs");
+      }
+    } catch {
+      GAME_NFTS = HARDCODED_NFTS;
+      KNOWN_LP_PAIRS = HARDCODED_LP_PAIRS;
+      console.log("[API] Supabase fetch failed, using hardcoded data");
+    }
+
     // Fetch prices — asset daily highs for backing, MfT daily low for marketplace pricing
     let btcHigh24h = 0, ethHigh24h = 0, polHigh24h = 0, mftLow24h = 0;
     try {
