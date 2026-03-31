@@ -1,9 +1,12 @@
 import { createClient } from "@supabase/supabase-js";
 
-export const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+// Graceful fallback: during build/SSG the env vars may be missing.
+// The client will be non-functional but won't crash the build.
+// At runtime in the browser the real env vars are always present.
+const url = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://placeholder.supabase.co";
+const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "placeholder";
+
+export const supabase = createClient(url, key);
 
 export type Lobby = {
   id: string;
