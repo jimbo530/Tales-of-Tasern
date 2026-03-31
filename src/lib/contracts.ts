@@ -10,6 +10,8 @@ export type GameNft = {
 export const GAME_NFTS: GameNft[] = [
   { name: "Tales of Tasern Character", contractAddress: "0x9de88faa0dbcfc75534d1b4fd277dadffcc4fd30", chain: "base" },
   { name: "Dreadmane Ravager",          contractAddress: "0xfaf9a6b6409b3e69f7d3b38099b41c45bbc29ba5", chain: "base" },
+  { name: "Mosswhisper Tallowpaw",     contractAddress: "0xC9F92bA591c816c2dE2710F872C9919E08C0c412", chain: "base" },
+  { name: "Virel Quill",               contractAddress: "0xaeA15d04bfD9A6DCC2B7B13F4BcBBcb11B851530", chain: "base" },
   { name: "Future Funders",             contractAddress: "0xEE67c60d0E9687BB6D4cA2D90357FC8155F3c2c8", chain: "polygon" },
   { name: "Future Funder",              contractAddress: "0xE2E9C314E1AD0764b6ef22B6408674a33F84FD41", chain: "polygon" },
   { name: "Future Funder Archibald",    contractAddress: "0x67052bFEB30203A7bEEEAD76b58f51B931Ff4d1C", chain: "polygon" },

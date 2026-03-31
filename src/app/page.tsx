@@ -15,11 +15,15 @@ import { useCharacterSave } from "@/hooks/useCharacterSave";
 import { CharacterCard } from "@/components/CharacterCard";
 import { Marketplace } from "@/components/Marketplace";
 import { PowerUp } from "@/components/PowerUp";
-import { HexBattle } from "@/components/HexBattle";
+import { HexBattle, type QuestEncounter } from "@/components/HexBattle";
 import { WorldMap, type WorldLuckResult } from "@/components/WorldMap";
-import { CLASSES, type CharacterClass } from "@/lib/classes";
+import { PlayerInventory } from "@/components/PlayerInventory";
+import { CLASSES, getClassById, type CharacterClass, type SpellcastingInfo } from "@/lib/classes";
 import { SKILLS, abilityMod, type Skill } from "@/lib/skills";
 import { FEATS, getAvailableFeats, getStartingFeatCount, type Feat } from "@/lib/feats";
+import { SPELLS, SPELL_SCHOOLS, SPECIALIZABLE_SCHOOLS, getClassSpells, getSpellsKnown, type Spell, type SpellSchool } from "@/lib/spells";
+import { DOMAINS, type Domain } from "@/lib/domains";
+import { formatCoins, addCp, subtractCp, totalCp, addCoinsRaw } from "@/lib/saveSystem";
 import { downloadAndCache, getCacheCount, clearImageCache } from "@/lib/imageCache";
 import { resolveImage, toHttp } from "@/lib/resolveImage";
 
@@ -85,17 +89,31 @@ function DownloadImages({ characters }: { characters: NftCharacter[] }) {
   );
 }
 
+type SpellConfig = {
+  known_spells?: string[];
+  prepared_spells?: string[];
+  spellbook?: string[];
+  domains?: [string, string] | null;
+  school_specialization?: string | null;
+  prohibited_schools?: string[];
+};
+
 function NewGameFlow({ ownedChars, onStart }: {
   ownedChars: NftCharacter[];
-  onStart: (nft: NftCharacter, classId: string, skillRanks: Record<string, number>, feats: string[]) => void;
+  onStart: (nft: NftCharacter, classId: string, skillRanks: Record<string, number>, feats: string[], spellConfig?: SpellConfig) => void;
 }) {
-  const [step, setStep] = useState<"nft" | "class" | "abilities" | "skills" | "confirm">("nft");
+  const [step, setStep] = useState<"nft" | "class" | "spells" | "abilities" | "skills" | "confirm">("nft");
   const [pickedNft, setPickedNft] = useState<NftCharacter | null>(null);
   const [pickedClass, setPickedClass] = useState<CharacterClass | null>(null);
   const [expandedClass, setExpandedClass] = useState<string | null>(null);
   const [pickedFeats, setPickedFeats] = useState<string[]>([]);
   const [skillRanks, setSkillRanks] = useState<Record<string, number>>({});
   const [featFilter, setFeatFilter] = useState<"all" | "combat" | "general" | "magic" | "skill">("all");
+  // ── Spell creation state ──
+  const [pickedDomains, setPickedDomains] = useState<string[]>([]);
+  const [pickedSpecialization, setPickedSpecialization] = useState<SpellSchool | null>(null);
+  const [pickedProhibited, setPickedProhibited] = useState<SpellSchool[]>([]);
+  const [pickedKnownSpells, setPickedKnownSpells] = useState<string[]>([]);
 
   const stats = pickedNft ? pickedNft.stats : { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 };
   const intMod = abilityMod(stats.int);
@@ -229,7 +247,17 @@ function NewGameFlow({ ownedChars, onStart }: {
                       </div>
                     </div>
 
-                    <button onClick={() => { setPickedClass(cls); setPickedFeats([]); setSkillRanks({}); setStep("abilities"); }}
+                    <button onClick={() => {
+                        setPickedClass(cls);
+                        setPickedFeats([]);
+                        setSkillRanks({});
+                        setPickedDomains([]);
+                        setPickedSpecialization(null);
+                        setPickedProhibited([]);
+                        setPickedKnownSpells([]);
+                        // Go to spells step if caster, otherwise skip to abilities
+                        setStep(cls.spellcasting && cls.spellcasting.startsAt <= 1 ? "spells" : "abilities");
+                      }}
                       className="mt-1 w-full px-3 py-2 rounded text-xs font-bold uppercase tracking-widest"
                       style={{ background: "rgba(34,197,94,0.15)", color: "rgba(34,197,94,0.9)", border: "1px solid rgba(34,197,94,0.4)" }}>
                       Choose {cls.name}
@@ -245,6 +273,275 @@ function NewGameFlow({ ownedChars, onStart }: {
           style={{ color: "rgba(201,168,76,0.5)", border: "1px solid rgba(201,168,76,0.15)" }}>
           Back to hero pick
         </button>
+      </div>
+    );
+  }
+
+  // ── Step 2b: Spell Selection (casters only) ──
+  if (step === "spells" && pickedClass?.spellcasting) {
+    const sc = pickedClass.spellcasting;
+    const isSpontaneous = sc.type === "spontaneous";
+    const isBard = sc.casterClass === "bard";
+    const isSorcerer = sc.casterClass === "sorcerer";
+    const isWizard = sc.casterClass === "wizard";
+    const isCleric = sc.casterClass === "cleric";
+
+    // Spells known limits at level 1
+    const knownTable = isSorcerer ? getSpellsKnown("sorcerer", 1) : isBard ? getSpellsKnown("bard", 1) : [];
+    const cantripsNeeded = isSpontaneous ? (knownTable[0] ?? 0) : 0;
+    const level1Needed = isSpontaneous ? (knownTable[1] ?? 0) : 0;
+
+    // Available spells for this class
+    const cantrips = getClassSpells(sc.casterClass, 0);
+    const level1Spells = getClassSpells(sc.casterClass, 1);
+
+    // Partition picked spells by level
+    const pickedCantrips = pickedKnownSpells.filter(id => cantrips.some(s => s.id === id));
+    const pickedLvl1 = pickedKnownSpells.filter(id => level1Spells.some(s => s.id === id));
+
+    // Wizard prohibited schools filter
+    const prohibitedSet = new Set(pickedProhibited);
+    const wizCantrips = isWizard ? cantrips.filter(s => !prohibitedSet.has(s.school)) : cantrips;
+    const wizLvl1 = isWizard ? level1Spells.filter(s => !prohibitedSet.has(s.school)) : level1Spells;
+
+    // Wizard: starting spellbook = all cantrips + 3 + INT mod first-level spells
+    const intMod2 = abilityMod(stats.int);
+    const wizBookSlots = isWizard ? Math.max(1, 3 + intMod2) : 0;
+
+    const canProceed = isCleric
+      ? pickedDomains.length === 2
+      : isWizard
+        ? (pickedSpecialization === null || pickedProhibited.length === 2) && pickedKnownSpells.filter(id => wizLvl1.some(s => s.id === id)).length >= Math.min(wizBookSlots, wizLvl1.length)
+        : isSpontaneous
+          ? pickedCantrips.length >= cantripsNeeded && pickedLvl1.length >= level1Needed
+          : true; // druid just prepares from full list
+
+    return (
+      <div className="w-full flex flex-col items-center gap-3">
+        <span className="text-sm font-black tracking-widest uppercase" style={{ color: "rgba(147,51,234,0.8)" }}>
+          {pickedClass.emoji} {pickedClass.name} — Spellcasting
+        </span>
+
+        <div className="w-full max-w-lg flex flex-col gap-3 px-2" style={{ maxHeight: "60vh", overflowY: "auto" }}>
+          {/* ── Cleric: Pick 2 Domains ── */}
+          {isCleric && (
+            <div>
+              <div style={{ fontSize: "0.5rem", color: "rgba(147,51,234,0.7)", letterSpacing: "0.1em" }} className="font-bold uppercase mb-1">
+                Choose 2 Domains ({pickedDomains.length}/2)
+              </div>
+              <div className="grid grid-cols-2 gap-1">
+                {DOMAINS.map(d => {
+                  const picked = pickedDomains.includes(d.id);
+                  return (
+                    <button key={d.id} onClick={() => {
+                      if (picked) setPickedDomains(prev => prev.filter(x => x !== d.id));
+                      else if (pickedDomains.length < 2) setPickedDomains(prev => [...prev, d.id]);
+                    }}
+                      className="px-2 py-1 rounded text-left"
+                      style={{
+                        background: picked ? "rgba(147,51,234,0.2)" : "rgba(0,0,0,0.2)",
+                        border: picked ? "1px solid rgba(147,51,234,0.5)" : "1px solid rgba(255,255,255,0.05)",
+                        fontSize: "0.45rem",
+                      }}>
+                      <div className="font-bold" style={{ color: picked ? "rgba(147,51,234,0.9)" : "rgba(232,213,176,0.7)" }}>
+                        {d.name}
+                      </div>
+                      <div style={{ color: "rgba(232,213,176,0.4)", fontSize: "0.4rem" }}>{d.description}</div>
+                      {picked && (
+                        <div style={{ color: "rgba(147,51,234,0.6)", fontSize: "0.38rem", marginTop: 2 }}>
+                          Power: {d.grantedPower.slice(0, 80)}...
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* ── Wizard: Pick Specialization School ── */}
+          {isWizard && (
+            <div>
+              <div style={{ fontSize: "0.5rem", color: "rgba(147,51,234,0.7)", letterSpacing: "0.1em" }} className="font-bold uppercase mb-1">
+                Specialization School (optional)
+              </div>
+              <div className="flex flex-wrap gap-1 mb-2">
+                <button onClick={() => { setPickedSpecialization(null); setPickedProhibited([]); }}
+                  className="px-2 py-1 rounded"
+                  style={{
+                    background: !pickedSpecialization ? "rgba(147,51,234,0.2)" : "rgba(0,0,0,0.2)",
+                    border: !pickedSpecialization ? "1px solid rgba(147,51,234,0.5)" : "1px solid rgba(255,255,255,0.05)",
+                    fontSize: "0.45rem", color: !pickedSpecialization ? "rgba(147,51,234,0.9)" : "rgba(232,213,176,0.5)",
+                  }}>
+                  Generalist
+                </button>
+                {SPECIALIZABLE_SCHOOLS.map(sch => (
+                  <button key={sch} onClick={() => {
+                    setPickedSpecialization(sch);
+                    setPickedProhibited([]);
+                    setPickedKnownSpells(prev => prev.filter(id => {
+                      const sp = SPELLS.find(s => s.id === id);
+                      return !sp || sp.school !== sch; // keep non-prohibited (we clear prohibited on school change)
+                    }));
+                  }}
+                    className="px-2 py-1 rounded capitalize"
+                    style={{
+                      background: pickedSpecialization === sch ? "rgba(147,51,234,0.2)" : "rgba(0,0,0,0.2)",
+                      border: pickedSpecialization === sch ? "1px solid rgba(147,51,234,0.5)" : "1px solid rgba(255,255,255,0.05)",
+                      fontSize: "0.45rem", color: pickedSpecialization === sch ? "rgba(147,51,234,0.9)" : "rgba(232,213,176,0.5)",
+                    }}>
+                    {sch}
+                  </button>
+                ))}
+              </div>
+              {pickedSpecialization && (
+                <div>
+                  <div style={{ fontSize: "0.45rem", color: "rgba(220,38,38,0.7)", letterSpacing: "0.1em" }} className="font-bold uppercase mb-1">
+                    Pick 2 Prohibited Schools ({pickedProhibited.length}/2)
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    {SPECIALIZABLE_SCHOOLS.filter(s => s !== pickedSpecialization && s !== "divination").map(sch => (
+                      <button key={sch} onClick={() => {
+                        if (pickedProhibited.includes(sch)) setPickedProhibited(prev => prev.filter(x => x !== sch));
+                        else if (pickedProhibited.length < 2) setPickedProhibited(prev => [...prev, sch]);
+                      }}
+                        className="px-2 py-1 rounded capitalize"
+                        style={{
+                          background: pickedProhibited.includes(sch) ? "rgba(220,38,38,0.2)" : "rgba(0,0,0,0.2)",
+                          border: pickedProhibited.includes(sch) ? "1px solid rgba(220,38,38,0.5)" : "1px solid rgba(255,255,255,0.05)",
+                          fontSize: "0.45rem", color: pickedProhibited.includes(sch) ? "rgba(220,38,38,0.9)" : "rgba(232,213,176,0.5)",
+                        }}>
+                        {sch}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {/* Wizard: pick starting spellbook 1st-level spells */}
+              <div className="mt-2">
+                <div style={{ fontSize: "0.5rem", color: "rgba(147,51,234,0.7)", letterSpacing: "0.1em" }} className="font-bold uppercase mb-1">
+                  Starting Spellbook — 1st Level ({pickedKnownSpells.filter(id => wizLvl1.some(s => s.id === id)).length}/{wizBookSlots})
+                </div>
+                <div style={{ fontSize: "0.38rem", color: "rgba(232,213,176,0.4)", marginBottom: 4 }}>
+                  All cantrips are in your spellbook. Pick {wizBookSlots} first-level spells.
+                </div>
+                <div className="grid grid-cols-2 gap-1">
+                  {wizLvl1.map(sp => {
+                    const picked = pickedKnownSpells.includes(sp.id);
+                    const atLimit = pickedKnownSpells.filter(id => wizLvl1.some(s => s.id === id)).length >= wizBookSlots;
+                    return (
+                      <button key={sp.id} onClick={() => {
+                        if (picked) setPickedKnownSpells(prev => prev.filter(x => x !== sp.id));
+                        else if (!atLimit) setPickedKnownSpells(prev => [...prev, sp.id]);
+                      }}
+                        className="px-2 py-1 rounded text-left"
+                        style={{
+                          background: picked ? "rgba(147,51,234,0.15)" : "rgba(0,0,0,0.2)",
+                          border: picked ? "1px solid rgba(147,51,234,0.4)" : "1px solid rgba(255,255,255,0.05)",
+                          fontSize: "0.4rem", opacity: !picked && atLimit ? 0.4 : 1,
+                        }}>
+                        <span className="font-bold capitalize" style={{ color: picked ? "rgba(147,51,234,0.9)" : "rgba(232,213,176,0.7)" }}>
+                          {sp.name}
+                        </span>
+                        <span style={{ color: "rgba(232,213,176,0.3)", marginLeft: 4 }}>{sp.school}</span>
+                        <div style={{ color: "rgba(232,213,176,0.3)", fontSize: "0.35rem" }}>{sp.description.slice(0, 60)}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── Sorcerer / Bard: Pick Known Spells ── */}
+          {isSpontaneous && (
+            <div>
+              {/* Cantrips */}
+              <div style={{ fontSize: "0.5rem", color: "rgba(147,51,234,0.7)", letterSpacing: "0.1em" }} className="font-bold uppercase mb-1">
+                Known Cantrips ({pickedCantrips.length}/{cantripsNeeded})
+              </div>
+              <div className="grid grid-cols-2 gap-1 mb-3">
+                {cantrips.map(sp => {
+                  const picked = pickedKnownSpells.includes(sp.id);
+                  const atLimit = pickedCantrips.length >= cantripsNeeded;
+                  return (
+                    <button key={sp.id} onClick={() => {
+                      if (picked) setPickedKnownSpells(prev => prev.filter(x => x !== sp.id));
+                      else if (!atLimit) setPickedKnownSpells(prev => [...prev, sp.id]);
+                    }}
+                      className="px-2 py-1 rounded text-left"
+                      style={{
+                        background: picked ? "rgba(147,51,234,0.15)" : "rgba(0,0,0,0.2)",
+                        border: picked ? "1px solid rgba(147,51,234,0.4)" : "1px solid rgba(255,255,255,0.05)",
+                        fontSize: "0.4rem", opacity: !picked && atLimit ? 0.4 : 1,
+                      }}>
+                      <span className="font-bold" style={{ color: picked ? "rgba(147,51,234,0.9)" : "rgba(232,213,176,0.7)" }}>
+                        {sp.name}
+                      </span>
+                      <span style={{ color: "rgba(232,213,176,0.3)", marginLeft: 4 }}>{sp.school}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              {/* 1st-level spells (sorcerer gets 2 at level 1, bard gets 0) */}
+              {level1Needed > 0 && (
+                <>
+                  <div style={{ fontSize: "0.5rem", color: "rgba(147,51,234,0.7)", letterSpacing: "0.1em" }} className="font-bold uppercase mb-1">
+                    Known 1st-Level Spells ({pickedLvl1.length}/{level1Needed})
+                  </div>
+                  <div className="grid grid-cols-2 gap-1">
+                    {level1Spells.map(sp => {
+                      const picked = pickedKnownSpells.includes(sp.id);
+                      const atLimit = pickedLvl1.length >= level1Needed;
+                      return (
+                        <button key={sp.id} onClick={() => {
+                          if (picked) setPickedKnownSpells(prev => prev.filter(x => x !== sp.id));
+                          else if (!atLimit) setPickedKnownSpells(prev => [...prev, sp.id]);
+                        }}
+                          className="px-2 py-1 rounded text-left"
+                          style={{
+                            background: picked ? "rgba(147,51,234,0.15)" : "rgba(0,0,0,0.2)",
+                            border: picked ? "1px solid rgba(147,51,234,0.4)" : "1px solid rgba(255,255,255,0.05)",
+                            fontSize: "0.4rem", opacity: !picked && atLimit ? 0.4 : 1,
+                          }}>
+                          <span className="font-bold" style={{ color: picked ? "rgba(147,51,234,0.9)" : "rgba(232,213,176,0.7)" }}>
+                            {sp.name}
+                          </span>
+                          <span style={{ color: "rgba(232,213,176,0.3)", marginLeft: 4 }}>{sp.school}</span>
+                          <div style={{ color: "rgba(232,213,176,0.3)", fontSize: "0.35rem" }}>{sp.description.slice(0, 60)}</div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* ── Druid: Prepared caster, no creation choices needed ── */}
+          {sc.casterClass === "druid" && (
+            <div className="text-center" style={{ fontSize: "0.5rem", color: "rgba(232,213,176,0.5)" }}>
+              As a druid, you prepare spells from the full druid list each day. No spell choices needed at creation.
+            </div>
+          )}
+        </div>
+
+        <div className="flex gap-2">
+          <button onClick={() => setStep("class")} className="px-3 py-1.5 rounded text-xs"
+            style={{ color: "rgba(201,168,76,0.5)", border: "1px solid rgba(201,168,76,0.15)" }}>
+            Back
+          </button>
+          <button onClick={() => setStep("abilities")}
+            disabled={!canProceed}
+            className="px-4 py-1.5 rounded text-xs font-bold uppercase tracking-widest"
+            style={{
+              background: canProceed ? "rgba(34,197,94,0.15)" : "rgba(255,255,255,0.03)",
+              color: canProceed ? "rgba(34,197,94,0.9)" : "rgba(255,255,255,0.2)",
+              border: canProceed ? "1px solid rgba(34,197,94,0.4)" : "1px solid rgba(255,255,255,0.05)",
+            }}>
+            Next: Abilities
+          </button>
+        </div>
       </div>
     );
   }
@@ -550,7 +847,20 @@ function NewGameFlow({ ownedChars, onStart }: {
           style={{ color: "rgba(201,168,76,0.5)", border: "1px solid rgba(201,168,76,0.15)" }}>
           Back
         </button>
-        <button onClick={() => { if (pickedNft && pickedClass) onStart(pickedNft, pickedClass.id, skillRanks, pickedFeats); }}
+        <button onClick={() => {
+            if (!pickedNft || !pickedClass) return;
+            const sc = pickedClass.spellcasting;
+            const spellConfig: SpellConfig | undefined = sc ? {
+              known_spells: pickedKnownSpells.length > 0 ? pickedKnownSpells : undefined,
+              spellbook: sc.casterClass === "wizard"
+                ? [...getClassSpells("wizard", 0).map(s => s.id), ...pickedKnownSpells.filter(id => getClassSpells("wizard", 1).some(s => s.id === id))]
+                : undefined,
+              domains: pickedDomains.length === 2 ? [pickedDomains[0], pickedDomains[1]] as [string, string] : null,
+              school_specialization: pickedSpecialization ?? null,
+              prohibited_schools: pickedProhibited,
+            } : undefined;
+            onStart(pickedNft, pickedClass.id, skillRanks, pickedFeats, spellConfig);
+          }}
           className="px-6 py-2 rounded text-sm font-black uppercase tracking-widest"
           style={{ background: "rgba(34,197,94,0.2)", color: "rgba(34,197,94,0.95)", border: "1px solid rgba(34,197,94,0.5)" }}>
           Begin Adventure
@@ -571,8 +881,9 @@ export default function Home() {
   const [search, setSearch] = useState("");
 
   // Navigation
-  const [view, setView] = useState<"menu" | "heroes" | "army" | "marketplace" | "powerUp" | "battle" | "worldMap" | "adventure">("menu");
-  const [lastBattleRewards, setLastBattleRewards] = useState<{ xp: number; gold: number; levelsGained: number } | null>(null);
+  const [view, setView] = useState<"menu" | "heroes" | "army" | "marketplace" | "powerUp" | "battle" | "worldMap" | "adventure" | "inventory">("menu");
+  const [lastBattleRewards, setLastBattleRewards] = useState<{ xp: number; goldCp: number; levelsGained: number } | null>(null);
+  const [questEncounter, setQuestEncounter] = useState<QuestEncounter | null>(null);
 
   // Character save system
   const { save, hasCharacter, updateSave, createCharacter, recordBattle } = useCharacterSave();
@@ -645,14 +956,17 @@ export default function Home() {
 
   if (view === "powerUp") return subPage("Power Up", <PowerUp characters={characters} onBack={() => cycleView("menu")} onStatsRefresh={refreshStats} />);
   if (view === "marketplace") return subPage("Marketplace", <Marketplace characters={characters} onBack={() => cycleView("menu")} />);
-  if (view === "battle") return subPage("Battle", <HexBattle characters={characters}
+  if (view === "battle") return subPage(questEncounter ? questEncounter.questName : "Battle", <HexBattle characters={characters}
+    questEncounter={questEncounter ?? undefined}
+    playerFeats={save?.feats}
     onExit={() => {
       if (lastBattleRewards) setLastBattleRewards(null);
+      setQuestEncounter(null);
       cycleView(hasCharacter ? "worldMap" : "menu");
     }}
     onBattleEnd={async (outcome, difficulty, enemies, rounds) => {
       const result = await recordBattle({ difficulty, enemies, outcome, rounds });
-      if (result) setLastBattleRewards({ xp: result.rewards.xp, gold: result.rewards.gold, levelsGained: result.levelsGained });
+      if (result) setLastBattleRewards({ xp: result.rewards.xp, goldCp: result.rewards.goldCp, levelsGained: result.levelsGained });
     }}
   />);
   // ── Adventure: New Game / Load Game ──────────────────────────────────────
@@ -675,8 +989,8 @@ export default function Home() {
             <div className="flex gap-4 text-xs" style={{ color: "rgba(96,165,250,0.6)" }}>
               <span>Lv {save.level}</span>
               <span>{save.xp} XP</span>
-              <span>Day {save.day}</span>
-              <span>{save.gold} Gold</span>
+              <span>Day {Math.floor((save.hour ?? 0) / 24) + 1}</span>
+              <span>{formatCoins(save.coins)}</span>
               <span>{save.battles_won}W / {save.battles_lost}L</span>
             </div>
             {playerCharacter && (
@@ -709,8 +1023,8 @@ export default function Home() {
         ) : (
           <NewGameFlow
             ownedChars={ownedChars}
-            onStart={async (nft, classId, skillRanks, feats) => {
-              await createCharacter(nft.contractAddress, classId, skillRanks, feats);
+            onStart={async (nft, classId, skillRanks, feats, spellConfig) => {
+              await createCharacter(nft.contractAddress, classId, skillRanks, feats, spellConfig);
               cycleView("worldMap");
             }}
           />
@@ -724,6 +1038,45 @@ export default function Home() {
     ));
   }
 
+  if (view === "inventory" && save && playerCharacter) {
+    // Calculate follower carry bonuses
+    const followerBonus = save.party.heroes.flatMap(h => h.followers)
+      .filter(f => f.alive)
+      .reduce((sum, f) => {
+        if (f.abilities.includes("carry_bonus_50")) return sum + 50;
+        if (f.abilities.includes("carry_bonus_30")) return sum + 30;
+        return sum;
+      }, 0);
+
+    return subPage("Inventory", (
+      <PlayerInventory
+        save={save}
+        str={Math.max(1, playerCharacter.stats.str)}
+        followerCarryBonus={followerBonus}
+        onEquip={(slot, itemId) => {
+          const newEquipment = { ...save.equipment, [slot]: itemId };
+          updateSave({ equipment: newEquipment });
+        }}
+        onDrop={(itemId, qty) => {
+          const existing = save.inventory.find(i => i.id === itemId);
+          if (!existing) return;
+          // Unequip if dropping equipped item
+          const newEquipment = { ...save.equipment };
+          for (const s of ["weapon", "armor", "shield", "accessory"] as const) {
+            if (newEquipment[s] === itemId && qty >= existing.qty) {
+              newEquipment[s] = undefined;
+            }
+          }
+          const newInventory = existing.qty <= qty
+            ? save.inventory.filter(i => i.id !== itemId)
+            : save.inventory.map(i => i.id === itemId ? { ...i, qty: i.qty - qty } : i);
+          updateSave({ inventory: newInventory, equipment: newEquipment });
+        }}
+        onBack={() => cycleView("worldMap")}
+      />
+    ));
+  }
+
   if (view === "worldMap" && save) return subPage("Kardov's Gate", (
     <WorldMap
       save={save}
@@ -731,64 +1084,94 @@ export default function Home() {
       onTravel={(hex, result, destHex, encounter) => {
         const updates: Record<string, unknown> = {
           map_hex: hex,
+          hour: result.newHour,
           day: result.newDay,
           food: result.newFood,
           current_hp: Math.min(save.max_hp, Math.max(1, result.newHp + encounter.hpChange)),
         };
-        if (encounter.goldChange > 0) updates.gold = save.gold + encounter.goldChange;
+        if (encounter.coinReward) updates.coins = addCoinsRaw(save.coins, encounter.coinReward);
+        if (encounter.goldChange > 0) {
+          const base = (updates.coins as { gp: number; sp: number; cp: number } | undefined) ?? save.coins;
+          updates.coins = addCp(base, encounter.goldChange);
+        }
         if (encounter.foodChange > 0) updates.food = (updates.food as number) + encounter.foodChange;
         if (encounter.xpChange > 0) updates.xp = save.xp + encounter.xpChange;
         updateSave(updates);
-        // World luck triggered a fight
         if (encounter.outcome === "fight" && encounter.difficulty) {
           setLastBattleRewards(null);
           setTimeout(() => cycleView("battle"), 300);
         }
       }}
       onAction={(result: WorldLuckResult) => {
-        const updates: Record<string, unknown> = { day: save.day + 1 };
+        const newHour = (save.hour ?? 0) + 8;  // 8 hours per rest/search
+        const updates: Record<string, unknown> = {
+          hour: newHour,
+          day: Math.floor(newHour / 24) + 1,
+        };
         const isInnRest = result.interaction === "rest" && result.worldRoll === 0 && result.goldChange < 0;
 
         if (isInnRest) {
-          // Inn rest: costs gold, includes meal (no food consumed), healing from hpChange
-          updates.gold = Math.max(0, save.gold + result.goldChange);
+          // Inn rest: costs coins, includes meal (no food consumed), healing from hpChange
+          updates.coins = subtractCp(save.coins, Math.abs(result.goldChange)) ?? { gp: 0, sp: 0, cp: 0 };
           updates.current_hp = Math.min(save.max_hp, save.current_hp + result.hpChange);
         } else if (result.interaction === "rest") {
-          // Street/wilderness rest: consumes food
-          const foodCost = Math.min(save.food, 3); // FOOD_PER_DAY
+          // Wilderness/street rest: consumes 1 food per 8hr rest
+          const foodCost = Math.min(save.food, 1);
           updates.food = save.food - foodCost;
-          if (save.food >= 3) {
-            const healPerDay = Math.floor(Math.max(1, playerCharacter?.stats.con ?? 1) / 2) + save.level;
-            updates.current_hp = Math.min(save.max_hp, save.current_hp + healPerDay + result.hpChange);
+          if (foodCost >= 1) {
+            const healPerRest = Math.floor(Math.max(1, playerCharacter?.stats.con ?? 1) / 2) + save.level;
+            updates.current_hp = Math.min(save.max_hp, save.current_hp + healPerRest + result.hpChange);
           } else {
+            // Starving: no heal, take world luck damage only
             updates.current_hp = Math.min(save.max_hp, Math.max(1, save.current_hp + result.hpChange));
           }
         } else {
-          // Search or travel
+          // Search: costs 1 food
+          const foodCost = Math.min(save.food, 1);
+          updates.food = save.food - foodCost;
           if (result.hpChange !== 0) updates.current_hp = Math.min(save.max_hp, Math.max(1, save.current_hp + result.hpChange));
         }
         if (result.foodChange > 0) updates.food = ((updates.food as number) ?? save.food) + result.foodChange;
-        if (result.goldChange > 0) updates.gold = (updates.gold as number ?? save.gold) + result.goldChange;
+        // Coin rewards: coinReward preserves denominations (raw add), goldChange auto-consolidates
+        const coinBase = (updates.coins as { gp: number; sp: number; cp: number } | undefined) ?? save.coins;
+        if (result.coinReward) {
+          updates.coins = addCoinsRaw(coinBase, result.coinReward);
+        }
+        if (result.goldChange > 0) {
+          const base2 = (updates.coins as { gp: number; sp: number; cp: number } | undefined) ?? coinBase;
+          updates.coins = addCp(base2, result.goldChange);
+        }
         if (result.xpChange > 0) updates.xp = save.xp + result.xpChange;
         updateSave(updates);
-        // World luck triggered a fight
         if (result.outcome === "fight" && result.difficulty) {
           setLastBattleRewards(null);
           setTimeout(() => cycleView("battle"), 300);
         }
       }}
       onBuyItem={(item) => {
-        if (save.gold >= item.buyPrice) {
+        const newCoins = subtractCp(save.coins, item.buyPrice);
+        if (newCoins) {
           const existing = save.inventory.find((i) => i.id === item.id);
           const newInventory = existing
             ? save.inventory.map((i) => i.id === item.id ? { ...i, qty: i.qty + 1 } : i)
             : [...save.inventory, { id: item.id, name: item.name, qty: 1 }];
-          updateSave({ gold: save.gold - item.buyPrice, inventory: newInventory });
+          updateSave({ coins: newCoins, inventory: newInventory });
         }
       }}
       onBattle={(difficulty) => {
         cycleView("battle");
       }}
+      onQuestBattle={(encounter) => {
+        const cls = save ? getClassById(save.class_id) : undefined;
+        setQuestEncounter({
+          ...encounter,
+          playerChar: playerCharacter ?? undefined,
+          playerClass: cls,
+          playerFeats: save?.feats,
+        });
+        cycleView("battle");
+      }}
+      onInventory={() => cycleView("inventory")}
       onBack={() => cycleView("adventure")}
     />
   ));
@@ -941,13 +1324,59 @@ export default function Home() {
 
   // Heroes gallery page
   if (view === "heroes") {
-    return subPage("◆ Champions of the Realm ◆", (
+    const myNfts = characters.filter(c => c.owned);
+    const totalBacking = myNfts.reduce((sum, c) => sum + c.usdBacking * c.ownedCount, 0);
+    return subPage("All Heroes", (
       <div className="flex flex-col items-center gap-6 px-2 relative">
         <button onClick={() => cycleView("menu")}
           className="fixed top-20 left-4 z-50 px-4 py-2 rounded-lg text-sm font-black uppercase tracking-widest"
           style={{ background: 'rgba(10,6,8,0.95)', color: '#f0d070', border: '1px solid rgba(201,168,76,0.5)', boxShadow: '0 0 15px rgba(0,0,0,0.5)', fontFamily: "'Cinzel Decorative', 'Cinzel', serif" }}>
-          ⚜ ← Back ⚜
+          ← Back
         </button>
+
+        {/* Your heroes summary */}
+        {myNfts.length > 0 && (
+          <div className="w-full max-w-lg rounded-xl p-4"
+            style={{ background: 'rgba(201,168,76,0.08)', border: '1px solid rgba(201,168,76,0.25)' }}>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-black tracking-widest uppercase" style={{ color: '#f0d070' }}>
+                Your Heroes ({myNfts.length})
+              </span>
+              {totalBacking > 0 && (
+                <span className="text-xs font-bold" style={{ color: 'rgba(74,222,128,0.8)' }}>
+                  ${totalBacking >= 1000 ? `${(totalBacking / 1000).toFixed(1)}K` : totalBacking.toFixed(2)} locked
+                </span>
+              )}
+            </div>
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {myNfts.map(card => (
+                <div key={card.contractAddress} className="flex-shrink-0 w-20 rounded-lg overflow-hidden"
+                  style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(201,168,76,0.2)' }}>
+                  <div className="relative" style={{ height: 60, background: '#0a0810' }}>
+                    {card.imageUrl ? (
+                      /* eslint-disable-next-line @next/next/no-img-element */
+                      <img src={`/api/images?url=${encodeURIComponent(card.imageUrl)}`} alt={card.name}
+                        className="w-full h-full object-contain" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center opacity-20"><span>🛡️</span></div>
+                    )}
+                    {card.ownedCount > 1 && (
+                      <span className="absolute top-0.5 right-0.5 px-1 rounded-full font-black"
+                        style={{ background: 'rgba(201,168,76,0.9)', color: '#0a0608', fontSize: '0.45rem' }}>
+                        x{card.ownedCount}
+                      </span>
+                    )}
+                  </div>
+                  <div className="px-1 py-0.5">
+                    <p className="font-bold truncate" style={{ color: 'rgba(232,213,176,0.8)', fontSize: '0.4rem' }}>{card.name}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <DownloadImages characters={characters} />
 
         {/* Asset totals */}
         {(assetTotals.traditional > 0 || assetTotals.game > 0 || assetTotals.impact > 0) && (
@@ -1109,50 +1538,31 @@ export default function Home() {
           </div>
         )}
 
-        {/* Main menu buttons */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 w-full max-w-lg">
-          {/* My Heroes */}
-          <button onClick={() => cycleView("army")}
+        {/* Main menu — 3 core actions */}
+        <div className="flex flex-col gap-5 w-full max-w-lg">
+          {/* All Heroes */}
+          <button onClick={() => cycleView("heroes")}
             className="flex flex-col items-center gap-3 px-6 py-8 rounded-2xl transition-all hover:scale-[1.02]"
             style={{ background: 'rgba(201,168,76,0.1)', border: '2px solid rgba(201,168,76,0.3)', boxShadow: '0 0 25px rgba(201,168,76,0.05)' }}>
             <span className="text-4xl">⚔️</span>
-            <span className="text-sm font-black tracking-widest uppercase" style={{ color: '#f0d070' }}>My Heroes</span>
+            <span className="text-sm font-black tracking-widest uppercase" style={{ color: '#f0d070' }}>All Heroes</span>
             <span style={{ fontSize: '0.55rem', color: 'rgba(201,168,76,0.5)' }}>
               {characters.filter(c => c.owned).length > 0
-                ? `${characters.filter(c => c.owned).length} heroes in your army`
-                : 'Connect wallet to view your army'}
+                ? `${characters.filter(c => c.owned).length} owned · ${characters.length} total champions`
+                : `Browse all ${characters.length} champions`}
             </span>
           </button>
 
-          {/* Battle */}
-          <button onClick={() => cycleView("battle")}
-            className="flex flex-col items-center gap-3 px-6 py-8 rounded-2xl transition-all hover:scale-[1.02]"
-            style={{ background: 'rgba(220,38,38,0.1)', border: '2px solid rgba(220,38,38,0.3)', boxShadow: '0 0 25px rgba(220,38,38,0.05)' }}>
-            <span className="text-4xl">&#x2694;&#xFE0F;</span>
-            <span className="text-sm font-black tracking-widest uppercase" style={{ color: 'rgba(220,38,38,0.9)' }}>Battle</span>
-            <span style={{ fontSize: '0.55rem', color: 'rgba(220,38,38,0.5)' }}>PvE hex grid combat</span>
-          </button>
-
-          {/* Adventure */}
+          {/* Play Game */}
           <button onClick={() => cycleView("adventure")}
             className="flex flex-col items-center gap-3 px-6 py-8 rounded-2xl transition-all hover:scale-[1.02]"
             style={{ background: 'rgba(34,197,94,0.1)', border: '2px solid rgba(34,197,94,0.3)', boxShadow: '0 0 25px rgba(34,197,94,0.05)' }}>
             <span className="text-4xl">🗺️</span>
-            <span className="text-sm font-black tracking-widest uppercase" style={{ color: 'rgba(34,197,94,0.9)' }}>Adventure</span>
+            <span className="text-sm font-black tracking-widest uppercase" style={{ color: 'rgba(34,197,94,0.9)' }}>Play Game</span>
             <span style={{ fontSize: '0.55rem', color: 'rgba(34,197,94,0.5)' }}>
-              {save && hasCharacter ? `Lv${save.level} · Day ${save.day} · ${save.xp} XP` : 'New game or load save'}
+              {save && hasCharacter ? `Lv${save.level} · Day ${Math.floor((save.hour ?? 0) / 24) + 1} · ${formatCoins(save.coins)} · ${save.battles_won}W` : 'New adventure awaits'}
             </span>
           </button>
-
-          {/* All Heroes */}
-          <button onClick={() => cycleView("heroes")}
-            className="flex flex-col items-center gap-3 px-6 py-8 rounded-2xl transition-all hover:scale-[1.02]"
-            style={{ background: 'rgba(201,168,76,0.06)', border: '2px solid rgba(201,168,76,0.15)', boxShadow: '0 0 25px rgba(201,168,76,0.03)' }}>
-            <span className="text-4xl">🛡️</span>
-            <span className="text-sm font-black tracking-widest uppercase" style={{ color: 'rgba(201,168,76,0.7)' }}>Heroes of the Realm</span>
-            <span style={{ fontSize: '0.55rem', color: 'rgba(201,168,76,0.4)' }}>Browse all {characters.length} champions</span>
-          </button>
-
 
           {/* Marketplace */}
           <button onClick={() => cycleView("marketplace")}
@@ -1161,16 +1571,6 @@ export default function Home() {
             <span className="text-4xl">🛒</span>
             <span className="text-sm font-black tracking-widest uppercase" style={{ color: 'rgba(251,191,36,0.9)' }}>Marketplace</span>
             <span style={{ fontSize: '0.55rem', color: 'rgba(251,191,36,0.5)' }}>Buy and sell hero NFTs</span>
-          </button>
-
-
-          {/* Power Up */}
-          <button onClick={() => cycleView("powerUp")}
-            className="flex flex-col items-center gap-3 px-6 py-8 rounded-2xl transition-all hover:scale-[1.02]"
-            style={{ background: 'rgba(96,165,250,0.1)', border: '2px solid rgba(96,165,250,0.3)', boxShadow: '0 0 25px rgba(96,165,250,0.05)' }}>
-            <span className="text-4xl">⬆️</span>
-            <span className="text-sm font-black tracking-widest uppercase" style={{ color: 'rgba(96,165,250,0.9)' }}>Power Up</span>
-            <span style={{ fontSize: '0.55rem', color: 'rgba(96,165,250,0.5)' }}>Boost hero stats with ETH</span>
           </button>
         </div>
 

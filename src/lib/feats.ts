@@ -1067,3 +1067,76 @@ export function getFighterBonusFeatCount(classId: string, level: number): number
 export function getFeatsByCategory(category: FeatCategory): Feat[] {
   return FEATS.filter(f => f.category === category);
 }
+
+// ── Feat Mechanical Bonuses ─────────────────────────────────────────────────
+// Maps feat IDs to actual stat modifiers applied during combat.
+
+export type FeatBonuses = {
+  hp: number;
+  ac: number;
+  atkBonus: number;
+  damage: number;
+  initiative: number;
+  speed: number;
+};
+
+/** Passive bonuses from feat ID → stat modifier */
+const PASSIVE_BONUS_MAP: Record<string, Partial<FeatBonuses>> = {
+  // ── Combat feats ──
+  "power-attack":                 { damage: 2 },      // simplified: auto +2 dmg (PHB: trade atk for dmg)
+  "weapon-focus":                 { atkBonus: 1 },     // +1 attack
+  "greater-weapon-focus":         { atkBonus: 1 },     // +1 attack (stacks)
+  "weapon-specialization":        { damage: 2 },       // +2 damage
+  "greater-weapon-specialization": { damage: 2 },      // +2 damage (stacks)
+  "weapon-finesse":               { atkBonus: 1 },     // DEX to attack → simplified +1
+  "improved-initiative":          { initiative: 4 },   // +4 initiative
+  "dodge":                        { ac: 1 },           // +1 dodge AC
+  "mobility":                     { ac: 1 },           // +4 vs AoO → simplified +1 AC
+  "combat-expertise":             { ac: 1 },           // trade atk for AC → simplified +1 AC
+  "two-weapon-defense":           { ac: 1 },           // +1 shield AC while TWF
+  "improved-shield-bash":         { ac: 1 },           // keep shield AC when bashing
+  "improved-natural-armor":       { ac: 1 },           // +1 natural armor
+  "blind-fight":                  { atkBonus: 1 },     // re-roll concealment miss → +1 atk
+  "point-blank-shot":             { atkBonus: 1, damage: 1 }, // +1 atk/dmg within 30ft → always active
+  // ── General feats ──
+  "toughness":                    { hp: 3 },           // +3 HP
+  "endurance":                    { hp: 2 },           // +4 CON checks → simplified +2 HP
+  "run":                          { speed: 5 },        // ×5 run speed → +5 ft base
+};
+
+/**
+ * Aggregate passive stat bonuses from a list of feat IDs.
+ * Used by computeStats to modify battle stats.
+ */
+export function getFeatBonuses(featIds: string[]): FeatBonuses {
+  const result: FeatBonuses = { hp: 0, ac: 0, atkBonus: 0, damage: 0, initiative: 0, speed: 0 };
+  for (const id of featIds) {
+    const b = PASSIVE_BONUS_MAP[id];
+    if (b) {
+      result.hp += b.hp ?? 0;
+      result.ac += b.ac ?? 0;
+      result.atkBonus += b.atkBonus ?? 0;
+      result.damage += b.damage ?? 0;
+      result.initiative += b.initiative ?? 0;
+      result.speed += b.speed ?? 0;
+    }
+  }
+  return result;
+}
+
+/** Combat flags — checked during attack resolution and battle flow */
+export type FeatCombatFlags = {
+  improvedCritical: boolean;   // crit on 19-20 instead of only 20
+  cleave: boolean;             // free attack on adjacent enemy after kill
+  greatCleave: boolean;        // unlimited cleave chain
+};
+
+/** Extract active combat flags from feat ID list */
+export function getFeatCombatFlags(featIds: string[]): FeatCombatFlags {
+  const s = new Set(featIds);
+  return {
+    improvedCritical: s.has("improved-critical"),
+    cleave: s.has("cleave"),
+    greatCleave: s.has("great-cleave"),
+  };
+}

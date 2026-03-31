@@ -31,6 +31,23 @@ export type ClassFeature = {
   };
 };
 
+/** Spellcasting type for classes that cast spells */
+export type SpellcastingInfo = {
+  type: "prepared" | "spontaneous";
+  /** Primary casting ability */
+  ability: "int" | "wis" | "cha";
+  /** Caster class key matching spells.ts CasterClass */
+  casterClass: "wizard" | "sorcerer" | "cleric" | "druid" | "bard" | "paladin" | "ranger";
+  /** Level at which spellcasting begins (1 for most, 4 for paladin/ranger) */
+  startsAt: number;
+  /** Can pick a specialization school (wizard only) */
+  canSpecialize?: boolean;
+  /** Picks domains at creation (cleric only) */
+  picksDomains?: boolean;
+  /** Number of domains to pick */
+  domainCount?: number;
+};
+
 export type CharacterClass = {
   id: string;
   name: string;
@@ -43,6 +60,8 @@ export type CharacterClass = {
   description: string;
   features: ClassFeature[];
   emoji: string;
+  /** Spellcasting info — undefined for non-casters (fighter, barbarian, rogue, monk) */
+  spellcasting?: SpellcastingInfo;
 };
 
 // ── Hit Die values ────────────────────────────────────────────────────────────
@@ -121,6 +140,7 @@ export const CLASSES: CharacterClass[] = [
     classSkills: ["appraise", "balance", "bluff", "climb", "concentration", "craft", "decipherScript", "diplomacy", "disguise", "escapeArtist", "gatherInformation", "hide", "jump", "knowledge", "listen", "moveSilently", "perform", "profession", "senseMotive", "sleightOfHand", "spellcraft", "swim", "tumble", "useMagicDevice"],
     description: "A versatile performer who weaves magic through music and lore to inspire allies.",
     emoji: "\u{1F3B6}",
+    spellcasting: { type: "spontaneous", ability: "cha", casterClass: "bard", startsAt: 1 },
     features: [
       {
         name: "Inspire Courage",
@@ -157,6 +177,7 @@ export const CLASSES: CharacterClass[] = [
     classSkills: ["concentration", "craft", "diplomacy", "heal", "knowledge", "profession", "spellcraft"],
     description: "A divine servant who channels the power of the gods to heal allies and smite the unholy.",
     emoji: "\u2695\uFE0F",
+    spellcasting: { type: "prepared", ability: "wis", casterClass: "cleric", startsAt: 1, picksDomains: true, domainCount: 2 },
     features: [
       {
         name: "Turn Undead",
@@ -189,6 +210,7 @@ export const CLASSES: CharacterClass[] = [
     classSkills: ["concentration", "craft", "diplomacy", "handleAnimal", "heal", "knowledge", "listen", "profession", "ride", "spellcraft", "spot", "survival", "swim"],
     description: "A guardian of nature who commands animals, shifts shape, and wields the fury of the wild.",
     emoji: "\u{1F33F}",
+    spellcasting: { type: "prepared", ability: "wis", casterClass: "druid", startsAt: 1 },
     features: [
       {
         name: "Wild Shape",
@@ -311,6 +333,7 @@ export const CLASSES: CharacterClass[] = [
     classSkills: ["concentration", "craft", "diplomacy", "handleAnimal", "heal", "knowledge", "profession", "ride", "senseMotive"],
     description: "A holy warrior bound by oath, the paladin smites evil and shields the innocent with divine grace.",
     emoji: "\u{1F6E1}\uFE0F",
+    spellcasting: { type: "prepared", ability: "wis", casterClass: "paladin", startsAt: 4 },
     features: [
       {
         name: "Smite Evil",
@@ -353,6 +376,7 @@ export const CLASSES: CharacterClass[] = [
     classSkills: ["climb", "concentration", "craft", "handleAnimal", "heal", "hide", "jump", "knowledge", "listen", "moveSilently", "profession", "ride", "search", "spot", "survival", "swim", "useRope"],
     description: "A skilled tracker and hunter at home in the wilderness, deadly with bow or dual blades.",
     emoji: "\u{1F3F9}",
+    spellcasting: { type: "prepared", ability: "wis", casterClass: "ranger", startsAt: 4 },
     features: [
       {
         name: "Favored Enemy",
@@ -425,6 +449,7 @@ export const CLASSES: CharacterClass[] = [
     classSkills: ["bluff", "concentration", "craft", "knowledge", "profession", "spellcraft"],
     description: "An innate spellcaster whose arcane power flows from within, unleashing devastating magical force.",
     emoji: "\u{1F525}",
+    spellcasting: { type: "spontaneous", ability: "cha", casterClass: "sorcerer", startsAt: 1 },
     features: [
       {
         name: "Magic Missile",
@@ -463,6 +488,7 @@ export const CLASSES: CharacterClass[] = [
     classSkills: ["concentration", "craft", "decipherScript", "knowledge", "profession", "spellcraft"],
     description: "A scholar of the arcane who prepares powerful spells from a vast spellbook, bending reality through study.",
     emoji: "\u{1F9D9}",
+    spellcasting: { type: "prepared", ability: "int", casterClass: "wizard", startsAt: 1, canSpecialize: true },
     features: [
       {
         name: "Fireball",

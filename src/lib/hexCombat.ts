@@ -1,7 +1,9 @@
 import { computeStats, type ComputedStats } from "./battleStats";
-import { type HexCoord, hexDistance, hexNeighbors, isAdjacent } from "./hexGrid";
+import { type HexCoord, hexDistance, hexNeighbors, isAdjacent, GRID_COLS, GRID_ROWS } from "./hexGrid";
 import type { NftCharacter } from "@/hooks/useNftStats";
 import type { CharacterClass } from "./classes";
+import type { Monster } from "./monsters";
+import { getFeatCombatFlags } from "./feats";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -19,6 +21,7 @@ export type BattleUnit = {
   hasMoved: boolean;
   hasActed: boolean;
   charClass?: CharacterClass;
+  feats: string[];
 };
 
 export type AttackResult = {
@@ -71,6 +74,7 @@ export type EnemySpec = {
   imageEmoji: string;
   stats: NftCharacter["stats"];
   subtypes: string[];
+  hpOverride?: number;   // use this HP instead of computed (for D&D monsters)
 };
 
 /** Look up an enemy NFT from the character list — uses real LP stats */
@@ -89,6 +93,31 @@ function buildEnemySpec(key: string, characters: NftCharacter[]): EnemySpec {
   };
 }
 
+// ── Monster → EnemySpec (D&D stats from monsters.ts) ────────────────────────
+
+/** Build an EnemySpec from a Monster definition — uses D&D stats directly */
+export function createMonsterSpec(monster: Monster, emoji?: string): EnemySpec {
+  return {
+    name: monster.name,
+    imageEmoji: emoji ?? "\u{1F47E}",  // 👾 default
+    stats: {
+      str: monster.str,
+      dex: monster.dex,
+      con: monster.con,
+      int: monster.int,
+      wis: monster.wis,
+      cha: monster.cha,
+      ac: monster.ac,
+      atk: 0,
+      speed: monster.speed,
+      lightningDmg: 0,
+      fireDmg: 0,
+    },
+    subtypes: [],
+    hpOverride: monster.hp,  // use D&D HP, not computed
+  };
+}
+
 // ── Encounter Generation ─────────────────────────────────────────────────────
 
 export function generateEncounter(
@@ -100,10 +129,45 @@ export function generateEncounter(
   return [buildEnemySpec("skeleton", characters), buildEnemySpec("wolf", characters), buildEnemySpec("goblin", characters)];
 }
 
+// ── Spawn Positions ─────────────────────────────────────────────────────────
+
+/** Generate spawn positions for N enemies on the right side of the grid */
+export function generateSpawnPositions(count: number, playerPos: HexCoord): HexCoord[] {
+  const positions: HexCoord[] = [];
+  const used = new Set<string>();
+  used.add(`${playerPos.q},${playerPos.r}`);
+
+  // Start from far right, spread across rows
+  for (let q = GRID_COLS - 2; q >= Math.floor(GRID_COLS / 2) && positions.length < count; q--) {
+    for (let r = 1; r < GRID_ROWS - 1 && positions.length < count; r++) {
+      const key = `${q},${r}`;
+      if (!used.has(key)) {
+        // Spread them out: skip every other row for first pass
+        if (positions.length < count / 2 && r % 2 === 0) continue;
+        positions.push({ q, r });
+        used.add(key);
+      }
+    }
+  }
+
+  // If we still need more, fill remaining gaps
+  for (let q = GRID_COLS - 2; q >= 2 && positions.length < count; q--) {
+    for (let r = 0; r < GRID_ROWS && positions.length < count; r++) {
+      const key = `${q},${r}`;
+      if (!used.has(key)) {
+        positions.push({ q, r });
+        used.add(key);
+      }
+    }
+  }
+
+  return positions;
+}
+
 // ── Unit Creation ────────────────────────────────────────────────────────────
 
-export function createPlayerUnit(char: NftCharacter, position: HexCoord, charClass?: CharacterClass): BattleUnit {
-  const stats = computeStats(char.stats, charClass, 1);
+export function createPlayerUnit(char: NftCharacter, position: HexCoord, charClass?: CharacterClass, featIds: string[] = []): BattleUnit {
+  const stats = computeStats(char.stats, charClass, 1, featIds);
   return {
     id: "player",
     name: char.name,
@@ -117,11 +181,13 @@ export function createPlayerUnit(char: NftCharacter, position: HexCoord, charCla
     hasMoved: false,
     hasActed: false,
     charClass,
+    feats: featIds,
   };
 }
 
 export function createEnemyUnit(spec: EnemySpec, position: HexCoord, index: number): BattleUnit {
   const stats = computeStats(spec.stats);
+  const hp = spec.hpOverride ?? stats.hp;  // D&D monster HP if provided
   return {
     id: `enemy-${index}`,
     name: spec.name,
@@ -130,11 +196,12 @@ export function createEnemyUnit(spec: EnemySpec, position: HexCoord, index: numb
     position,
     stats,
     subtypes: spec.subtypes,
-    currentHp: stats.hp,
-    maxHp: stats.hp,
+    currentHp: hp,
+    maxHp: hp,
     isPlayer: false,
     hasMoved: false,
     hasActed: false,
+    feats: [],
   };
 }
 
@@ -150,7 +217,8 @@ export function resolveAttack(
   natural: number
 ): AttackResult {
   const modified = natural + attacker.stats.atkBonus;
-  const isCrit = natural === 20;
+  const flags = getFeatCombatFlags(attacker.feats);
+  const isCrit = natural === 20 || (flags.improvedCritical && natural === 19);
   const isCritMiss = natural === 1;
 
   if (isCritMiss) {

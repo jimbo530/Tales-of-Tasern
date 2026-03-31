@@ -14,6 +14,7 @@ import {
   battleRewards,
   logBattle,
   setQuestCooldown,
+  addCp,
 } from "@/lib/saveSystem";
 
 export function useCharacterSave() {
@@ -86,9 +87,30 @@ export function useCharacterSave() {
   }, [save]);
 
   // Create new character
-  const createCharacter = useCallback(async (nftAddress: string, classId: string, skillRanks?: Record<string, number>, feats?: string[]) => {
+  const createCharacter = useCallback(async (
+    nftAddress: string,
+    classId: string,
+    skillRanks?: Record<string, number>,
+    feats?: string[],
+    spellConfig?: {
+      known_spells?: string[];
+      prepared_spells?: string[];
+      spellbook?: string[];
+      domains?: [string, string] | null;
+      school_specialization?: string | null;
+      prohibited_schools?: string[];
+    },
+  ) => {
     if (!address) return false;
     const newSave = defaultSave(address, nftAddress, classId, skillRanks ?? {}, feats ?? []);
+    if (spellConfig) {
+      if (spellConfig.known_spells) newSave.known_spells = spellConfig.known_spells;
+      if (spellConfig.prepared_spells) newSave.prepared_spells = spellConfig.prepared_spells;
+      if (spellConfig.spellbook) newSave.spellbook = spellConfig.spellbook;
+      if (spellConfig.domains !== undefined) newSave.domains = spellConfig.domains;
+      if (spellConfig.school_specialization !== undefined) newSave.school_specialization = spellConfig.school_specialization;
+      if (spellConfig.prohibited_schools) newSave.prohibited_schools = spellConfig.prohibited_schools;
+    }
     const full: CharacterSave = {
       ...newSave,
       created_at: new Date().toISOString(),
@@ -133,14 +155,14 @@ export function useCharacterSave() {
 
     const rewards = result.outcome === "victory"
       ? battleRewards(result.difficulty, save.level)
-      : { xp: 0, gold: 0 };
+      : { xp: 0, goldCp: 0 };
 
     const { level, xp, levelsGained } = addXp(save.level, save.xp, rewards.xp);
 
     const patch: Partial<CharacterSave> = {
       level,
       xp,
-      gold: save.gold + rewards.gold,
+      coins: addCp(save.coins, rewards.goldCp),
       battles_won: save.battles_won + (result.outcome === "victory" ? 1 : 0),
       battles_lost: save.battles_lost + (result.outcome === "defeat" ? 1 : 0),
     };
@@ -159,7 +181,7 @@ export function useCharacterSave() {
       result: result.outcome,
       rounds: result.rounds,
       xp_earned: rewards.xp,
-      gold_earned: rewards.gold,
+      gold_earned: rewards.goldCp,
     }).catch(() => {}); // offline is fine
 
     return { rewards, levelsGained };

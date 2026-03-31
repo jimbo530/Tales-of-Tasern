@@ -1,10 +1,16 @@
 "use client";
 
 import { useState, useMemo, useRef, useEffect, useCallback } from "react";
-import { type CharacterSave, travel, FOOD_PER_DAY } from "@/lib/saveSystem";
+import { type CharacterSave, type Coins, travel, HOURS_PER_ACTION, formatCoins, totalCp, canAfford, cpToCoins, coinWeight } from "@/lib/saveSystem";
 import type { NftCharacter } from "@/hooks/useNftStats";
 import { getZone, getLevelRange, generateFightEncounter, generateLootDrop, type EncounterData, type LootDrop } from "@/lib/encounters";
 import { getShopsForLocation, getAvailableItems, type Shop, type ShopItem } from "@/lib/shops";
+import { SKILLS, abilityMod as calcAbilityMod } from "@/lib/skills";
+import { rollFieldTreasure, rollTreasure, d, nd } from "@/lib/treasure";
+import { MONSTERS } from "@/lib/monsters";
+import { createMonsterSpec, type EnemySpec } from "@/lib/hexCombat";
+import { FEATS } from "@/lib/feats";
+import type { QuestEncounter } from "@/components/HexBattle";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -53,22 +59,60 @@ export type EncounterResult = {
 //   Search action gets +5 bonus to skill check (actively looking)
 //   Rest action gets -2 penalty (guard is down)
 
-export type HexInteraction = "travel" | "rest" | "search";
+export type HexInteraction = "travel" | "rest" | "skill";
+
+// Skills usable in the field — grouped by purpose
+export const FIELD_SKILLS = {
+  // Broad search — finds widest range of things (traps, doors, clues, loot)
+  search:           { id: "search",           name: "Search",            emoji: "🔍", ability: "int" as const, desc: "Find hidden things — loot, traps, doors, clues" },
+  // Social — information, quests, rumors, trade tips
+  diplomacy:        { id: "diplomacy",        name: "Diplomacy",         emoji: "🤝", ability: "cha" as const, desc: "Talk to locals — quests, rumors, information" },
+  gatherInformation:{ id: "gatherInformation",name: "Gather Info",       emoji: "👂", ability: "cha" as const, desc: "Pick up rumors and learn about the area" },
+  intimidate:       { id: "intimidate",       name: "Intimidate",        emoji: "💀", ability: "cha" as const, desc: "Threaten locals for information or tribute" },
+  // Wilderness — food, herbs, tracking, animals
+  survival:         { id: "survival",          name: "Survival",         emoji: "🌿", ability: "wis" as const, desc: "Forage food, find herbs, track animals" },
+  handleAnimal:     { id: "handleAnimal",      name: "Handle Animal",    emoji: "🐾", ability: "cha" as const, desc: "Befriend or tame wild creatures" },
+  // Awareness — spot danger, hear approaching threats
+  spot:             { id: "spot",              name: "Spot",             emoji: "👁️", ability: "wis" as const, desc: "Notice hidden dangers or distant details" },
+  listen:           { id: "listen",            name: "Listen",           emoji: "👂", ability: "wis" as const, desc: "Hear approaching creatures or hidden sounds" },
+  // Knowledge — identify things, recall lore
+  knowledge:        { id: "knowledge",         name: "Knowledge",        emoji: "📖", ability: "int" as const, desc: "Recall lore about the area, creatures, or history" },
+  // Physical — climbing, swimming exploration
+  climb:            { id: "climb",             name: "Climb",            emoji: "🧗", ability: "str" as const, desc: "Scale cliffs to reach hidden areas" },
+  swim:             { id: "swim",              name: "Swim",             emoji: "🏊", ability: "str" as const, desc: "Dive underwater to find submerged things" },
+  // Medical
+  heal:             { id: "heal",              name: "Heal",             emoji: "❤️‍🩹", ability: "wis" as const, desc: "Gather healing herbs, treat wounds" },
+  // Thievery
+  openLock:         { id: "openLock",          name: "Open Lock",        emoji: "🔓", ability: "dex" as const, desc: "Pick locks on chests, doors, and cages" },
+  disableDevice:    { id: "disableDevice",     name: "Disable Device",   emoji: "🪤", ability: "int" as const, desc: "Disarm traps and bypass mechanisms" },
+  // Crafting
+  craft:            { id: "craft",             name: "Craft",            emoji: "🔨", ability: "int" as const, desc: "Craft items from gathered materials" },
+  // Performance
+  perform:          { id: "perform",           name: "Perform",          emoji: "🎵", ability: "cha" as const, desc: "Busk for coin or entertain for favors" },
+} as const;
+
+export type FieldSkillId = keyof typeof FIELD_SKILLS;
 
 export type WorldLuckResult = {
-  worldRoll: number;          // d20 world luck
-  skillRoll: number;          // d20 + WIS mod + action bonus
-  skillDC: number;            // difficulty to beat
+  worldRoll: number;          // d20 world luck — HIDDEN from player (DM knowledge)
+  skillRoll: number;          // d20 + ability mod + ranks — SHOWN to player
+  skillUsed?: string;         // which skill was used (shown to player)
+  skillDC: number;            // difficulty to beat (internal)
   interaction: HexInteraction;
-  outcome: "nothing" | "fight" | "hazard" | "minor_find" | "major_find" | "avoided_danger" | "missed_loot";
+  outcome: "nothing" | "fight" | "thug_fight" | "hazard" | "avoided_danger"
+    | "find_food" | "find_coins" | "find_valuable" | "find_rare"
+    | "find_quest" | "find_dungeon";
   difficulty?: "easy" | "medium" | "hard";
   description: string;
   hpChange: number;
-  goldChange: number;
+  goldChange: number;           // flat copper change (costs negative, tips positive)
+  coinReward?: Coins;           // mixed denomination coin find (preserves cp/sp/gp weight)
   foodChange: number;
   xpChange: number;
+  enemyCount?: number;        // pre-rolled count for generated encounters (thugs, etc.)
   encounter?: EncounterData;  // populated when outcome is "fight"
-  loot?: LootDrop;           // populated when outcome is "minor_find" or "major_find"
+  loot?: LootDrop;           // populated on valuable/rare finds
+  treasureDesc?: string;     // detailed treasure breakdown text
 };
 
 const DANGER_DESC: Record<HexType, string[]> = {
@@ -95,28 +139,82 @@ const HAZARD_DESC: Record<HexType, string[]> = {
   water:    ["Strong current sweeps you off course.", "Unexpected depth forces you back."],
 };
 
-const MINOR_FIND_DESC: Record<HexType, string[]> = {
-  town:     ["You find a few coins dropped in the gutter.", "A shopkeeper gives you a sample."],
-  forest:   ["You spot edible berries along the path.", "A small herb cache beneath a log."],
-  desert:   ["You find a half-buried water skin.", "Wind-polished stones worth a bit of coin."],
-  jungle:   ["Exotic mushrooms — edible and valuable.", "You find a monkey's abandoned fruit stash."],
-  swamp:    ["Peat moss with healing properties.", "Something small glints in shallow water."],
-  mountain: ["A small ore deposit catches your eye.", "Mountain herbs growing in a crevice."],
-  plains:   ["A patch of wild grain ready to harvest.", "A traveler's lost coin pouch."],
-  coast:    ["Shells and driftwood worth a few coins.", "A small catch of fish in a tidal pool."],
-  water:    ["You fish up something small but useful.", "Smooth river stones with minor value."],
+// Skill 25+: food, herbs, crafting materials
+const FIND_FOOD_DESC: Record<HexType, string[]> = {
+  town:     ["You find discarded but edible food behind a tavern.", "A kind baker hands you day-old bread."],
+  forest:   ["You spot edible berries along the path.", "A small herb cache beneath a log.", "You gather useful bark and kindling."],
+  desert:   ["You find a half-buried water skin.", "Dried cactus fruit — edible and hydrating."],
+  jungle:   ["Exotic mushrooms — edible and valuable.", "You find a monkey's abandoned fruit stash.", "Useful vines and fibres for crafting."],
+  swamp:    ["Peat moss with healing properties.", "Edible reeds and marsh tubers.", "Frog legs — not glamorous, but filling."],
+  mountain: ["Mountain herbs growing in a crevice.", "You find a sheltered patch of alpine berries.", "Flint and useful stone for crafting."],
+  plains:   ["A patch of wild grain ready to harvest.", "Rabbit burrow — fresh game.", "Useful fibres and wild flax."],
+  coast:    ["A small catch of fish in a tidal pool.", "Edible seaweed and shellfish.", "Driftwood and rope — useful materials."],
+  water:    ["You fish up something edible.", "Fresh water clams along the bank.", "Reeds and rushes for crafting."],
 };
 
-const MAJOR_FIND_DESC: Record<HexType, string[]> = {
+// Skill 30+: silver, gold coins
+const FIND_COINS_DESC: Record<HexType, string[]> = {
+  town:     ["You find a coin pouch dropped in the gutter.", "A grateful merchant tips you well."],
+  forest:   ["A traveler's lost purse hangs from a branch.", "Old coins scattered around a long-dead campfire."],
+  desert:   ["Wind-scoured coins glint in the sand.", "A buried satchel with silver coins."],
+  jungle:   ["Gold coins spill from a rotted leather bag.", "An offering bowl with silver left by locals."],
+  swamp:    ["Something metallic glints in shallow water.", "Coins in the pocket of a long-dead traveler."],
+  mountain: ["A small ore deposit catches your eye — silver!", "A miner's forgotten coin stash in a crevice."],
+  plains:   ["A traveler's lost coin pouch in the grass.", "Old battlefield — coins among the bones."],
+  coast:    ["Coins washed ashore from a wreck.", "A barnacle-crusted coin purse in a tide pool."],
+  water:    ["Gold coins glitter on the riverbed.", "A coin purse tangled in submerged roots."],
+};
+
+// Skill 35+: valuable items
+const FIND_VALUABLE_DESC: Record<HexType, string[]> = {
   town:     ["You discover a hidden cache behind loose bricks!", "A grateful citizen rewards your good deed."],
   forest:   ["An ancient chest half-buried in roots!", "A rare medicinal herb worth serious gold."],
-  desert:   ["You unearth a buried treasure vault!", "Ancient artifacts poke from the sand."],
+  desert:   ["Ancient artifacts poke from the sand.", "A jeweled dagger half-buried in a dune."],
   jungle:   ["A lost temple alcove with offerings!", "Glowing fungi worth a fortune to alchemists."],
-  swamp:    ["A sunken chest rises from the mire!", "Rare swamp orchids — alchemists pay dearly."],
-  mountain: ["A rich vein of precious ore!", "An abandoned mine with leftover riches."],
+  swamp:    ["Rare swamp orchids — alchemists pay dearly.", "A preserved chest rises from the mire."],
+  mountain: ["A rich vein of precious ore!", "Gemstones embedded in a cave wall."],
   plains:   ["A merchant's lost strongbox in the grass!", "An old battlefield yields valuable relics."],
   coast:    ["Shipwreck debris washes ashore — treasure!", "A sealed chest from a sunken vessel."],
-  water:    ["You pull up a waterlogged treasure chest!", "Ancient coins glitter on the riverbed."],
+  water:    ["You pull up a waterlogged treasure chest!", "A gleaming weapon stuck in the riverbed."],
+};
+
+// Skill 40+: very valuable, possible magic items
+const FIND_RARE_DESC: Record<HexType, string[]> = {
+  town:     ["A hidden vault behind a false wall — someone's forgotten fortune!", "An enchanted trinket pulses faintly in a junk pile."],
+  forest:   ["A faintly glowing weapon rests in a sacred grove.", "You uncover a druid's cache of potent magical herbs."],
+  desert:   ["You unearth an ancient sarcophagus with golden relics!", "A djinn's ring gleams in the sand."],
+  jungle:   ["A jade idol radiates faint magic!", "An enchanted orchid that never wilts — alchemists would kill for this."],
+  swamp:    ["A black iron chest sealed with arcane wards!", "A staff of twisted bog-oak hums with power."],
+  mountain: ["A dragon's forgotten hoard in a narrow crevice!", "Mithral ore — the rarest metal in the world."],
+  plains:   ["A hero's tomb with a magical blade resting atop it!", "An ancient war standard that inspires courage."],
+  coast:    ["A cursed captain's treasure — gold, gems, and a glowing cutlass!", "A pearl the size of a fist, faintly warm."],
+  water:    ["A sunken shrine with an enchanted relic!", "A mermaid's gift — a ring that glows beneath the waves."],
+};
+
+// Quest discovery descriptions
+const FIND_QUEST_DESC: Record<HexType, string[]> = {
+  town:     ["A desperate note pinned to a board catches your eye.", "A wounded traveler begs for help before passing out."],
+  forest:   ["Strange claw marks on the trees lead deeper into the wood.", "A woodcutter's abandoned camp — signs of a struggle."],
+  desert:   ["A half-buried map points to something beyond the dunes.", "Caravaner tracks end abruptly — something happened here."],
+  jungle:   ["Tribal totems mark a forbidden path.", "A journal page describes a hidden temple deeper in."],
+  swamp:    ["Will-o'-wisps flicker in a pattern — almost like a trail.", "A hermit's journal describes a creature terrorizing the marsh."],
+  mountain: ["Smoke rises from a cave that should be abandoned.", "Dwarven trail markers lead to a sealed door."],
+  plains:   ["A farmer's plea for help, scratched into a fencepost.", "Wagon tracks veer off the road toward something."],
+  coast:    ["A message in a bottle washes ashore.", "A lighthouse keeper's distress signal flickers in the dark."],
+  water:    ["Strange lights glow beneath the surface.", "A fisherman's tale etched into a riverside stone."],
+};
+
+// Dungeon discovery descriptions
+const FIND_DUNGEON_DESC: Record<HexType, string[]> = {
+  town:     ["A hidden trapdoor beneath old flagstones leads into darkness.", "Sewer grates rumble — something vast moves below the city."],
+  forest:   ["An ancient stone staircase descends into the earth between gnarled roots.", "A hollow tree trunk opens into a cavern system."],
+  desert:   ["The sand collapses into a buried structure — stairs lead down.", "Wind exposes the entrance to a forgotten tomb."],
+  jungle:   ["Vines part to reveal a carved stone doorway into a pyramid.", "A cenote drops into an underground temple complex."],
+  swamp:    ["The bog drains into an underground passage.", "A ruined watchtower's basement connects to deeper tunnels."],
+  mountain: ["A crack in the cliff face opens into a vast underground hall.", "A mine shaft descends far deeper than any mine should."],
+  plains:   ["A sinkhole reveals worked stone passages below.", "A barrow mound's entrance yawns open after recent rains."],
+  coast:    ["A sea cave at low tide reveals carved passages beyond.", "Cliff erosion exposes an entrance sealed for centuries."],
+  water:    ["The river current pulls toward a submerged cave entrance.", "A whirlpool guards the entrance to something below."],
 };
 
 function pick<T>(arr: T[]): T { return arr[Math.floor(Math.random() * arr.length)]; }
@@ -124,13 +222,32 @@ function pick<T>(arr: T[]): T { return arr[Math.floor(Math.random() * arr.length
 export function rollWorldLuck(
   hex: MapHex,
   interaction: HexInteraction,
-  wismod: number,
+  stats: Record<string, number>,  // { str, dex, con, int, wis, cha }
+  skillRanks: Record<string, number>,
   distFromCity: number,
+  fieldSkillId?: FieldSkillId,    // which skill the player chose (for "skill" interaction)
+  partySize?: number,             // number of heroes in party (for thug encounters)
 ): WorldLuckResult {
+  // ── Two rolls: world (hidden) + skill check (shown to player) ──
   const worldRoll = Math.floor(Math.random() * 20) + 1;
-  const rawSkill = Math.floor(Math.random() * 20) + 1;
-  const actionBonus = interaction === "search" ? 5 : interaction === "rest" ? -2 : 0;
-  const skillRoll = rawSkill + wismod + actionBonus;
+  const rawD20 = Math.floor(Math.random() * 20) + 1;
+
+  // Compute skill check: d20 + ability mod + ranks
+  let skillRoll: number;
+  let skillName: string | undefined;
+  if (interaction === "skill" && fieldSkillId) {
+    const fs = FIELD_SKILLS[fieldSkillId];
+    const abilScore = stats[fs.ability] ?? 10;
+    const ranks = skillRanks[fs.id] ?? 0;
+    skillRoll = rawD20 + calcAbilityMod(abilScore) + ranks;
+    skillName = fs.name;
+  } else if (interaction === "rest") {
+    // Rest uses WIS with a penalty
+    skillRoll = rawD20 + calcAbilityMod(stats.wis ?? 10) - 2;
+  } else {
+    // Travel uses WIS
+    skillRoll = rawD20 + calcAbilityMod(stats.wis ?? 10);
+  }
 
   const isFarm = hex.tags?.includes("farm");
   const isDungeon = hex.tags?.includes("dungeon");
@@ -139,13 +256,50 @@ export function rollWorldLuck(
   // Zone-based level range for encounter/loot scaling
   const levelRange = getLevelRange(hex.q, hex.r, distFromCity);
 
-  // Towns are safe — no danger, but can still find things
+  // ── Helpers used by multiple branches ──
+  const sid = fieldSkillId ?? "search";
+  const r = (o: Omit<WorldLuckResult, "worldRoll" | "skillRoll" | "skillUsed" | "interaction">): WorldLuckResult =>
+    ({ worldRoll, skillRoll, skillUsed: skillName, interaction, ...o });
+
+  // ── World roll determines DANGER (hidden from player) ──
+  // Towns are mostly safe — but thugs lurk in alleys
   const dangerCeiling = isTown ? 0 : isFarm ? 2 : isDungeon ? 5 : 3;
   const hazardCeiling = isTown ? 0 : isFarm ? 4 : 6;
-  const minorFloor = isFarm ? 13 : isDungeon ? 13 : 15;
-  const majorFloor = isDungeon ? 17 : 18;
 
-  // ── Danger (world 1-dangerCeiling) ──
+  // Town thugs — worldRoll 1-2 in town = mugging attempt
+  // Diplomacy or Intimidate (DC 12) talks them down; otherwise fight
+  if (isTown && worldRoll <= 2) {
+    const canTalk = ["diplomacy", "intimidate"].includes(sid);
+    const dc = 12;
+    if (canTalk && skillRoll >= dc) {
+      return r({
+        skillDC: dc, outcome: "avoided_danger",
+        description: pick([
+          sid === "diplomacy"
+            ? "A gang of thugs blocks your path, but your calm words convince them you're not worth the trouble."
+            : "You lock eyes with the lead thug and growl. They back off, muttering curses.",
+          "Street toughs size you up, but think better of it when you stand your ground.",
+          "\"Hand over your coin!\" demands a rough voice — but your " + (sid === "diplomacy" ? "silver tongue" : "menacing glare") + " sends them slinking away.",
+        ]),
+        hpChange: 0, goldChange: 0, foodChange: 0, xpChange: 10,
+      });
+    }
+    // Thug fight — enemies generated in useEffect from this outcome
+    const ps = Math.max(1, partySize ?? 1);
+    const thugCount = ps + d(6);
+    return r({
+      skillDC: dc, outcome: "thug_fight",
+      enemyCount: thugCount,
+      description: pick([
+        `${thugCount} street thugs step out from a dark alley. "Your money or your life!"`,
+        `A gang of ${thugCount} armed ruffians corners you near the docks. "Empty your pockets, traveler."`,
+        `${thugCount} thugs with clubs and knives block the street. "Nice gear. Hand it over."`,
+      ]),
+      hpChange: 0, goldChange: 0, foodChange: 0, xpChange: 0,
+    });
+  }
+
+  // Danger zone (world 1-dangerCeiling)
   if (worldRoll <= dangerCeiling) {
     const dc = isFarm ? 8 : isDungeon ? 14 : 10 + Math.min(distFromCity, 10);
     if (skillRoll >= dc) {
@@ -157,7 +311,6 @@ export function rollWorldLuck(
         hpChange: 0, goldChange: 0, foodChange: 0, xpChange: 5,
       };
     }
-    // Failed — fight. Generate actual encounter with monsters.
     let difficulty: "easy" | "medium" | "hard";
     if (isFarm) difficulty = "easy";
     else if (distFromCity <= 6) difficulty = "easy";
@@ -175,12 +328,12 @@ export function rollWorldLuck(
     };
   }
 
-  // ── Hazard / minor trouble (world dangerCeiling+1 to hazardCeiling) ──
+  // Hazard zone (world dangerCeiling+1 to hazardCeiling)
   if (worldRoll <= hazardCeiling) {
     const dc = 10;
     if (skillRoll >= dc) {
       return {
-        worldRoll, skillRoll, skillDC: dc, interaction, outcome: "nothing",
+        worldRoll, skillRoll, skillDC: dc, interaction, outcome: "avoided_danger",
         description: "You notice a hazard and avoid it.",
         hpChange: 0, goldChange: 0, foodChange: 0, xpChange: 2,
       };
@@ -193,59 +346,230 @@ export function rollWorldLuck(
     };
   }
 
-  // ── Nothing special (world hazardCeiling+1 to minorFloor-1) ──
-  if (worldRoll < minorFloor) {
-    const nothingDescs = [
-      "Nothing eventful happens.",
-      "The area is quiet.",
-      "You find no trace of anything unusual.",
-    ];
-    return {
-      worldRoll, skillRoll, skillDC: 0, interaction, outcome: "nothing",
-      description: pick(nothingDescs),
-      hpChange: 0, goldChange: 0, foodChange: 0, xpChange: 0,
-    };
+  // ── Skill total determines FINDS — what you find depends on WHICH skill you used ──
+  // Town rats quest — easy find via any social or search skill
+  if (isTown && interaction === "skill" && skillRoll >= 10 &&
+      ["search", "diplomacy", "gatherInformation"].includes(sid)) {
+    return r({
+      skillDC: 10, outcome: "find_quest",
+      description: pick([
+        "A tavern keeper waves you over. \"Giant rats in my cellar! I'll pay you to clear them out.\"",
+        "A notice board reads: REWARD — Rat infestation in the cellars. Inquire within.",
+        "An old woman tugs your sleeve. \"Please, the rats down below are the size of dogs!\"",
+        "A warehouse foreman shouts for help. \"The cellar's overrun! Rats everywhere!\"",
+      ]),
+      hpChange: 0, goldChange: 0, foodChange: 0, xpChange: 5,
+    });
   }
 
-  // ── Minor find (world minorFloor to majorFloor-1) ──
-  if (worldRoll < majorFloor) {
-    const dc = isFarm ? 8 : 12;
-    if (skillRoll >= dc) {
-      const lootDrop = generateLootDrop(hex.type, levelRange, "minor_find");
-      const gold = Math.round(lootDrop.totalValue) + (Math.floor(Math.random() * 3));
-      const food = isFarm ? Math.floor(Math.random() * 2) + 1 : (Math.random() < 0.4 ? 1 : 0);
-      return {
-        worldRoll, skillRoll, skillDC: dc, interaction, outcome: "minor_find",
-        description: lootDrop.flavor + " " + lootDrop.items.map(i => i.name).join(", ") + ".",
-        hpChange: 0, goldChange: gold, foodChange: food, xpChange: 3,
-        loot: lootDrop,
-      };
+  // ── Skill-specific find tables ──
+  // Social skills (diplomacy, gatherInformation, intimidate, perform) — info, quests, rumors
+  const isSocial = ["diplomacy", "gatherInformation", "intimidate", "perform"].includes(sid);
+  // Wilderness skills (survival, handleAnimal, heal) — food, herbs, animals
+  const isWild = ["survival", "handleAnimal", "heal"].includes(sid);
+  // Awareness skills (spot, listen) — detect danger, find hidden things
+  const isAware = ["spot", "listen"].includes(sid);
+  // Physical skills (climb, swim) — reach inaccessible places
+  const isPhysical = ["climb", "swim"].includes(sid);
+  // Thievery (openLock, disableDevice) — bypass locks, traps → loot
+  const isThief = ["openLock", "disableDevice"].includes(sid);
+  // Knowledge — recall lore, identify findings
+  const isKnow = sid === "knowledge";
+  // Craft — make items from materials
+  const isCraft = sid === "craft";
+
+  // Quest/dungeon discovery: high world roll + high skill
+  if (worldRoll >= 19 && skillRoll >= 35 && !isTown && Math.random() < 0.3) {
+    const desc = isAware ? "Your keen senses detect a hidden passage — a dungeon entrance!"
+      : isWild ? "Animal tracks lead to a cave entrance concealed by brush."
+      : isKnow ? "You recall ancient texts describing a ruin in this exact location."
+      : isPhysical ? "Scaling a difficult face, you find a hidden entrance in the cliff."
+      : pick(FIND_DUNGEON_DESC[hex.type] ?? FIND_DUNGEON_DESC.plains);
+    return r({ skillDC: 35, outcome: "find_dungeon", description: desc, hpChange: 0, goldChange: 0, foodChange: 0, xpChange: 15 });
+  }
+  if (worldRoll >= 18 && skillRoll >= 30 && Math.random() < 0.25) {
+    const desc = isSocial ? pick(isTown ? [
+      "A drunk noble whispers about a hidden vault beneath the city.",
+      "A retiring adventurer offers the location of their greatest find.",
+      "A merchant leans close. \"I know someone who can get you into places most can't.\"",
+    ] : [
+      "A farmer tells you about strange lights in the fields at night.",
+      "An old shepherd recalls a cave entrance that collapsed years ago.",
+    ]) : isKnow ? "Your studies remind you of a quest mentioned in historical records."
+      : pick(FIND_QUEST_DESC[hex.type] ?? FIND_QUEST_DESC.plains);
+    return r({ skillDC: 30, outcome: "find_quest", description: desc, hpChange: 0, goldChange: 0, foodChange: 0, xpChange: 10 });
+  }
+
+  // ── 40+: Very valuable / magic item tier ──
+  if (skillRoll >= 40) {
+    const cr = Math.max(1, Math.floor((levelRange[0] + levelRange[1]) / 2));
+    if (isWild) {
+      const t = rollTreasure(cr);
+      return r({ skillDC: 40, outcome: "find_rare",
+        description: "You discover an extraordinarily rare herb with magical properties — alchemists would pay a fortune.",
+        hpChange: 0, goldChange: t.totalCp - (t.coins.gp * 100 + t.coins.sp * 10 + t.coins.cp), coinReward: t.coins,
+        foodChange: Math.floor(Math.random() * 3) + 2, xpChange: 15, treasureDesc: t.description });
     }
-    return {
-      worldRoll, skillRoll, skillDC: dc, interaction, outcome: "missed_loot",
-      description: "You sense something nearby but can't locate it.",
-      hpChange: 0, goldChange: 0, foodChange: 0, xpChange: 1,
-    };
+    if (isSocial) {
+      return r({ skillDC: 40, outcome: "find_quest",
+        description: pick(isTown ? [
+          "A noble confides a dangerous secret. \"Do me a favor, and I'll open doors for you.\"",
+          "An information broker reveals a dungeon location — for the right price, which you negotiate to free.",
+        ] : ["A farmer reveals a hidden cellar beneath the old mill — untouched for decades."]),
+        hpChange: 0, goldChange: 0, foodChange: 0, xpChange: 15 });
+    }
+    if (isThief) {
+      const lootDrop = generateLootDrop(hex.type, levelRange, "major_find");
+      const t = rollTreasure(cr);
+      return r({ skillDC: 40, outcome: "find_rare",
+        description: "You crack open a masterfully hidden cache — " + lootDrop.items.map(i => i.name).join(", ") + "!",
+        hpChange: 0, goldChange: t.totalCp - (t.coins.gp * 100 + t.coins.sp * 10 + t.coins.cp), coinReward: t.coins,
+        foodChange: 0, xpChange: 15, loot: lootDrop, treasureDesc: t.description });
+    }
+    const lootDrop = generateLootDrop(hex.type, levelRange, "major_find");
+    const t = rollTreasure(cr);
+    return r({ skillDC: 40, outcome: "find_rare",
+      description: pick(FIND_RARE_DESC[hex.type] ?? FIND_RARE_DESC.plains),
+      hpChange: 0, goldChange: t.totalCp - (t.coins.gp * 100 + t.coins.sp * 10 + t.coins.cp), coinReward: t.coins,
+      foodChange: 0, xpChange: 15, loot: lootDrop, treasureDesc: t.description });
   }
 
-  // ── Major find (world majorFloor+) ──
-  const dc = isDungeon ? 10 : 14;
-  if (skillRoll >= dc) {
+  // ── 35-39: Valuable finds ──
+  if (skillRoll >= 35) {
+    const cr = Math.max(1, Math.floor((levelRange[0] + levelRange[1]) / 2));
+    if (isWild) {
+      const food = Math.floor(Math.random() * 4) + 3;
+      const t = rollFieldTreasure(cr);
+      return r({ skillDC: 35, outcome: "find_valuable",
+        description: pick(["You track a deer to its den and make a clean kill — meat for days.", "A grove of rare medicinal herbs, carefully harvested.", "You find a bee colony — fresh honey and beeswax, valuable trade goods."]),
+        hpChange: 0, goldChange: t.totalCp - (t.coins.gp * 100 + t.coins.sp * 10 + t.coins.cp), coinReward: t.coins,
+        foodChange: food, xpChange: 10, treasureDesc: t.description });
+    }
+    if (isSocial) {
+      return r({ skillDC: 35, outcome: "find_valuable",
+        description: pick(isTown ? [
+          "A guard mentions a merchant caravan was robbed nearby. \"Their goods are probably still out there.\"",
+          "A bard sings of a forgotten tomb in the hills. You get enough details to find it.",
+          "A retired soldier tells you about a weapons cache from the old war — never recovered.",
+        ] : [
+          "A farmer says there's an abandoned homestead to the north. \"They left everything behind.\"",
+          "A woodcutter tells you about a grove where rare herbs grow wild.",
+        ]),
+        hpChange: 0, goldChange: 0, foodChange: 0, xpChange: 10 });
+    }
+    if (sid === "heal") {
+      const t = rollFieldTreasure(cr);
+      return r({ skillDC: 35, outcome: "find_valuable",
+        description: "You identify rare healing herbs — enough to brew several potent remedies.",
+        hpChange: Math.floor(Math.random() * 4) + 3, goldChange: t.totalCp - (t.coins.gp * 100 + t.coins.sp * 10 + t.coins.cp), coinReward: t.coins,
+        foodChange: 0, xpChange: 10, treasureDesc: t.description });
+    }
     const lootDrop = generateLootDrop(hex.type, levelRange, "major_find");
-    const gold = Math.round(lootDrop.totalValue) + (isDungeon ? Math.floor(Math.random() * 15) + 5 : Math.floor(Math.random() * 5));
-    const food = isFarm ? Math.floor(Math.random() * 4) + 2 : Math.floor(Math.random() * 2) + 1;
-    return {
-      worldRoll, skillRoll, skillDC: dc, interaction, outcome: "major_find",
-      description: lootDrop.flavor + " " + lootDrop.items.map(i => i.name).join(", ") + "!",
-      hpChange: 0, goldChange: gold, foodChange: food, xpChange: 10,
-      loot: lootDrop,
-    };
+    const t = rollFieldTreasure(cr);
+    return r({ skillDC: 35, outcome: "find_valuable",
+      description: pick(FIND_VALUABLE_DESC[hex.type] ?? FIND_VALUABLE_DESC.plains) + " " + lootDrop.items.map(i => i.name).join(", ") + "!",
+      hpChange: 0, goldChange: t.totalCp - (t.coins.gp * 100 + t.coins.sp * 10 + t.coins.cp), coinReward: t.coins,
+      foodChange: 0, xpChange: 10, loot: lootDrop, treasureDesc: t.description });
   }
-  return {
-    worldRoll, skillRoll, skillDC: dc, interaction, outcome: "missed_loot",
-    description: "Something valuable was here... but you just missed it.",
-    hpChange: 0, goldChange: 0, foodChange: 0, xpChange: 2,
-  };
+
+  // ── 30-34: Coins / solid finds ──
+  if (skillRoll >= 30) {
+    if (isWild) {
+      const food = isFarm ? Math.floor(Math.random() * 3) + 2 : Math.floor(Math.random() * 2) + 2;
+      return r({ skillDC: 30, outcome: "find_food",
+        description: pick(["You track game and make a successful hunt.", "A patch of wild vegetables and tubers — a solid haul.", "You find a clean spring and edible plants growing nearby."]),
+        hpChange: 0, goldChange: 0, foodChange: food, xpChange: 5 });
+    }
+    if (isSocial) {
+      // Tips come as mixed small coins — mostly copper and silver from common folk
+      const tipCoins: Coins = isTown
+        ? { gp: 0, sp: nd(1, 6), cp: nd(2, 10) }
+        : { gp: 0, sp: Math.random() < 0.5 ? d(3) : 0, cp: nd(2, 8) };
+      const food = (isTown || isFarm) ? (Math.random() < 0.4 ? 1 : 0) : 0;
+      return r({ skillDC: 30, outcome: "find_coins",
+        description: pick(isTown ? [
+          "A chatty merchant reveals which roads are safest and tips you for your company.",
+          "A guard lets slip where the best foraging spots are outside the walls.",
+          "A grateful innkeeper gives you food and a few coins for hearing out her troubles.",
+        ] : [
+          "A farmer gives you produce as thanks for the company.",
+          "A shepherd points out where wild game gathers. You also earn a small tip.",
+        ]),
+        hpChange: 0, goldChange: 0, coinReward: tipCoins, foodChange: food, xpChange: 5 });
+    }
+    if (sid === "heal") {
+      return r({ skillDC: 30, outcome: "find_food",
+        description: "You gather useful healing herbs and treat minor wounds.",
+        hpChange: Math.floor(Math.random() * 3) + 1, goldChange: 0, foodChange: 1, xpChange: 5 });
+    }
+    if (sid === "perform") {
+      // Performance earnings — crowd tosses copper and the occasional silver
+      const perfCoins: Coins = isTown
+        ? { gp: Math.random() < 0.2 ? 1 : 0, sp: nd(1, 8), cp: nd(3, 10) }
+        : { gp: 0, sp: nd(1, 4), cp: nd(2, 8) };
+      return r({ skillDC: 30, outcome: "find_coins",
+        description: pick(isTown ? ["You play a rousing tune and the crowd tosses coins!", "Your performance draws a crowd — the hat fills nicely."] : ["The farmhands gather round your song and pay you in coin and food."]),
+        hpChange: 0, goldChange: 0, coinReward: perfCoins, foodChange: isFarm ? 1 : 0, xpChange: 5 });
+    }
+    // General coin find — scales with distance (wilder areas = older, richer caches)
+    const cr = Math.max(1, Math.floor((levelRange[0] + levelRange[1]) / 2));
+    const t = rollFieldTreasure(cr);
+    return r({ skillDC: 30, outcome: "find_coins",
+      description: pick(FIND_COINS_DESC[hex.type] ?? FIND_COINS_DESC.plains),
+      hpChange: 0, goldChange: t.totalCp - (t.coins.gp * 100 + t.coins.sp * 10 + t.coins.cp), coinReward: t.coins,
+      foodChange: 0, xpChange: 5, treasureDesc: t.description });
+  }
+
+  // ── 25-29: Food / crafting materials ──
+  if (skillRoll >= 25) {
+    if (isWild) {
+      const food = isFarm ? Math.floor(Math.random() * 3) + 2 : Math.floor(Math.random() * 2) + 1;
+      return r({ skillDC: 25, outcome: "find_food",
+        description: pick(["You forage edible roots and berries.", "Animal tracks lead to a small catch.", "You identify safe mushrooms and wild herbs.", "A clean water source and edible plants nearby."]),
+        hpChange: 0, goldChange: 0, foodChange: food, xpChange: 2 });
+    }
+    if (isSocial && (isTown || isFarm)) {
+      const food = isFarm ? 1 : (Math.random() < 0.4 ? 1 : 0);
+      return r({ skillDC: 25, outcome: "find_food",
+        description: pick(isTown ? [
+          "You chat with locals. Nothing earth-shattering, but someone shares a meal.",
+          "An old woman feeds you soup and tells you about her grandchildren.",
+          "A fellow traveler swaps road stories over shared bread.",
+        ] : [
+          "A farmer shares bread and cheese while complaining about the weather.",
+          "A local child shows you their favorite fishing spot.",
+        ]),
+        hpChange: 0, goldChange: 0, foodChange: food, xpChange: 2 });
+    }
+    if (sid === "heal") {
+      return r({ skillDC: 25, outcome: "find_food",
+        description: "You find common medicinal herbs — useful for treating minor ailments.",
+        hpChange: 1, goldChange: 0, foodChange: 0, xpChange: 2 });
+    }
+    if (isCraft) {
+      return r({ skillDC: 25, outcome: "find_food",
+        description: "You gather useful raw materials — wood, fibres, and stone for crafting.",
+        hpChange: 0, goldChange: 50, foodChange: 0, xpChange: 2 });
+    }
+    const food = isFarm ? Math.floor(Math.random() * 3) + 2 : Math.floor(Math.random() * 2) + 1;
+    const gold = Math.random() < 0.3 ? (Math.floor(Math.random() * 2) + 1) * 100 : 0;
+    return r({ skillDC: 25, outcome: "find_food",
+      description: pick(FIND_FOOD_DESC[hex.type] ?? FIND_FOOD_DESC.plains),
+      hpChange: 0, goldChange: gold, foodChange: food, xpChange: 2 });
+  }
+
+  // ── Below 25: nothing found — skill-flavored failure ──
+  const failDesc = isSocial ? pick(isTown ? [
+    "People eye you suspiciously and keep their distance.",
+    "A merchant shoos you away. \"Buy something or move along.\"",
+    "The locals clam up when you approach.",
+  ] : ["The farmers are too busy to chat.", "The locals are polite but unhelpful."])
+    : isWild ? pick(["You search for tracks but find nothing.", "The land yields nothing useful today.", "No edible plants or game in sight."])
+    : isAware ? "You scan the area carefully but notice nothing unusual."
+    : isPhysical ? "You look for a way up but find no viable route."
+    : isThief ? "Nothing here to pick or disarm."
+    : pick(["Nothing eventful happens.", "The area is quiet.", "Your efforts turn up nothing of interest.", "Time passes uneventfully."]);
+  return r({ skillDC: 0, outcome: "nothing", description: failDesc, hpChange: 0, goldChange: 0, foodChange: 0, xpChange: 0 });
 }
 
 const LOST_TIME: Record<HexType, string[]> = {
@@ -1381,8 +1705,8 @@ export type ActionResult = {
 
 export function performAction(action: HexAction, hex: MapHex, save: Pick<CharacterSave, "level" | "current_hp" | "max_hp" | "food" | "day">, con: number): ActionResult {
   if (action === "rest") {
-    const foodCost = Math.min(save.food, FOOD_PER_DAY);
-    const hasFoodForDay = save.food >= FOOD_PER_DAY;
+    const foodCost = Math.min(save.food, 1);  // 1 food per 8hr rest
+    const hasFoodForDay = save.food >= 1;
     const healPerDay = Math.floor(Math.max(1, con) / 2) + save.level;
     const hpHealed = hasFoodForDay ? healPerDay : 0;
     const desc = hasFoodForDay
@@ -1400,7 +1724,7 @@ export function performAction(action: HexAction, hex: MapHex, save: Pick<Charact
 
   if (roll >= 18) {
     // Great find
-    const gold = isDungeon ? Math.floor(Math.random() * 20) + 10 : Math.floor(Math.random() * 10) + 3;
+    const gold = (isDungeon ? Math.floor(Math.random() * 20) + 10 : Math.floor(Math.random() * 10) + 3) * 100;
     const food = isFarm ? Math.floor(Math.random() * 3) + 2 : Math.floor(Math.random() * 2) + 1;
     const descs: Record<HexType, string> = {
       town: "You find a hidden stash in a back alley.",
@@ -1444,11 +1768,13 @@ type Props = {
   onAction: (result: WorldLuckResult) => void;
   onBuyItem: (item: ShopItem) => void;
   onBattle: (difficulty: "easy" | "medium" | "hard") => void;
+  onQuestBattle: (encounter: QuestEncounter) => void;
+  onInventory: () => void;
   onBack: () => void;
 };
 
 // ── Travel speed by terrain ─────────────────────────────────────────────
-// Multiplier on hex cost: 1 hex normally = 1 day. Higher = slower.
+// Multiplier on base 8 hrs/hex. Higher = slower.
 // Roads (plains near towns) are fastest, mountains/jungle/swamp slowest.
 const TERRAIN_SPEED: Record<HexType, number> = {
   town:     0.5,  // roads, safe
@@ -1466,23 +1792,83 @@ const MAX_TRAVEL = 9; // ~same physical distance as old 5-hex limit on denser gr
 const MIN_ZOOM = 1;
 const MAX_ZOOM = 3.5;
 
-export function WorldMap({ save, character, onTravel, onAction, onBuyItem, onBattle, onBack }: Props) {
+export function WorldMap({ save, character, onTravel, onAction, onBuyItem, onBattle, onQuestBattle, onInventory, onBack }: Props) {
   const [selectedHex, setSelectedHex] = useState<MapHex | null>(null);
   const [zoom, setZoom] = useState(2);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [mappingMode, setMappingMode] = useState(false);
   const [markedHexes, setMarkedHexes] = useState<Set<string>>(new Set());
   const [lastAction, setLastAction] = useState<WorldLuckResult | null>(null);
+  const [pendingQuest, setPendingQuest] = useState<QuestEncounter | null>(null);
   const [cityDistrict, setCityDistrict] = useState<string | null>(null); // "market" | "temple" | "high" | "low"
   const [cityShop, setCityShop] = useState<string | null>(null);         // shop or temple id
   const containerRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ startX: number; startY: number; panX: number; panY: number } | null>(null);
   const didCenter = useRef(false);
 
+  // Generate quest/encounter data when lastAction changes (stable, doesn't re-roll on re-render)
+  useEffect(() => {
+    if (!lastAction) { setPendingQuest(null); return; }
+
+    // Rats in the cellar
+    if (lastAction.outcome === "find_quest" && lastAction.description.toLowerCase().includes("rat")) {
+      const direRat = MONSTERS.find(m => m.id === "dire_rat");
+      if (!direRat) return;
+      const heroCount = Math.max(1, save.party.heroes.length);
+      let ratCount = 0;
+      for (let i = 0; i < heroCount * save.level; i++) ratCount += Math.floor(Math.random() * 6) + 1;
+      const rats: EnemySpec[] = Array.from({ length: ratCount }, () =>
+        createMonsterSpec(direRat, "\uD83D\uDC00")); // 🐀
+      setPendingQuest({
+        questId: "rats_in_cellar",
+        questName: "Rats in the Cellar",
+        enemies: rats,
+        mapImage: "/cellar_1.png",
+        difficulty: "easy",
+      });
+      return;
+    }
+
+    // Thug fight — use the pre-rolled count from calculateWorldLuck
+    if (lastAction.outcome === "thug_fight") {
+      const thugCount = lastAction.enemyCount ?? (Math.max(1, save.party.heroes.length) + Math.floor(Math.random() * 6) + 1);
+      const combatFeats = FEATS.filter(f => f.category === "combat" && !f.prereqs.feat && !f.prereqs.minBAB && !f.prereqs.classOnly);
+      const thugNames = ["Scarface", "Knuckles", "Ratbone", "Grinner", "Nail", "Crooked Tom", "Shiv", "Guttersnipe",
+        "Brick", "Fang", "Weasel", "Scar", "Blackjack", "Dirk", "Mugsy", "Stubs"];
+      const usedNames = new Set<string>();
+      const thugs: EnemySpec[] = Array.from({ length: thugCount }, () => {
+        let name: string;
+        do { name = thugNames[Math.floor(Math.random() * thugNames.length)]; } while (usedNames.has(name) && usedNames.size < thugNames.length);
+        usedNames.add(name);
+        const feat = combatFeats[Math.floor(Math.random() * combatFeats.length)];
+        return {
+          name: `${name} (${feat.name})`,
+          imageEmoji: "\uD83D\uDC4A",  // 👊
+          stats: { str: 5, dex: 5, con: 5, int: 5, wis: 5, cha: 5, ac: 13, atk: 1, speed: 30, lightningDmg: 0, fireDmg: 0 },
+          subtypes: [],
+          hpOverride: 8 + Math.floor(Math.random() * 4) + 1,
+        };
+      });
+      setPendingQuest({
+        questId: "thug_ambush",
+        questName: "Street Ambush",
+        enemies: thugs,
+        difficulty: "medium",
+      });
+      return;
+    }
+
+    setPendingQuest(null);
+  }, [lastAction, save.party.heroes.length, save.level]);
+
+  const [selectedSkill, setSelectedSkill] = useState<FieldSkillId>("search");
   const currentHex = ALL_HEXES.find(h => h.q === save.map_hex.q && h.r === save.map_hex.r);
   const con = character ? Math.max(1, character.stats.con) : 1;
-  const wis = character ? Math.max(1, character.stats.wis) : 1;
-  const wismod = Math.floor((wis - 10) / 2); // D&D-style ability modifier
+  const charStats: Record<string, number> = character
+    ? { str: character.stats.str, dex: character.stats.dex, con: character.stats.con, int: character.stats.int, wis: character.stats.wis, cha: character.stats.cha }
+    : { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 };
+  const skillRanks = save.skill_ranks ?? {};
+  const heroCount = Math.max(1, save.party.heroes.length);
   const playerPx = hexToPixel(save.map_hex.q, save.map_hex.r);
   const distFromCity = hexDistance(save.map_hex, CITY_CENTER);
 
@@ -1577,23 +1963,27 @@ export function WorldMap({ save, character, onTravel, onAction, onBuyItem, onBat
     setSelectedHex(prev => prev?.q === hex.q && prev?.r === hex.r ? null : hex);
   }
 
-  /** Effective travel days = hex distance × terrain speed × road modifier */
-  function travelDays(dist: number, hex: MapHex): number {
+  /** Effective travel hexes with terrain speed factored in (for food/starvation calc) */
+  function travelCost(dist: number, hex: MapHex): number {
     let speed = TERRAIN_SPEED[hex.type] ?? 1;
-    // Roads make travel faster
-    if (hex.tags?.includes("road")) speed *= 0.5;       // King's Road — stone brick, fastest
-    else if (hex.tags?.includes("dirt_road")) speed *= 0.7; // Dirt roads — still faster than open terrain
+    if (hex.tags?.includes("road")) speed *= 0.5;
+    else if (hex.tags?.includes("dirt_road")) speed *= 0.7;
     return Math.max(1, Math.round(dist * speed));
+  }
+
+  /** Hours display for travel */
+  function travelHours(dist: number, hex: MapHex): number {
+    return travelCost(dist, hex) * HOURS_PER_ACTION;
   }
 
   function handleTravel() {
     if (!selectedHex) return;
     const dist = hexDistance(save.map_hex, selectedHex);
     if (dist === 0 || dist > MAX_TRAVEL) return;
-    const effectiveDays = travelDays(dist, selectedHex);
-    const result = travel(effectiveDays, save, con);
+    const effectiveHexes = travelCost(dist, selectedHex);
+    const result = travel(effectiveHexes, save, con);
     const destDist = hexDistance(selectedHex, CITY_CENTER);
-    const encounter = rollWorldLuck(selectedHex, "travel", wismod, destDist);
+    const encounter = rollWorldLuck(selectedHex, "travel", charStats, skillRanks, destDist, undefined, heroCount);
     onTravel({ q: selectedHex.q, r: selectedHex.r }, result, selectedHex, encounter);
     setSelectedHex(null);
   }
@@ -1627,11 +2017,21 @@ export function WorldMap({ save, character, onTravel, onAction, onBuyItem, onBat
         </span>
         <div className="flex gap-3 text-xs" style={{ color: "rgba(232,213,176,0.6)" }}>
           <span>Lv{save.level}</span>
-          <span>Day {save.day}</span>
+          <span>Day {Math.floor((save.hour ?? 0) / 24) + 1} — {(() => {
+            const h = (save.hour ?? 0) % 24;
+            if (h < 6) return "Night";
+            if (h < 12) return "Morning";
+            if (h < 18) return "Afternoon";
+            return "Evening";
+          })()}</span>
           <span>{"\u{1F356}"}{save.food}</span>
           <span>{"\u2764\uFE0F"}{save.current_hp}/{save.max_hp}</span>
-          <span>{"\u{1FA99}"}{save.gold}</span>
+          <span>{"\u{1FA99}"}{formatCoins(save.coins)}</span>
         </div>
+        <button onClick={onInventory} className="px-3 py-1 rounded text-xs font-bold uppercase tracking-widest"
+          style={{ background: "rgba(251,191,36,0.1)", color: "rgba(251,191,36,0.7)", border: "1px solid rgba(251,191,36,0.25)" }}>
+          Pack
+        </button>
       </div>
 
       {/* Map + side panel */}
@@ -1775,8 +2175,8 @@ export function WorldMap({ save, character, onTravel, onAction, onBuyItem, onBat
             {currentHex?.type === "town" && (() => {
               const isKardov = currentHex.name === "Kardov\u2019s Gate" || currentHex.name === "Kardov's Gate";
               const healPerDay = Math.floor(Math.max(1, con) / 2) + save.level;
-              const commonCost = 1;  // PHB: common inn 5sp + meal 3sp ≈ 1gp
-              const luxuryCost = 3;  // PHB: good inn 2gp + meal 5sp ≈ 3gp
+              const commonCost = 80;  // PHB: common inn 5sp + meal 3sp = 80cp
+              const luxuryCost = 250;  // PHB: good inn 2gp + meal 5sp = 250cp
               const luxuryHealBonus = Math.floor(save.level / 2) + 2;
 
               const districts = [
@@ -1817,25 +2217,41 @@ export function WorldMap({ save, character, onTravel, onAction, onBuyItem, onBat
                         </button>
                       ))}
                     </div>
-                    {/* Quick actions always visible */}
-                    <div className="flex gap-1 mt-1">
-                      <button onClick={() => {
-                          const result = rollWorldLuck(currentHex, "rest", wismod, distFromCity);
-                          setLastAction(result); onAction(result);
-                        }}
-                        disabled={save.food === 0 && save.current_hp >= save.max_hp}
-                        className="flex-1 px-2 py-1 rounded text-xs"
-                        style={{ background: "rgba(255,255,255,0.03)", color: "rgba(232,213,176,0.4)", border: "1px solid rgba(201,168,76,0.08)", fontSize: "0.45rem", opacity: save.food === 0 && save.current_hp >= save.max_hp ? 0.3 : 1 }}>
-                        Street Rest
-                      </button>
-                      <button onClick={() => {
-                          const result = rollWorldLuck(currentHex, "search", wismod, distFromCity);
-                          setLastAction(result); onAction(result);
-                        }}
-                        className="flex-1 px-2 py-1 rounded text-xs"
-                        style={{ background: "rgba(251,191,36,0.05)", color: "rgba(251,191,36,0.5)", border: "1px solid rgba(251,191,36,0.1)", fontSize: "0.45rem" }}>
-                        Search Streets
-                      </button>
+                    {/* Skill picker + rest */}
+                    <div className="flex flex-col gap-1 mt-1">
+                      <div className="flex flex-wrap gap-0.5">
+                        {Object.values(FIELD_SKILLS).map(fs => (
+                          <button key={fs.id} onClick={() => setSelectedSkill(fs.id as FieldSkillId)}
+                            className="px-1.5 py-0.5 rounded transition-all"
+                            style={{
+                              background: selectedSkill === fs.id ? "rgba(251,191,36,0.2)" : "rgba(255,255,255,0.03)",
+                              color: selectedSkill === fs.id ? "rgba(251,191,36,0.9)" : "rgba(232,213,176,0.4)",
+                              border: `1px solid ${selectedSkill === fs.id ? "rgba(251,191,36,0.4)" : "rgba(201,168,76,0.08)"}`,
+                              fontSize: "0.4rem",
+                            }}>
+                            {fs.emoji} {fs.name}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="flex gap-1">
+                        <button onClick={() => {
+                            const result = rollWorldLuck(currentHex, "skill", charStats, skillRanks, distFromCity, selectedSkill, heroCount);
+                            setLastAction(result); onAction(result);
+                          }}
+                          className="flex-1 px-2 py-1 rounded text-xs font-bold uppercase tracking-widest"
+                          style={{ background: "rgba(251,191,36,0.12)", color: "rgba(251,191,36,0.9)", border: "1px solid rgba(251,191,36,0.3)", fontSize: "0.45rem" }}>
+                          Use {FIELD_SKILLS[selectedSkill].name} (8h)
+                        </button>
+                        <button onClick={() => {
+                            const result = rollWorldLuck(currentHex, "rest", charStats, skillRanks, distFromCity, undefined, heroCount);
+                            setLastAction(result); onAction(result);
+                          }}
+                          disabled={save.food === 0 && save.current_hp >= save.max_hp}
+                          className="px-2 py-1 rounded text-xs"
+                          style={{ background: "rgba(255,255,255,0.03)", color: "rgba(232,213,176,0.4)", border: "1px solid rgba(201,168,76,0.08)", fontSize: "0.45rem", opacity: save.food === 0 && save.current_hp >= save.max_hp ? 0.3 : 1 }}>
+                          Rest (8h)
+                        </button>
+                      </div>
                     </div>
                   </div>
                 );
@@ -1888,7 +2304,7 @@ export function WorldMap({ save, character, onTravel, onAction, onBuyItem, onBat
                     </div>
                     <div className="flex flex-col gap-0.5 max-h-48 overflow-y-auto pr-1">
                       {items.map(item => {
-                        const canBuy = save.gold >= item.buyPrice;
+                        const canBuy = totalCp(save.coins) >= item.buyPrice;
                         return (
                           <div key={item.id} className="flex items-center gap-1 px-2 py-1 rounded"
                             style={{ background: "rgba(0,0,0,0.15)", border: "1px solid rgba(201,168,76,0.06)" }}>
@@ -1906,7 +2322,7 @@ export function WorldMap({ save, character, onTravel, onAction, onBuyItem, onBat
                                 border: `1px solid ${canBuy ? "rgba(74,222,128,0.2)" : "rgba(201,168,76,0.05)"}`,
                                 fontSize: "0.45rem",
                               }}>
-                              {item.buyPrice}g
+                              {formatCoins(cpToCoins(item.buyPrice))}
                             </button>
                           </div>
                         );
@@ -1947,7 +2363,7 @@ export function WorldMap({ save, character, onTravel, onAction, onBuyItem, onBat
                 if (!temple) { setCityShop(null); return null; }
                 const isElemental = ["earth", "air", "water", "sun"].includes(temple.id);
                 const isPower = ["base", "pol"].includes(temple.id);
-                const blessingCost = { earth: 5, air: 5, water: 10, sun: 15 }[temple.id] ?? 5;
+                const blessingCost = { earth: 500, air: 500, water: 1000, sun: 1500 }[temple.id] ?? 500;
                 return (
                   <div className="mt-2 flex flex-col gap-1">
                     <div className="flex gap-1">
@@ -1967,7 +2383,7 @@ export function WorldMap({ save, character, onTravel, onAction, onBuyItem, onBat
                     {isElemental && (
                       <div className="flex flex-col gap-0.5">
                         <button onClick={() => {
-                            if (save.gold >= blessingCost) {
+                            if (totalCp(save.coins) >= blessingCost) {
                               const healAmt = save.max_hp - save.current_hp;
                               const result: WorldLuckResult = {
                                 worldRoll: 0, skillRoll: 0, skillDC: 0,
@@ -1978,14 +2394,14 @@ export function WorldMap({ save, character, onTravel, onAction, onBuyItem, onBat
                               setLastAction(result); onAction(result);
                             }
                           }}
-                          disabled={save.gold < blessingCost || save.current_hp >= save.max_hp}
+                          disabled={totalCp(save.coins) < blessingCost || save.current_hp >= save.max_hp}
                           className="px-2 py-1.5 rounded text-xs font-bold"
                           style={{
                             background: "rgba(74,222,128,0.1)", color: "rgba(74,222,128,0.8)",
                             border: "1px solid rgba(74,222,128,0.2)", fontSize: "0.5rem",
-                            opacity: save.gold < blessingCost || save.current_hp >= save.max_hp ? 0.4 : 1,
+                            opacity: totalCp(save.coins) < blessingCost || save.current_hp >= save.max_hp ? 0.4 : 1,
                           }}>
-                          Healing Prayer ({blessingCost}g) — Full HP
+                          Healing Prayer ({formatCoins(cpToCoins(blessingCost))}) — Full HP
                         </button>
                         <div style={{ fontSize: "0.35rem", color: "rgba(232,213,176,0.3)" }}>
                           More blessings coming soon...
@@ -2019,8 +2435,33 @@ export function WorldMap({ save, character, onTravel, onAction, onBuyItem, onBat
                 );
               }
 
-              // ── High District (luxury inn, guild hall future) ──
+              // ── High District (gated — requires pass) ──
               if (cityDistrict === "high") {
+                const hasPass = save.inventory.some(i => i.id === "high_district_pass");
+
+                if (!hasPass) {
+                  return (
+                    <div className="mt-2 flex flex-col gap-1">
+                      <button onClick={() => setCityDistrict(null)} className="self-start px-2 py-0.5 rounded text-xs"
+                        style={{ color: "rgba(201,168,76,0.5)", border: "1px solid rgba(201,168,76,0.1)", fontSize: "0.4rem" }}>
+                        ← Back to Districts
+                      </button>
+                      <div style={{ fontSize: "0.45rem", color: "rgba(201,168,76,0.5)", letterSpacing: "0.1em" }} className="font-bold uppercase">
+                        {"\u{1F451}"} High District — GATED
+                      </div>
+                      <div className="px-2 py-2 rounded-lg" style={{ background: "rgba(220,38,38,0.08)", border: "1px solid rgba(220,38,38,0.2)" }}>
+                        <div style={{ fontSize: "0.5rem", color: "rgba(232,213,176,0.7)" }}>
+                          A guard blocks the gate. &quot;No pass, no entry. Passes are granted by the nobility for services rendered, or so I hear, certain vendors around the island deal in... unofficial ones.&quot;
+                        </div>
+                        <div className="mt-1" style={{ fontSize: "0.4rem", color: "rgba(232,213,176,0.4)" }}>
+                          Earn a High District Pass by completing favors for nobles, or find a shady vendor willing to sell one.
+                          Try speaking with locals or searching thoroughly across the island.
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
+
                 return (
                   <div className="mt-2 flex flex-col gap-1">
                     <button onClick={() => setCityDistrict(null)} className="self-start px-2 py-0.5 rounded text-xs"
@@ -2041,10 +2482,10 @@ export function WorldMap({ save, character, onTravel, onAction, onBuyItem, onBat
                           };
                           setLastAction(result); onAction(result);
                         }}
-                        disabled={save.gold < luxuryCost}
+                        disabled={totalCp(save.coins) < luxuryCost}
                         className="w-full px-2 py-1.5 rounded text-xs font-bold uppercase tracking-widest"
-                        style={{ background: "rgba(201,168,76,0.15)", color: "rgba(201,168,76,0.9)", border: "1px solid rgba(201,168,76,0.4)", opacity: save.gold < luxuryCost ? 0.4 : 1 }}>
-                        Luxury Inn (1d, {luxuryCost}g) — Safe, extra healing
+                        style={{ background: "rgba(201,168,76,0.15)", color: "rgba(201,168,76,0.9)", border: "1px solid rgba(201,168,76,0.4)", opacity: totalCp(save.coins) < luxuryCost ? 0.4 : 1 }}>
+                        Luxury Inn (8h, {formatCoins(cpToCoins(luxuryCost))}) — Safe, extra healing
                       </button>
                     )}
                     <div className="px-2 py-1.5 rounded" style={{ background: "rgba(0,0,0,0.1)", border: "1px solid rgba(201,168,76,0.06)" }}>
@@ -2056,8 +2497,47 @@ export function WorldMap({ save, character, onTravel, onAction, onBuyItem, onBat
                 );
               }
 
-              // ── Low District (common inn, street rest, tavern) ──
+              // ── Low District (common inn, artisan workshops, tavern) ──
               if (cityDistrict === "low") {
+                // Artisan workshops — each sells a few basic items below market price
+                // Helper: create a cheap artisan ware as a proper ShopItem
+                // Helper: artisan ware as ShopItem. Price is in COPPER PIECES.
+                const aw = (id: string, name: string, buyCp: number, cat: ShopItem["category"], wt: number): ShopItem => ({
+                  id, name, category: cat, value: buyCp / 100, weight: wt, description: "",
+                  buyPrice: buyCp, sellPrice: Math.max(0, Math.floor(buyCp / 2)),
+                });
+                const ARTISANS: { id: string; name: string; emoji: string; location: string; desc: string; chaDC: number; wares: ShopItem[] }[] = [
+                  { id: "smithy",      name: "Blacksmith",      emoji: "\u{1F525}", location: "smithy",        desc: "Anvil, forge, and quenching trough. Best for metal weapons and armor.",     chaDC: 12, wares: [
+                    aw("shop_dagger",        "Dagger",        150, "weapon", 1),   // PHB 2gp, artisan 1g5s
+                    aw("shop_light_hammer",  "Light Hammer",   80, "weapon", 2),   // PHB 1gp, artisan 8s
+                    aw("shop_iron_pot",      "Iron Pot",       50, "gear",   3),   // artisan 5s
+                    aw("shop_pitons",        "Pitons (10)",    80, "gear",   5),   // PHB 1gp, artisan 8s
+                  ]},
+                  { id: "carpentry",   name: "Carpenter",       emoji: "\u{1FAB5}", location: "workshop",      desc: "Sturdy workbench with saws, planes, and chisels. Bows, shafts, shields.",  chaDC: 10, wares: [
+                    aw("shop_club",          "Club",            5, "weapon", 3),   // offcuts, 5cp
+                    aw("shop_quarterstaff",  "Quarterstaff",   20, "weapon", 4),   // artisan 2s
+                    aw("shop_wood_shield",   "Light Wooden Shield", 250, "armor", 5), // PHB 3gp, artisan 2g5s
+                    aw("shop_pole",          "10-ft Pole",     15, "gear",   8),   // artisan 1s5c
+                  ]},
+                  { id: "tannery",     name: "Tanner",          emoji: "\u{1F9F4}", location: "workshop",      desc: "Stretching frames and curing vats. Leather armor, bags, and straps.",      chaDC: 10, wares: [
+                    aw("shop_leather",       "Leather Armor", 800, "armor",  15),  // PHB 10gp, artisan 8gp
+                    aw("shop_waterskin",     "Waterskin",      80, "gear",    4),   // artisan 8s
+                    aw("shop_belt_pouch",    "Belt Pouch",     80, "gear",    0),   // artisan 8s
+                    aw("shop_sling",         "Sling",          10, "weapon",  0),   // leather scraps, 1s
+                  ]},
+                  { id: "alch_bench",  name: "Alchemist Bench", emoji: "\u2697\uFE0F", location: "alchemist_lab", desc: "Glassware, burners, and distillation flasks. Potions and compounds.",   chaDC: 14, wares: [
+                    aw("shop_torch_5",       "Torches (5)",     5, "gear",        5),  // 5cp (tallow scraps)
+                    aw("shop_tindertwigs",   "Tindertwigs (5)", 400, "alchemical", 0), // PHB 5gp, artisan 4gp
+                    aw("shop_smokestick",    "Smokestick",    1600, "alchemical",  0), // PHB 20gp, artisan 16gp
+                    aw("shop_antitoxin",     "Antitoxin",     4000, "alchemical",  0), // PHB 50gp, artisan 40gp
+                  ]},
+                  { id: "kitchen",     name: "Common Kitchen",  emoji: "\u{1F372}", location: "workshop",     desc: "Fire pit, pots, and a cutting board. Cook meals and dry rations.",         chaDC: 8, wares: [
+                    aw("shop_rations_1",     "Trail Rations (1 day)",  40, "consumable", 1),  // PHB 5sp, artisan 4s
+                    aw("shop_rations_7",     "Trail Rations (7 days)", 250, "consumable", 7), // bulk 2g5s
+                    aw("shop_waterskin_k",   "Waterskin",              80, "gear",       4),  // artisan 8s
+                  ]},
+                ];
+
                 return (
                   <div className="mt-2 flex flex-col gap-1">
                     <button onClick={() => setCityDistrict(null)} className="self-start px-2 py-0.5 rounded text-xs"
@@ -2067,6 +2547,8 @@ export function WorldMap({ save, character, onTravel, onAction, onBuyItem, onBat
                     <div style={{ fontSize: "0.45rem", color: "rgba(201,168,76,0.5)", letterSpacing: "0.1em" }} className="font-bold uppercase">
                       {"\u{1F3DA}\uFE0F"} Low District
                     </div>
+
+                    {/* Common Inn */}
                     <button onClick={() => {
                         const result: WorldLuckResult = {
                           worldRoll: 0, skillRoll: 0, skillDC: 0,
@@ -2076,28 +2558,95 @@ export function WorldMap({ save, character, onTravel, onAction, onBuyItem, onBat
                         };
                         setLastAction(result); onAction(result);
                       }}
-                      disabled={save.gold < commonCost}
+                      disabled={totalCp(save.coins) < commonCost}
                       className="w-full px-2 py-1.5 rounded text-xs font-bold uppercase tracking-widest"
-                      style={{ background: "rgba(96,165,250,0.15)", color: "rgba(96,165,250,0.9)", border: "1px solid rgba(96,165,250,0.3)", opacity: save.gold < commonCost ? 0.4 : 1 }}>
-                      Common Inn (1d, {commonCost}g) — Safe
+                      style={{ background: "rgba(96,165,250,0.15)", color: "rgba(96,165,250,0.9)", border: "1px solid rgba(96,165,250,0.3)", opacity: totalCp(save.coins) < commonCost ? 0.4 : 1 }}>
+                      Common Inn (1d, {formatCoins(cpToCoins(commonCost))}) — Safe
                     </button>
-                    <div className="flex gap-1">
+
+                    {/* Artisan Workshops */}
+                    <div style={{ fontSize: "0.4rem", color: "rgba(201,168,76,0.5)", letterSpacing: "0.08em", marginTop: 4 }} className="font-bold uppercase">
+                      Artisan Workshops
+                    </div>
+                    <div style={{ fontSize: "0.35rem", color: "rgba(232,213,176,0.25)", marginBottom: 2 }}>
+                      Convince an artisan to let you use their workstation (CHA check). Fail and they&apos;ll ask you to do a task first.
+                    </div>
+                    <div className="flex flex-col gap-0.5">
+                      {ARTISANS.map(a => {
+                        const chaScore = charStats.cha ?? 10;
+                        const chaRanks = skillRanks["diplomacy"] ?? 0;
+                        return (
+                          <div key={a.id} className="px-2 py-1 rounded"
+                            style={{ background: "rgba(0,0,0,0.15)", border: "1px solid rgba(201,168,76,0.08)" }}>
+                            {/* Header row */}
+                            <div className="flex items-center gap-1">
+                              <span style={{ fontSize: "0.5rem" }}>{a.emoji}</span>
+                              <span className="text-xs font-bold" style={{ color: "rgba(232,213,176,0.8)", fontSize: "0.45rem" }}>{a.name}</span>
+                              <button onClick={() => {
+                                  const d20 = Math.floor(Math.random() * 20) + 1;
+                                  const chaCheck = d20 + calcAbilityMod(chaScore) + chaRanks;
+                                  const passed = chaCheck >= a.chaDC;
+                                  const result: WorldLuckResult = {
+                                    worldRoll: 0, skillRoll: chaCheck, skillUsed: "Diplomacy", skillDC: a.chaDC,
+                                    interaction: "skill", outcome: passed ? "nothing" : "find_quest",
+                                    description: passed
+                                      ? `The ${a.name.toLowerCase()} nods approvingly. "Aye, you seem the capable sort. Use the ${a.id === "smithy" ? "forge" : "bench"} as long as you need." You have access to the ${a.name} workshop.`
+                                      : `The ${a.name.toLowerCase()} eyes you skeptically. "I don't let just anyone touch my tools. Tell you what — do something for me first, and we'll talk." A task has been offered.`,
+                                    hpChange: 0, goldChange: 0, foodChange: 0, xpChange: passed ? 2 : 5,
+                                  };
+                                  setLastAction(result); onAction(result);
+                                }}
+                                className="ml-auto px-1.5 py-0.5 rounded hover:bg-white/5 transition-all"
+                                style={{ fontSize: "0.35rem", color: "rgba(96,165,250,0.6)", background: "rgba(96,165,250,0.06)", border: "1px solid rgba(96,165,250,0.12)" }}>
+                                Use Workshop (DC {a.chaDC})
+                              </button>
+                            </div>
+                            <div style={{ fontSize: "0.35rem", color: "rgba(232,213,176,0.3)", marginTop: 1 }}>{a.desc}</div>
+
+                            {/* Artisan wares — cheap items for sale */}
+                            <div className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5">
+                              {a.wares.map(w => {
+                                const canBuy = totalCp(save.coins) >= w.buyPrice;
+                                return (
+                                  <button key={w.id} onClick={() => { if (canBuy) onBuyItem(w); }}
+                                    disabled={!canBuy}
+                                    className="flex items-center gap-1 px-1 py-0.5 rounded transition-all hover:bg-white/5"
+                                    style={{
+                                      background: canBuy ? "rgba(74,222,128,0.04)" : "rgba(255,255,255,0.01)",
+                                      border: `1px solid ${canBuy ? "rgba(74,222,128,0.1)" : "rgba(201,168,76,0.04)"}`,
+                                      opacity: canBuy ? 1 : 0.4,
+                                    }}>
+                                    <span style={{ fontSize: "0.33rem", color: "rgba(232,213,176,0.55)" }}>{w.name}</span>
+                                    <span style={{ fontSize: "0.33rem", color: canBuy ? "rgba(74,222,128,0.7)" : "rgba(232,213,176,0.2)", fontWeight: 700 }}>
+                                      {w.buyPrice === 0 ? "Free" : formatCoins(cpToCoins(w.buyPrice))}
+                                    </span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Street actions */}
+                    <div className="flex gap-1 mt-1">
                       <button onClick={() => {
-                          const result = rollWorldLuck(currentHex, "rest", wismod, distFromCity);
+                          const result = rollWorldLuck(currentHex, "skill", charStats, skillRanks, distFromCity, selectedSkill, heroCount);
+                          setLastAction(result); onAction(result);
+                        }}
+                        className="flex-1 px-2 py-1 rounded text-xs font-bold"
+                        style={{ background: "rgba(251,191,36,0.08)", color: "rgba(251,191,36,0.7)", border: "1px solid rgba(251,191,36,0.15)", fontSize: "0.45rem" }}>
+                        {FIELD_SKILLS[selectedSkill].emoji} {FIELD_SKILLS[selectedSkill].name} (8h)
+                      </button>
+                      <button onClick={() => {
+                          const result = rollWorldLuck(currentHex, "rest", charStats, skillRanks, distFromCity, undefined, heroCount);
                           setLastAction(result); onAction(result);
                         }}
                         disabled={save.food === 0 && save.current_hp >= save.max_hp}
-                        className="flex-1 px-2 py-1 rounded text-xs"
+                        className="px-2 py-1 rounded text-xs"
                         style={{ background: "rgba(255,255,255,0.03)", color: "rgba(232,213,176,0.5)", border: "1px solid rgba(201,168,76,0.08)", fontSize: "0.45rem", opacity: save.food === 0 && save.current_hp >= save.max_hp ? 0.3 : 1 }}>
                         Street Rest (free)
-                      </button>
-                      <button onClick={() => {
-                          const result = rollWorldLuck(currentHex, "search", wismod, distFromCity);
-                          setLastAction(result); onAction(result);
-                        }}
-                        className="flex-1 px-2 py-1 rounded text-xs"
-                        style={{ background: "rgba(251,191,36,0.05)", color: "rgba(251,191,36,0.5)", border: "1px solid rgba(251,191,36,0.08)", fontSize: "0.45rem" }}>
-                        Search Streets
                       </button>
                     </div>
                     <div style={{ fontSize: "0.35rem", color: "rgba(232,213,176,0.25)" }}>
@@ -2116,26 +2665,29 @@ export function WorldMap({ save, character, onTravel, onAction, onBuyItem, onBat
             })()}
             {currentHex && currentHex.type !== "town" && (
               <div className="mt-2 flex flex-col gap-1">
+                {/* Skill picker grid */}
+                <div className="flex flex-wrap gap-0.5">
+                  {Object.values(FIELD_SKILLS).map(fs => (
+                    <button key={fs.id} onClick={() => setSelectedSkill(fs.id as FieldSkillId)}
+                      className="px-1.5 py-0.5 rounded transition-all"
+                      title={fs.desc}
+                      style={{
+                        background: selectedSkill === fs.id ? "rgba(251,191,36,0.2)" : "rgba(255,255,255,0.03)",
+                        color: selectedSkill === fs.id ? "rgba(251,191,36,0.9)" : "rgba(232,213,176,0.4)",
+                        border: `1px solid ${selectedSkill === fs.id ? "rgba(251,191,36,0.4)" : "rgba(201,168,76,0.08)"}`,
+                        fontSize: "0.4rem",
+                      }}>
+                      {fs.emoji} {fs.name}
+                    </button>
+                  ))}
+                </div>
+                <div style={{ fontSize: "0.35rem", color: "rgba(232,213,176,0.3)" }}>
+                  {FIELD_SKILLS[selectedSkill].desc}
+                </div>
                 <div className="flex gap-1">
                   <button
                     onClick={() => {
-                      const result = rollWorldLuck(currentHex, "rest", wismod, distFromCity);
-                      setLastAction(result);
-                      onAction(result);
-                    }}
-                    disabled={currentHex.type === "water" || (save.food === 0 && save.current_hp >= save.max_hp)}
-                    className="flex-1 px-2 py-1.5 rounded text-xs font-bold uppercase tracking-widest"
-                    style={{
-                      background: "rgba(96,165,250,0.15)",
-                      color: "rgba(96,165,250,0.9)",
-                      border: "1px solid rgba(96,165,250,0.3)",
-                      opacity: currentHex.type === "water" || (save.food === 0 && save.current_hp >= save.max_hp) ? 0.4 : 1,
-                    }}>
-                    Rest (1d)
-                  </button>
-                  <button
-                    onClick={() => {
-                      const result = rollWorldLuck(currentHex, "search", wismod, distFromCity);
+                      const result = rollWorldLuck(currentHex, "skill", charStats, skillRanks, distFromCity, selectedSkill, heroCount);
                       setLastAction(result);
                       onAction(result);
                     }}
@@ -2145,7 +2697,23 @@ export function WorldMap({ save, character, onTravel, onAction, onBuyItem, onBat
                       color: "rgba(251,191,36,0.9)",
                       border: "1px solid rgba(251,191,36,0.3)",
                     }}>
-                    Search (1d)
+                    {FIELD_SKILLS[selectedSkill].emoji} {FIELD_SKILLS[selectedSkill].name} (8h)
+                  </button>
+                  <button
+                    onClick={() => {
+                      const result = rollWorldLuck(currentHex, "rest", charStats, skillRanks, distFromCity, undefined, heroCount);
+                      setLastAction(result);
+                      onAction(result);
+                    }}
+                    disabled={currentHex.type === "water" || (save.food === 0 && save.current_hp >= save.max_hp)}
+                    className="px-2 py-1.5 rounded text-xs font-bold uppercase tracking-widest"
+                    style={{
+                      background: "rgba(96,165,250,0.15)",
+                      color: "rgba(96,165,250,0.9)",
+                      border: "1px solid rgba(96,165,250,0.3)",
+                      opacity: currentHex.type === "water" || (save.food === 0 && save.current_hp >= save.max_hp) ? 0.4 : 1,
+                    }}>
+                    Rest (8h)
                   </button>
                 </div>
                 {currentHex.type === "water" && (
@@ -2157,51 +2725,95 @@ export function WorldMap({ save, character, onTravel, onAction, onBuyItem, onBat
             )}
 
             {/* Last action result */}
-            {lastAction && (
-              <div className="mt-1.5 px-2 py-1.5 rounded" style={{
-                background: lastAction.outcome === "fight" ? "rgba(220,38,38,0.15)"
-                  : lastAction.outcome === "minor_find" || lastAction.outcome === "major_find" ? "rgba(74,222,128,0.1)"
-                  : lastAction.outcome === "hazard" ? "rgba(251,191,36,0.1)"
-                  : "rgba(255,255,255,0.05)",
-                border: `1px solid ${lastAction.outcome === "fight" ? "rgba(220,38,38,0.3)"
-                  : lastAction.outcome === "minor_find" || lastAction.outcome === "major_find" ? "rgba(74,222,128,0.2)"
-                  : "rgba(251,191,36,0.2)"}`,
-                fontSize: "0.5rem", color: "rgba(232,213,176,0.7)", lineHeight: 1.4,
-              }}>
-                <div className="font-bold mb-0.5" style={{ fontSize: "0.45rem", color: "rgba(232,213,176,0.5)" }}>
-                  {lastAction.interaction.toUpperCase()} — {lastAction.outcome.replace("_", " ").toUpperCase()}
-                  <span style={{ marginLeft: 4, opacity: 0.6 }}>
-                    (luck:{lastAction.worldRoll} skill:{lastAction.skillRoll}{lastAction.skillDC > 0 ? ` vs DC${lastAction.skillDC}` : ""})
-                  </span>
-                </div>
-                {lastAction.description}
-                {/* Monster details for fights */}
-                {lastAction.encounter && (
-                  <div className="mt-0.5" style={{ fontSize: "0.45rem", color: "rgba(220,38,38,0.7)" }}>
-                    {lastAction.encounter.monsters.map((m, i) => (
-                      <span key={i}>
-                        {m.count > 1 ? `${m.count}x ` : ""}{m.monster.name}
-                        {" "}(HP:{m.monster.hp} AC:{m.monster.ac} ATK:{m.monster.attack})
-                      </span>
-                    ))}
+            {lastAction && (() => {
+              const isFind = lastAction.outcome.startsWith("find_");
+              const isFight = lastAction.outcome === "fight" || lastAction.outcome === "thug_fight";
+              const isHazard = lastAction.outcome === "hazard";
+              const isQuest = lastAction.outcome === "find_quest";
+              const isDungeon = lastAction.outcome === "find_dungeon";
+              const bg = isFight ? "rgba(220,38,38,0.15)"
+                : isFind ? "rgba(74,222,128,0.1)"
+                : isHazard ? "rgba(251,191,36,0.1)"
+                : "rgba(255,255,255,0.05)";
+              const border = isFight ? "rgba(220,38,38,0.3)"
+                : isFind ? "rgba(74,222,128,0.2)"
+                : "rgba(251,191,36,0.2)";
+              // Friendly outcome label (hide "find_" prefix details)
+              const label = lastAction.outcome === "thug_fight" ? "AMBUSH" : isFight ? "COMBAT" : isHazard ? "HAZARD"
+                : lastAction.outcome === "avoided_danger" ? "AVOIDED DANGER"
+                : lastAction.outcome === "find_food" ? "FORAGED"
+                : lastAction.outcome === "find_coins" ? "FOUND COINS"
+                : lastAction.outcome === "find_valuable" ? "FOUND SOMETHING VALUABLE"
+                : lastAction.outcome === "find_rare" ? "RARE DISCOVERY"
+                : isQuest ? "QUEST DISCOVERED"
+                : isDungeon ? "DUNGEON FOUND"
+                : "NOTHING FOUND";
+              return (
+                <div className="mt-1.5 px-2 py-1.5 rounded" style={{ background: bg, border: `1px solid ${border}`, fontSize: "0.5rem", color: "rgba(232,213,176,0.7)", lineHeight: 1.4 }}>
+                  <div className="flex items-center justify-between mb-0.5">
+                    <span className="font-bold" style={{ fontSize: "0.45rem", color: (isQuest || isDungeon) ? "rgba(168,85,247,0.8)" : "rgba(232,213,176,0.5)" }}>
+                      {lastAction.skillUsed ? lastAction.skillUsed.toUpperCase() : lastAction.interaction.toUpperCase()} — {label}
+                    </span>
+                    <span style={{ fontSize: "0.4rem", color: "rgba(96,165,250,0.6)", fontFamily: "monospace" }}>
+                      Skill: {lastAction.skillRoll}
+                    </span>
                   </div>
-                )}
-                {/* Loot details for finds */}
-                {lastAction.loot && lastAction.loot.items.length > 0 && (
-                  <div className="mt-0.5" style={{ fontSize: "0.45rem", color: "rgba(74,222,128,0.7)" }}>
-                    {lastAction.loot.items.map((item, i) => (
-                      <div key={i}>{item.name} ({item.value}g) — {item.description}</div>
-                    ))}
+                  {lastAction.description}
+                  {lastAction.encounter && (
+                    <div className="mt-0.5" style={{ fontSize: "0.45rem", color: "rgba(220,38,38,0.7)" }}>
+                      {lastAction.encounter.monsters.map((m, i) => (
+                        <span key={i}>
+                          {m.count > 1 ? `${m.count}x ` : ""}{m.monster.name}
+                          {" "}(HP:{m.monster.hp} AC:{m.monster.ac} ATK:{m.monster.attack})
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {lastAction.loot && lastAction.loot.items.length > 0 && (
+                    <div className="mt-0.5" style={{ fontSize: "0.45rem", color: "rgba(74,222,128,0.7)" }}>
+                      {lastAction.loot.items.map((item, i) => (
+                        <div key={i}>{item.name} ({item.value}g) — {item.description}</div>
+                      ))}
+                    </div>
+                  )}
+                  {(isQuest || isDungeon) && (
+                    <div className="mt-0.5" style={{ fontSize: "0.4rem", color: "rgba(168,85,247,0.6)" }}>
+                      {isQuest ? "A new quest has been revealed!" : "A dungeon entrance has been discovered!"}
+                    </div>
+                  )}
+                  {/* Quest battle button (rats, etc.) */}
+                  {isQuest && pendingQuest && (
+                    <button onClick={() => onQuestBattle(pendingQuest)}
+                      className="mt-1 w-full px-3 py-2 rounded text-xs font-bold uppercase tracking-widest"
+                      style={{ background: "rgba(220,38,38,0.15)", color: "rgba(220,38,38,0.9)", border: "1px solid rgba(220,38,38,0.4)" }}>
+                      {pendingQuest.questName} ({pendingQuest.enemies.length} enemies)
+                    </button>
+                  )}
+                  {/* Thug ambush — fight button */}
+                  {lastAction.outcome === "thug_fight" && pendingQuest && (
+                    <button onClick={() => onQuestBattle(pendingQuest)}
+                      className="mt-1 w-full px-3 py-2 rounded text-xs font-bold uppercase tracking-widest"
+                      style={{ background: "rgba(220,38,38,0.2)", color: "rgba(220,38,38,0.9)", border: "1px solid rgba(220,38,38,0.5)" }}>
+                      Fight! ({pendingQuest.enemies.length} Thugs)
+                    </button>
+                  )}
+                  {lastAction.treasureDesc && (
+                    <div className="mt-0.5" style={{ fontSize: "0.4rem", color: "rgba(201,168,76,0.7)" }}>
+                      {lastAction.treasureDesc}
+                    </div>
+                  )}
+                  <div className="flex flex-wrap gap-2 mt-0.5" style={{ color: "rgba(232,213,176,0.5)" }}>
+                    {lastAction.hpChange !== 0 && <span>{lastAction.hpChange > 0 ? "+" : ""}{lastAction.hpChange} HP</span>}
+                    {lastAction.coinReward && (lastAction.coinReward.gp > 0 || lastAction.coinReward.sp > 0 || lastAction.coinReward.cp > 0) && (
+                      <span>+{formatCoins(lastAction.coinReward)}</span>
+                    )}
+                    {lastAction.goldChange > 0 && <span>+{formatCoins(cpToCoins(lastAction.goldChange))} (gems/art)</span>}
+                    {lastAction.foodChange > 0 && <span>+{lastAction.foodChange} food</span>}
+                    {lastAction.xpChange > 0 && <span>+{lastAction.xpChange} XP</span>}
                   </div>
-                )}
-                <div className="flex gap-2 mt-0.5" style={{ color: "rgba(232,213,176,0.5)" }}>
-                  {lastAction.hpChange !== 0 && <span>{lastAction.hpChange > 0 ? "+" : ""}{lastAction.hpChange} HP</span>}
-                  {lastAction.goldChange > 0 && <span>+{lastAction.goldChange} gold</span>}
-                  {lastAction.foodChange > 0 && <span>+{lastAction.foodChange} food</span>}
-                  {lastAction.xpChange > 0 && <span>+{lastAction.xpChange} XP</span>}
                 </div>
-              </div>
-            )}
+              );
+            })()}
           </div>
 
           {/* Selected hex info */}
@@ -2230,17 +2842,18 @@ export function WorldMap({ save, character, onTravel, onAction, onBuyItem, onBat
               {(() => {
                 const dist = hexDistance(save.map_hex, selectedHex);
                 if (dist === 0) return null;
-                const days = travelDays(dist, selectedHex);
-                const preview = travel(days, save, con);
+                const hexCost = travelCost(dist, selectedHex);
+                const hours = travelHours(dist, selectedHex);
+                const preview = travel(hexCost, save, con);
                 const hasRoad = selectedHex.tags?.includes("road") || selectedHex.tags?.includes("dirt_road");
                 const speedLabel = hasRoad ? "road" : (TERRAIN_SPEED[selectedHex.type] ?? 1) < 1 ? "fast" : (TERRAIN_SPEED[selectedHex.type] ?? 1) === 1 ? "normal" : "slow";
+                const timeStr = hours >= 24 ? `${Math.floor(hours / 24)}d ${hours % 24}h` : `${hours}h`;
                 return (
                   <div className="mt-2 flex flex-col gap-1">
                     <div className="grid grid-cols-2 gap-x-2 gap-y-0.5" style={{ fontSize: "0.55rem", color: "rgba(232,213,176,0.6)" }}>
                       <span>Distance:</span><span className="font-bold">{dist} hex{dist > 1 ? "es" : ""}</span>
-                      <span>Travel time:</span><span className="font-bold">{days} day{days > 1 ? "s" : ""} ({speedLabel})</span>
-                      <span>Food cost:</span><span className="font-bold">{days * FOOD_PER_DAY} {"\u{1F356}"}{preview.starving ? " (!)" : ""}</span>
-                      <span>Healing:</span><span className="font-bold">+{preview.hpHealed} HP</span>
+                      <span>Travel time:</span><span className="font-bold">{timeStr} ({speedLabel})</span>
+                      <span>Food cost:</span><span className="font-bold">{hexCost} {"\u{1F356}"}{preview.starving ? " (!)" : ""}</span>
                     </div>
                     {dist <= MAX_TRAVEL && (
                       <button onClick={handleTravel}
@@ -2250,7 +2863,7 @@ export function WorldMap({ save, character, onTravel, onAction, onBuyItem, onBat
                           color: preview.starving ? "rgba(220,38,38,0.9)" : "rgba(74,222,128,0.9)",
                           border: `1px solid ${preview.starving ? "rgba(220,38,38,0.4)" : "rgba(74,222,128,0.4)"}`,
                         }}>
-                        {"\u{1F6B6}"} Travel ({days}d)
+                        {"\u{1F6B6}"} Travel ({timeStr})
                       </button>
                     )}
                     {dist > MAX_TRAVEL && (
@@ -2268,10 +2881,10 @@ export function WorldMap({ save, character, onTravel, onAction, onBuyItem, onBat
           <div className="px-3 py-2 rounded-lg" style={{ background: "rgba(0,0,0,0.2)", border: "1px solid rgba(201,168,76,0.1)" }}>
             <div className="text-xs font-bold tracking-widest uppercase mb-1" style={{ color: "rgba(201,168,76,0.5)", fontSize: "0.5rem" }}>Supplies</div>
             <div className="grid grid-cols-2 gap-0.5" style={{ fontSize: "0.55rem", color: "rgba(232,213,176,0.6)" }}>
-              <span>{"\u{1F356}"} Food</span><span className="font-bold">{save.food} ({Math.floor(save.food / FOOD_PER_DAY)} days)</span>
+              <span>{"\u{1F356}"} Food</span><span className="font-bold">{save.food} ({Math.floor(save.food / 3)} days)</span>
               <span>{"\u2764\uFE0F"} Health</span><span className="font-bold">{save.current_hp}/{save.max_hp}</span>
-              <span>{"\u{1FA99}"} Gold</span><span className="font-bold">{save.gold}</span>
-              <span>{"\u{1F4C5}"} Day</span><span className="font-bold">{save.day}</span>
+              <span>{"\u{1FA99}"} Purse</span><span className="font-bold">{formatCoins(save.coins)}</span>
+              <span>{"\u{1F4C5}"} Day</span><span className="font-bold">{Math.floor((save.hour ?? 0) / 24) + 1}</span>
               <span>{"\u2B50"} XP</span><span className="font-bold">{save.xp}</span>
               <span>{"\u{1F3AF}"} Heal/day</span><span className="font-bold">{Math.floor(con / 2) + save.level} HP</span>
             </div>

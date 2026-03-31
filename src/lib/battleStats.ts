@@ -1,5 +1,6 @@
 import type { NftCharacter } from "@/hooks/useNftStats";
 import { type CharacterClass, getBAB, HIT_DIE_VALUES } from "./classes";
+import { getFeatBonuses } from "./feats";
 
 // Combat stats derived from LP-backed ability scores + class
 // All stats come from token liquidity — same system for players and enemies.
@@ -12,7 +13,7 @@ export type ComputedStats = {
   hp: number;            // hit points (CON-based)
   healing: number;       // regen per round
   initiative: number;    // turn order (DEX)
-  carryCapacity: number; // weight limit (STR × 2)
+  carryCapacity: number; // heavy load max in lbs (PHB table, base 1)
   ac: number;            // armor class (from LP-backed AC tokens)
   atkBonus: number;      // attack bonus (from LP-backed ATK tokens)
   speed: number;         // move speed in ft (from LP-backed speed tokens)
@@ -20,11 +21,56 @@ export type ComputedStats = {
   fireDmg: number;       // bonus fire damage
 };
 
+// ── PHB 3.5 Carry Capacity (base 1 instead of standard base 10) ─────────────
+// PHB Table 9-1 values ÷ 10.  STR 10 carries 10 lbs heavy (not 100).
+// Makes weight management meaningful — every pound counts.
+//
+// Light load: no penalty. Medium: -3 check, ×3 run. Heavy: -6 check, ×3 run, max DEX +1.
+
+/** PHB heavy load for STR 11-20 (÷10, floored). Index 1 = STR 11, index 10 = STR 20. */
+const HEAVY_ABOVE_10 = [0, 11, 13, 15, 17, 20, 23, 26, 30, 35, 40];
+
+/** Max heavy load in lbs for a given STR score (PHB table, base 1) */
+export function getHeavyLoad(str: number): number {
+  if (str <= 0) return 0;
+  if (str <= 10) return str;                       // STR 1 = 1 lb … STR 10 = 10 lb
+  // Above 10: decade pattern, ×4 per 10 points
+  const decade = Math.floor((str - 11) / 10);      // 0 for 11-20, 1 for 21-30, …
+  const ones = ((str - 11) % 10) + 1;              // 1-10 index into table
+  return Math.floor(HEAVY_ABOVE_10[ones] * Math.pow(4, decade));
+}
+
+export type CarryThresholds = {
+  light: number;    // max weight for light load (no penalty)
+  medium: number;   // max weight for medium load
+  heavy: number;    // absolute max carry weight
+};
+
+/** Light / medium / heavy load thresholds for a STR score */
+export function getCarryThresholds(str: number): CarryThresholds {
+  const heavy = getHeavyLoad(str);
+  return {
+    light: Math.floor(heavy / 3),
+    medium: Math.floor(heavy * 2 / 3),
+    heavy,
+  };
+}
+
+/** Encumbrance level based on current weight vs STR */
+export function getEncumbrance(str: number, weightLbs: number): "light" | "medium" | "heavy" | "over" {
+  const t = getCarryThresholds(str);
+  if (weightLbs <= t.light) return "light";
+  if (weightLbs <= t.medium) return "medium";
+  if (weightLbs <= t.heavy) return "heavy";
+  return "over";
+}
+
 /** Compute battle stats from LP-backed raw scores + optional class */
 export function computeStats(
   raw: NftCharacter["stats"],
   charClass?: CharacterClass,
   level: number = 1,
+  featIds: string[] = [],
 ): ComputedStats {
   // Base HP: 10 + CON * 2. Class hit die replaces the base 10.
   const baseHp = charClass ? HIT_DIE_VALUES[charClass.hitDie] : 10;
@@ -46,18 +92,21 @@ export function computeStats(
     }
   }
 
+  // Feat passive bonuses
+  const fb = getFeatBonuses(featIds);
+
   return {
-    attack:        Math.max(1, raw.str) + damageBonus,
+    attack:        Math.max(1, raw.str) + damageBonus + fb.damage,
     mAtk:          Math.max(1, raw.int),
     def:           Math.max(1, raw.dex),
     mDef:          Math.max(1, raw.wis),
-    hp:            hp + hpBonus,
+    hp:            hp + hpBonus + fb.hp,
     healing:       (Math.max(1, raw.wis) + Math.max(1, raw.con)) / 4,
-    initiative:    Math.max(1, raw.dex),
-    carryCapacity: Math.max(1, raw.str) * 2,
-    ac:            raw.ac + acBonus,
-    atkBonus:      raw.atk + (charClass ? getBAB(charClass.bab, level) : 0),
-    speed:         (raw.speed || 30) + speedBonus,
+    initiative:    Math.max(1, raw.dex) + fb.initiative,
+    carryCapacity: getHeavyLoad(Math.max(1, raw.str)),
+    ac:            raw.ac + acBonus + fb.ac,
+    atkBonus:      raw.atk + (charClass ? getBAB(charClass.bab, level) : 0) + fb.atkBonus,
+    speed:         (raw.speed || 30) + speedBonus + fb.speed,
     lightningDmg:  raw.lightningDmg,
     fireDmg:       raw.fireDmg,
   };

@@ -6,14 +6,17 @@ import {
   type BattleUnit,
   type CombatLogEntry,
   type AttackResult,
+  type EnemySpec,
   createPlayerUnit,
   createEnemyUnit,
   generateEncounter,
+  generateSpawnPositions,
   rollD20,
   resolveAttack,
   computeEnemyMove,
 } from "@/lib/hexCombat";
 import { computeStats } from "@/lib/battleStats";
+import { getFeatCombatFlags } from "@/lib/feats";
 import type { NftCharacter } from "@/hooks/useNftStats";
 import type { CharacterClass } from "@/lib/classes";
 
@@ -195,10 +198,37 @@ function reducer(state: BattleState, action: Action): BattleState {
       );
       const target = units.find(u => u.id === state.pendingTargetId)!;
       const activeId = state.turnOrder[state.currentTurnIndex];
+      const attacker = units.find(u => u.id === activeId)!;
       units = units.map(u => u.id === activeId ? { ...u, hasActed: true } : u);
       let s: BattleState = { ...state, units, phase: "playerAction", attackableEnemies: [], pendingTargetId: null };
       if (target.currentHp <= 0) {
         s = addLog(s, `${target.name} is defeated!`, "kill");
+
+        // Cleave: free attack on adjacent enemy after a kill
+        const flags = getFeatCombatFlags(attacker.feats);
+        if (flags.cleave || flags.greatCleave) {
+          const cleaveTarget = s.units.find(u =>
+            u.currentHp > 0 && !u.isPlayer && u.id !== target.id && isAdjacent(attacker.position, u.position)
+          );
+          if (cleaveTarget) {
+            const cleaveRoll = rollD20();
+            const cleaveResult = resolveAttack(attacker, cleaveTarget, cleaveRoll);
+            const logType: CombatLogEntry["type"] = !cleaveResult.hit ? "miss" : (cleaveResult.damage > 0 ? "hit" : "miss");
+            s = addLog(s, `Cleave! ${attacker.name} swings at ${cleaveTarget.name}: ${cleaveResult.breakdown}`, logType);
+            if (cleaveResult.hit) {
+              s = {
+                ...s,
+                units: s.units.map(u =>
+                  u.id === cleaveTarget.id ? { ...u, currentHp: Math.max(0, u.currentHp - cleaveResult.damage) } : u
+                ),
+              };
+              const cleaved = s.units.find(u => u.id === cleaveTarget.id)!;
+              if (cleaved.currentHp <= 0) {
+                s = addLog(s, `${cleaved.name} is defeated!`, "kill");
+              }
+            }
+          }
+        }
       }
       return checkEnd(s);
     }
@@ -272,11 +302,20 @@ export function useHexBattle() {
     ? state.units.find(u => u.id === state.turnOrder[state.currentTurnIndex]) ?? null
     : null;
 
-  const startBattle = useCallback((character: NftCharacter, difficulty: "easy" | "medium" | "hard", charClass?: CharacterClass, allCharacters?: NftCharacter[]) => {
-    const player = createPlayerUnit(character, { q: 1, r: 5 }, charClass);
+  const startBattle = useCallback((character: NftCharacter, difficulty: "easy" | "medium" | "hard", charClass?: CharacterClass, allCharacters?: NftCharacter[], featIds?: string[]) => {
+    const player = createPlayerUnit(character, { q: 1, r: 5 }, charClass, featIds ?? []);
     const specs = generateEncounter(difficulty, allCharacters ?? []);
     const startPositions: HexCoord[] = [{ q: 8, r: 4 }, { q: 8, r: 6 }, { q: 7, r: 5 }];
     const enemies = specs.map((s, i) => createEnemyUnit(s, startPositions[i], i));
+    dispatch({ type: "INIT", player, enemies });
+  }, []);
+
+  /** Start a quest battle with pre-built enemy specs (bypasses encounter generation) */
+  const startQuestBattle = useCallback((character: NftCharacter, specs: EnemySpec[], charClass?: CharacterClass, featIds?: string[]) => {
+    const playerPos = { q: 1, r: 5 };
+    const player = createPlayerUnit(character, playerPos, charClass, featIds ?? []);
+    const spawnPositions = generateSpawnPositions(specs.length, playerPos);
+    const enemies = specs.map((s, i) => createEnemyUnit(s, spawnPositions[i], i));
     dispatch({ type: "INIT", player, enemies });
   }, []);
 
@@ -369,6 +408,7 @@ export function useHexBattle() {
     activeUnit,
     isPlayerTurn: activeUnit?.isPlayer ?? false,
     startBattle,
+    startQuestBattle,
     clickHex,
     playerRoll,
     skipMove,

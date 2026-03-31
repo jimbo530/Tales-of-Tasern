@@ -12,9 +12,23 @@ import {
   type HexCoord,
 } from "@/lib/hexGrid";
 import { CLASSES, type CharacterClass } from "@/lib/classes";
+import type { EnemySpec } from "@/lib/hexCombat";
+
+export type QuestEncounter = {
+  questId: string;
+  questName: string;
+  enemies: EnemySpec[];
+  mapImage?: string;          // battle map background (e.g. "/cellar_1.png")
+  difficulty: "easy" | "medium" | "hard";  // for reward calculation
+  playerChar?: NftCharacter;              // pre-selected from save
+  playerClass?: CharacterClass;           // pre-selected from save
+  playerFeats?: string[];                 // feat IDs for combat mechanics
+};
 
 type Props = {
   characters: NftCharacter[];
+  questEncounter?: QuestEncounter;   // if set, skip selection and auto-start
+  playerFeats?: string[];           // feat IDs from save for combat bonuses
   onExit: () => void;
   onBattleEnd?: (outcome: "victory" | "defeat" | "retreat", difficulty: "easy" | "medium" | "hard", enemies: string[], rounds: number) => void;
 };
@@ -95,24 +109,40 @@ function phaseLabel(phase: BattlePhase): string {
 
 // ── Main Component ───────────────────────────────────────────────────────────
 
-export function HexBattle({ characters, onExit, onBattleEnd }: Props) {
+export function HexBattle({ characters, questEncounter, playerFeats, onExit, onBattleEnd }: Props) {
   const ownedChars = useMemo(() => characters.filter(c => c.owned && c.stats.con > 0), [characters]);
   const [selectedChar, setSelectedChar] = useState<NftCharacter | null>(null);
   const [selectedClass, setSelectedClass] = useState<CharacterClass | null>(null);
   const [difficulty, setDifficulty] = useState<"easy" | "medium" | "hard" | null>(null);
   const logEndRef = useRef<HTMLDivElement>(null);
+  const questStarted = useRef(false);
 
-  const { state, activeUnit, isPlayerTurn, startBattle, clickHex, playerRoll, endTurn } = useHexBattle();
+  const { state, activeUnit, isPlayerTurn, startBattle, startQuestBattle, clickHex, playerRoll, endTurn } = useHexBattle();
 
   // Auto-scroll combat log
   useEffect(() => { logEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [state.combatLog.length]);
 
-  // Start battle when all selections made
+  // Quest encounter: auto-start immediately if character/class provided, skip all pickers
   useEffect(() => {
-    if (selectedChar && selectedClass && difficulty && state.phase === "setup") {
-      startBattle(selectedChar, difficulty, selectedClass, characters);
+    if (questEncounter && state.phase === "setup" && !questStarted.current) {
+      const char = questEncounter.playerChar ?? selectedChar;
+      const cls = questEncounter.playerClass ?? selectedClass;
+      if (char && cls) {
+        questStarted.current = true;
+        startQuestBattle(char, questEncounter.enemies, cls, questEncounter.playerFeats ?? playerFeats);
+      }
     }
-  }, [selectedChar, selectedClass, difficulty, state.phase, startBattle, characters]);
+  }, [questEncounter, selectedChar, selectedClass, state.phase, startQuestBattle]);
+
+  // Normal battle: start when all selections made
+  useEffect(() => {
+    if (!questEncounter && selectedChar && selectedClass && difficulty && state.phase === "setup") {
+      startBattle(selectedChar, difficulty, selectedClass, characters, playerFeats);
+    }
+  }, [questEncounter, selectedChar, selectedClass, difficulty, state.phase, startBattle, characters]);
+
+  // Effective difficulty for rewards
+  const effectiveDifficulty = questEncounter?.difficulty ?? difficulty ?? "easy";
 
   // ── Character Picker ───────────────────────────────────────────────────
   if (!selectedChar) {
@@ -185,8 +215,8 @@ export function HexBattle({ characters, onExit, onBattleEnd }: Props) {
     );
   }
 
-  // ── Difficulty Picker ──────────────────────────────────────────────────
-  if (!difficulty) {
+  // ── Difficulty Picker (skipped for quest encounters) ──────────────────
+  if (!questEncounter && !difficulty) {
     return (
       <div className="flex flex-col items-center gap-6">
         <h2 className="text-xl font-black tracking-widest uppercase" style={{ color: "#f0d070", fontFamily: "'Cinzel Decorative', 'Cinzel', serif" }}>
@@ -228,7 +258,7 @@ export function HexBattle({ characters, onExit, onBattleEnd }: Props) {
           Retreat
         </button>
         <span className="text-sm font-black tracking-widest uppercase" style={{ color: "#f0d070", fontFamily: "'Cinzel Decorative', 'Cinzel', serif" }}>
-          {selectedClass.emoji} Round {state.round} — {phaseLabel(state.phase)}
+          {questEncounter ? questEncounter.questName : selectedClass.emoji} — Round {state.round} — {phaseLabel(state.phase)}
         </span>
         {isPlayerTurn && (state.phase === "playerMove" || state.phase === "playerAction") && (
           <button onClick={endTurn} className="px-3 py-1 rounded text-xs font-bold uppercase tracking-widest"
@@ -244,6 +274,11 @@ export function HexBattle({ characters, onExit, onBattleEnd }: Props) {
         {/* SVG Hex Grid */}
         <div className="flex-1 overflow-auto rounded-lg p-2" style={{ background: "rgba(0,0,0,0.2)", border: "1px solid rgba(201,168,76,0.1)" }}>
           <svg viewBox={`0 0 ${svgW} ${svgH}`} className="w-full max-w-[650px] mx-auto" style={{ minHeight: 400 }}>
+            {/* Battle map background */}
+            {questEncounter?.mapImage && (
+              <image href={questEncounter.mapImage} x="0" y="0" width={svgW} height={svgH}
+                preserveAspectRatio="xMidYMid slice" opacity="0.6" />
+            )}
             {/* Grid hexes */}
             {grid.map(hex => {
               const { x, y } = hexToPixel(hex);
@@ -414,9 +449,9 @@ export function HexBattle({ characters, onExit, onBattleEnd }: Props) {
                 Victory!
               </span>
               <button onClick={() => {
-                if (onBattleEnd && difficulty) {
+                if (onBattleEnd) {
                   const enemyNames = state.units.filter(u => !u.isPlayer).map(u => u.name);
-                  onBattleEnd("victory", difficulty, enemyNames, state.round);
+                  onBattleEnd("victory", effectiveDifficulty, enemyNames, state.round);
                 }
                 onExit();
               }} className="px-6 py-2 rounded text-sm font-bold uppercase tracking-widest"
@@ -432,9 +467,9 @@ export function HexBattle({ characters, onExit, onBattleEnd }: Props) {
                 Defeat
               </span>
               <button onClick={() => {
-                if (onBattleEnd && difficulty) {
+                if (onBattleEnd) {
                   const enemyNames = state.units.filter(u => !u.isPlayer).map(u => u.name);
-                  onBattleEnd("defeat", difficulty, enemyNames, state.round);
+                  onBattleEnd("defeat", effectiveDifficulty, enemyNames, state.round);
                 }
                 onExit();
               }} className="px-6 py-2 rounded text-sm font-bold uppercase tracking-widest"

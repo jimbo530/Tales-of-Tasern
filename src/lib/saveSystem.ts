@@ -1,4 +1,5 @@
 import { supabase } from "./supabase";
+import { type Party, defaultParty } from "./party";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -15,6 +16,88 @@ export type Equipment = {
   accessory?: string;
 };
 
+// ── Currency (D&D 3.5) ──────────────────────────────────────────────────────
+// 1gp = 10sp = 100cp.  50 coins of any denomination = 1 lb.
+// Money changers at cities/temples convert denominations for a cut.
+
+export type Coins = { gp: number; sp: number; cp: number };
+
+/** Total value of a purse in copper pieces */
+export function totalCp(c: Coins): number {
+  return c.gp * 100 + c.sp * 10 + c.cp;
+}
+
+/** Weight of coins in pounds (50 coins = 1 lb regardless of type) */
+export function coinWeight(c: Coins): number {
+  return (c.gp + c.sp + c.cp) / 50;
+}
+
+/** Display coins as "Xg Ys Zc", omitting zero denominations */
+export function formatCoins(c: Coins): string {
+  const parts: string[] = [];
+  if (c.gp > 0) parts.push(`${c.gp}g`);
+  if (c.sp > 0) parts.push(`${c.sp}s`);
+  if (c.cp > 0) parts.push(`${c.cp}c`);
+  return parts.join(" ") || "0c";
+}
+
+/** Convert a copper amount to the highest denominations */
+export function cpToCoins(cp: number): Coins {
+  const gp = Math.floor(cp / 100);
+  const sp = Math.floor((cp % 100) / 10);
+  return { gp, sp, cp: cp % 10 };
+}
+
+/** Add copper to a purse — reward arrives as the highest denominations */
+export function addCp(coins: Coins, cp: number): Coins {
+  const total = totalCp(coins) + cp;
+  return cpToCoins(total);
+}
+
+/** Subtract a cost (in cp) from purse, breaking larger coins for change. Returns null if can't afford. */
+export function subtractCp(coins: Coins, costCp: number): Coins | null {
+  const total = totalCp(coins);
+  if (total < costCp) return null;
+  let remaining = costCp;
+  let { gp, sp, cp } = { ...coins };
+  // Pay from smallest denomination up
+  const fromCp = Math.min(cp, remaining);
+  cp -= fromCp; remaining -= fromCp;
+  if (remaining > 0) {
+    const spNeeded = Math.ceil(remaining / 10);
+    const fromSp = Math.min(sp, spNeeded);
+    sp -= fromSp;
+    const paid = fromSp * 10;
+    if (paid >= remaining) { cp += paid - remaining; remaining = 0; }
+    else { remaining -= paid; }
+  }
+  if (remaining > 0) {
+    const gpNeeded = Math.ceil(remaining / 100);
+    gp -= gpNeeded;
+    const change = gpNeeded * 100 - remaining;
+    sp += Math.floor(change / 10);
+    cp += change % 10;
+  }
+  return { gp, sp, cp };
+}
+
+/** Money changer: consolidate all coins to highest denominations, minus a fee (e.g. 0.05 = 5%) */
+export function exchangeUp(coins: Coins, feePercent: number): Coins {
+  const total = totalCp(coins);
+  const afterFee = Math.floor(total * (1 - feePercent));
+  return cpToCoins(afterFee);
+}
+
+/** Check if purse can afford a cost in cp */
+export function canAfford(coins: Coins, costCp: number): boolean {
+  return totalCp(coins) >= costCp;
+}
+
+/** Add coins directly — preserves denominations (copper stays copper until exchanged) */
+export function addCoinsRaw(purse: Coins, reward: Coins): Coins {
+  return { gp: purse.gp + reward.gp, sp: purse.sp + reward.sp, cp: purse.cp + reward.cp };
+}
+
 export type CharacterSave = {
   wallet: string;
   nft_address: string;
@@ -23,19 +106,30 @@ export type CharacterSave = {
   xp: number;
   skill_ranks: Record<string, number>;
   feats: string[];                        // feat ids (called "abilities" in UI)
+  // ── Spellcasting ──
+  known_spells: string[];                  // spell IDs known (sorcerer, bard — permanent choices)
+  prepared_spells: string[];               // spell IDs prepared today (wizard, cleric, druid, paladin, ranger)
+  spellbook: string[];                     // wizard spellbook — all spells learned (superset of prepared)
+  spell_slots_used: number[];              // slots expended today, indexed by spell level [0th, 1st, ...]
+  domains: [string, string] | null;        // cleric domain IDs (exactly 2), null for non-clerics
+  school_specialization: string | null;    // wizard specialization school ID, null if generalist
+  prohibited_schools: string[];            // wizard prohibited schools (2 for specialist, 0 for generalist)
   quest_flags: Record<string, boolean>;
   quest_cooldowns: Record<string, string>;  // ISO timestamps
+  faction_rep: Record<string, number>;      // faction id → rep (-100 to 100, 0 = neutral)
   inventory: InventoryItem[];
   equipment: Equipment;
+  party: Party;                            // up to 4 NFT heroes + followers each
   map_region: string;
   map_node: string;
   map_hex: { q: number; r: number };       // current hex on world map
   world_layer: number;
-  day: number;                              // in-game days elapsed
+  day: number;                              // in-game days elapsed (derived: Math.floor(hour / 24) + 1)
+  hour: number;                             // in-game hours elapsed (0-based, each action costs hours)
   food: number;                             // food items carried
   current_hp: number;                       // current HP (persists between battles)
   max_hp: number;                           // max HP (recalculated from stats + class)
-  gold: number;
+  coins: Coins;                           // purse — separate gp/sp/cp (50 coins = 1 lb)
   battles_won: number;
   battles_lost: number;
   total_play_time: number;
@@ -72,64 +166,66 @@ export function addXp(currentLevel: number, currentXp: number, gained: number): 
   return { level, xp, levelsGained };
 }
 
-// ── Travel & Food ────────────────────────────────────────────────────────────
-// 1 hex = 1 day travel. 3 food per day to heal. Healing = floor(CON/2) + level.
+// ── Time & Travel ────────────────────────────────────────────────────────────
+// Each action costs hours: travel = 8hrs/hex, rest = 8hrs, search = 8hrs.
+// 1 food consumed per 8-hour action. Healing on rest = floor(CON/2) + level.
 
-export const FOOD_PER_DAY = 3;
+export const HOURS_PER_ACTION = 8;  // travel 1 hex, rest, or search
+export const FOOD_PER_DAY = 3;      // legacy compat — 3 food = 1 full day (3 actions)
 
 export type TravelResult = {
-  daysElapsed: number;
+  hoursElapsed: number;
   foodConsumed: number;
   hpHealed: number;
   starving: boolean;   // true if not enough food
   newHp: number;
   newFood: number;
+  newHour: number;
   newDay: number;
 };
 
-/** Calculate result of traveling N hexes */
+/** Calculate result of traveling N hexes (8 hrs per hex, 1 food per hex) */
 export function travel(
   hexes: number,
-  save: Pick<CharacterSave, "day" | "food" | "current_hp" | "max_hp" | "level">,
+  save: Pick<CharacterSave, "hour" | "food" | "current_hp" | "max_hp" | "level">,
   con: number,
 ): TravelResult {
-  const days = hexes; // 1 hex = 1 day
-  const foodNeeded = days * FOOD_PER_DAY;
+  const hours = hexes * HOURS_PER_ACTION;
+  const foodNeeded = hexes;  // 1 food per 8-hour action
   const foodAvailable = Math.min(save.food, foodNeeded);
-  const daysWithFood = Math.floor(foodAvailable / FOOD_PER_DAY);
+  const actionsWithFood = foodAvailable;
   const starving = foodAvailable < foodNeeded;
 
-  // Heal on days with full food: floor(CON/2) + level per day
-  const healPerDay = Math.floor(Math.max(1, con) / 2) + save.level;
-  const hpHealed = daysWithFood * healPerDay;
+  // No healing during travel — only during rest
+  // Starving actions deal 1 damage each
+  const starvingActions = hexes - actionsWithFood;
+  const starveDmg = starvingActions;
 
-  // Starving days deal 1 damage per day
-  const starvingDays = days - daysWithFood;
-  const starveDmg = starvingDays;
-
-  const newHp = Math.min(save.max_hp, Math.max(1, save.current_hp + hpHealed - starveDmg));
+  const newHp = Math.min(save.max_hp, Math.max(1, save.current_hp - starveDmg));
+  const newHour = save.hour + hours;
 
   return {
-    daysElapsed: days,
+    hoursElapsed: hours,
     foodConsumed: foodAvailable,
-    hpHealed,
+    hpHealed: 0,
     starving,
     newHp,
     newFood: save.food - foodAvailable,
-    newDay: save.day + days,
+    newHour,
+    newDay: Math.floor(newHour / 24) + 1,
   };
 }
 
 // ── Battle Rewards ───────────────────────────────────────────────────────────
 
-export function battleRewards(difficulty: "easy" | "medium" | "hard", playerLevel: number): { xp: number; gold: number } {
+export function battleRewards(difficulty: "easy" | "medium" | "hard", playerLevel: number): { xp: number; goldCp: number } {
   const base = { easy: 25, medium: 60, hard: 120 };
-  const goldBase = { easy: 5, medium: 15, hard: 30 };
+  const goldBase = { easy: 500, medium: 1500, hard: 3000 }; // in copper
   // Scale slightly with level so grinding stays worthwhile
   const scale = 1 + (playerLevel - 1) * 0.1;
   return {
     xp: Math.round(base[difficulty] * scale),
-    gold: Math.round(goldBase[difficulty] * scale),
+    goldCp: Math.round(goldBase[difficulty] * scale),
   };
 }
 
@@ -150,19 +246,29 @@ export function defaultSave(
     xp: 0,
     skill_ranks: skillRanks,
     feats,
+    known_spells: [],
+    prepared_spells: [],
+    spellbook: [],
+    spell_slots_used: [],
+    domains: null,
+    school_specialization: null,
+    prohibited_schools: [],
     quest_flags: {},
     quest_cooldowns: {},
+    faction_rep: {},
     inventory: [],
     equipment: {},
+    party: defaultParty(nftAddress),
     map_region: "kardovs-gate",
     map_node: "tavern",
     map_hex: { q: 36, r: 32 },  // starting hex — Kardov's Gate (central city)
     world_layer: 1,
     day: 1,
+    hour: 0,                    // start of day 1
     food: 9,                    // 3 days of food to start
     current_hp: 12,
     max_hp: 12,
-    gold: 0,
+    coins: { gp: 0, sp: 0, cp: 0 },
     battles_won: 0,
     battles_lost: 0,
     total_play_time: 0,

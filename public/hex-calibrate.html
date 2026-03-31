@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Hex Grid Calibration — Kardov's Gate</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #111; color: #eee; font-family: monospace; }
+    #controls {
+      position: fixed; top: 10px; left: 10px; z-index: 10;
+      background: rgba(0,0,0,0.9); padding: 14px; border-radius: 8px;
+      border: 1px solid #444; min-width: 280px;
+    }
+    #controls h3 { margin: 0 0 8px; color: #f0d070; }
+    #controls label { display: flex; align-items: center; gap: 6px; margin: 5px 0; font-size: 12px; }
+    #controls input[type=range] { flex: 1; min-width: 140px; }
+    #controls .val { min-width: 40px; text-align: right; color: #0ff; }
+    #container { overflow: auto; width: 100vw; height: 100vh; }
+    #map-wrap { position: relative; display: inline-block; }
+    #map-wrap img { display: block; }
+    #hex-canvas { position: absolute; top: 0; left: 0; pointer-events: none; }
+    #info { font-size: 10px; color: #888; margin-top: 10px; line-height: 1.6; }
+    #copy-btn { margin-top: 8px; padding: 6px 12px; background: #333; color: #0ff; border: 1px solid #0ff; border-radius: 4px; cursor: pointer; font-family: monospace; font-size: 11px; }
+    #copy-btn:hover { background: #0ff; color: #111; }
+    .note { font-size: 10px; color: #666; margin-top: 6px; }
+  </style>
+</head>
+<body>
+  <div id="controls">
+    <h3>Hex Grid Calibration</h3>
+    <label>Size: <input type="range" id="size" min="18" max="35" step="0.1" value="25.4"> <span class="val" id="sizeVal">25.4</span></label>
+    <label>Offset X: <input type="range" id="ox" min="-40" max="40" step="0.5" value="0"> <span class="val" id="oxVal">0</span></label>
+    <label>Offset Y: <input type="range" id="oy" min="-40" max="40" step="0.5" value="0"> <span class="val" id="oyVal">0</span></label>
+    <label>Opacity: <input type="range" id="opacity" min="0" max="1" step="0.05" value="0.6"> <span class="val" id="opVal">0.6</span></label>
+    <label>Line Width: <input type="range" id="lw" min="0.5" max="4" step="0.25" value="1.5"> <span class="val" id="lwVal">1.5</span></label>
+    <label>Color: <select id="color">
+      <option value="cyan" selected>Cyan</option>
+      <option value="red">Red</option>
+      <option value="lime">Lime</option>
+      <option value="yellow">Yellow</option>
+      <option value="white">White</option>
+      <option value="magenta">Magenta</option>
+    </select></label>
+    <label>Orientation: <select id="orient">
+      <option value="pointy" selected>Pointy-top</option>
+      <option value="flat">Flat-top</option>
+    </select></label>
+    <div id="info"></div>
+    <button id="copy-btn">Copy Values</button>
+    <div class="note">Scroll to pan. Adjust sliders until overlay matches the map's hex grid.</div>
+  </div>
+  <div id="container">
+    <div id="map-wrap">
+      <img id="mapImg" src="/kardovs-gate-map.jpg" alt="map" />
+      <canvas id="hex-canvas"></canvas>
+    </div>
+  </div>
+  <script>
+    const img = document.getElementById('mapImg');
+    const canvas = document.getElementById('hex-canvas');
+    const ctx = canvas.getContext('2d');
+
+    const sizeSlider = document.getElementById('size');
+    const oxSlider = document.getElementById('ox');
+    const oySlider = document.getElementById('oy');
+    const opSlider = document.getElementById('opacity');
+    const lwSlider = document.getElementById('lw');
+    const colorSelect = document.getElementById('color');
+    const orientSelect = document.getElementById('orient');
+
+    function getP() {
+      return {
+        size: +sizeSlider.value,
+        ox: +oxSlider.value,
+        oy: +oySlider.value,
+        opacity: +opSlider.value,
+        lw: +lwSlider.value,
+        color: colorSelect.value,
+        pointy: orientSelect.value === 'pointy',
+      };
+    }
+
+    function draw() {
+      const p = getP();
+      const W = 2048, H = 2048;
+      canvas.width = W; canvas.height = H;
+      canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+      ctx.clearRect(0, 0, W, H);
+      ctx.strokeStyle = p.color;
+      ctx.globalAlpha = p.opacity;
+      ctx.lineWidth = p.lw;
+
+      let cols, rows, hSp, vSp;
+      if (p.pointy) {
+        hSp = Math.sqrt(3) * p.size;
+        vSp = 1.5 * p.size;
+      } else {
+        hSp = 1.5 * p.size;
+        vSp = Math.sqrt(3) * p.size;
+      }
+      cols = Math.ceil(W / hSp) + 2;
+      rows = Math.ceil(H / vSp) + 2;
+
+      document.getElementById('sizeVal').textContent = p.size.toFixed(1);
+      document.getElementById('oxVal').textContent = p.ox.toFixed(1);
+      document.getElementById('oyVal').textContent = p.oy.toFixed(1);
+      document.getElementById('opVal').textContent = p.opacity.toFixed(2);
+      document.getElementById('lwVal').textContent = p.lw.toFixed(2);
+
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          let cx, cy;
+          if (p.pointy) {
+            cx = p.ox + hSp * c + (r & 1 ? hSp / 2 : 0);
+            cy = p.oy + vSp * r;
+          } else {
+            cx = p.ox + hSp * c;
+            cy = p.oy + vSp * r + (c & 1 ? vSp / 2 : 0);
+          }
+          ctx.beginPath();
+          for (let i = 0; i < 6; i++) {
+            const angle = p.pointy
+              ? Math.PI / 180 * (60 * i - 30)
+              : Math.PI / 180 * (60 * i);
+            const vx = cx + p.size * Math.cos(angle);
+            const vy = cy + p.size * Math.sin(angle);
+            if (i === 0) ctx.moveTo(vx, vy); else ctx.lineTo(vx, vy);
+          }
+          ctx.closePath();
+          ctx.stroke();
+        }
+      }
+
+      const vb = 600;
+      const scale = vb / W;
+      document.getElementById('info').innerHTML =
+        `Grid: ${cols}×${rows} | hSpacing: ${hSp.toFixed(1)}px | vSpacing: ${vSp.toFixed(1)}px<br>` +
+        `ViewBox ${vb}: size=${(p.size * scale).toFixed(2)}, ox=${(p.ox * scale).toFixed(2)}, oy=${(p.oy * scale).toFixed(2)}`;
+    }
+
+    document.getElementById('copy-btn').onclick = () => {
+      const p = getP();
+      const scale = 600 / 2048;
+      const text = `HEX_SIZE=${(p.size * scale).toFixed(2)}, OX=${(p.ox * scale).toFixed(2)}, OY=${(p.oy * scale).toFixed(2)}, COLS=${Math.ceil(2048 / (p.pointy ? Math.sqrt(3) * p.size : 1.5 * p.size)) + 2}, ROWS=${Math.ceil(2048 / (p.pointy ? 1.5 * p.size : Math.sqrt(3) * p.size)) + 2}, orientation=${p.pointy ? 'pointy-top' : 'flat-top'}`;
+      navigator.clipboard.writeText(text).then(() => alert('Copied!')).catch(() => prompt('Copy:', text));
+    };
+
+    [sizeSlider, oxSlider, oySlider, opSlider, lwSlider, colorSelect, orientSelect].forEach(el =>
+      el.addEventListener('input', draw));
+
+    function init() {
+      img.style.width = '2048px'; img.style.height = '2048px';
+      draw();
+    }
+    if (img.complete && img.naturalWidth) init(); else img.onload = init;
+  </script>
+</body>
+</html>
