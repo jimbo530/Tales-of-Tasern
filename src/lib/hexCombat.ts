@@ -273,7 +273,7 @@ export function createMonsterSpec(monster: Monster, emoji?: string): EnemySpec {
 // ── Encounter Generation ─────────────────────────────────────────────────────
 
 export function generateEncounter(
-  difficulty: "easy" | "medium" | "hard",
+  difficulty: "easy" | "medium" | "hard" | "deadly",
   characters: NftCharacter[],
 ): EnemySpec[] {
   if (difficulty === "easy") return [buildEnemySpec("goblin", characters)];
@@ -707,43 +707,109 @@ export function resolveAttack(
 
 // ── Enemy AI ─────────────────────────────────────────────────────────────────
 
+/** Score a hex for flanking value. Higher = better tactical position. */
+function flankScore(hex: HexCoord, target: HexCoord, allies: HexCoord[]): number {
+  if (!isAdjacent(hex, target)) return 0;
+  let score = 0;
+  for (const ally of allies) {
+    if (!isAdjacent(ally, target)) continue;
+    const dist = hexDistance(hex, ally);
+    if (dist >= 2) score += 2;
+    else if (dist >= 1) score += 0.5;
+  }
+  return score;
+}
+
+/** Find the best destination hex for an enemy trying to surround the target. */
 export function computeEnemyMove(
   enemy: BattleUnit,
   target: BattleUnit,
   allUnits: BattleUnit[]
 ): HexCoord {
   const maxSteps = Math.floor(enemy.stats.speed / 5);
-  let current = enemy.position;
+  const current = enemy.position;
   const occupied = new Set(
     allUnits.filter(u => u.id !== enemy.id && u.currentHp > 0).map(u => `${u.position.q},${u.position.r}`)
   );
 
-  // Ranged enemies: stop if already within range (prefer staying back)
-  if (enemy.isRanged && hexDistance(current, target.position) <= enemy.attackRange) {
+  const allyPositions = allUnits
+    .filter(u => u.id !== enemy.id && !u.isPlayer && u.currentHp > 0)
+    .map(u => u.position);
+
+  // Ranged enemies: stay put if in range, sidestep to spread fire angles
+  if (enemy.isRanged) {
+    if (hexDistance(current, target.position) <= enemy.attackRange) {
+      const sideSteps = hexNeighbors(current).filter(
+        n => !occupied.has(`${n.q},${n.r}`) &&
+             hexDistance(n, target.position) <= enemy.attackRange &&
+             hexDistance(n, target.position) >= 2
+      );
+      if (sideSteps.length > 0 && allyPositions.length > 0) {
+        const best = sideSteps.reduce((a, b) => {
+          const aMin = Math.min(...allyPositions.map(p => hexDistance(a, p)));
+          const bMin = Math.min(...allyPositions.map(p => hexDistance(b, p)));
+          return bMin > aMin ? b : a;
+        });
+        const curMin = Math.min(...allyPositions.map(p => hexDistance(current, p)));
+        if (Math.min(...allyPositions.map(p => hexDistance(best, p))) > curMin) return best;
+      }
+      return current;
+    }
+    return greedyPathTo(current, target.position, maxSteps, occupied, enemy.attackRange);
+  }
+
+  // Melee: already adjacent — check for better flank position
+  if (isAdjacent(current, target.position)) {
+    const curFlank = flankScore(current, target.position, allyPositions);
+    const betterFlank = hexNeighbors(target.position).filter(
+      n => !occupied.has(`${n.q},${n.r}`) &&
+           n.q >= 0 && n.q < GRID_COLS && n.r >= 0 && n.r < GRID_ROWS
+    ).find(n => flankScore(n, target.position, allyPositions) > curFlank + 1);
+    if (betterFlank && hexDistance(current, betterFlank) <= 2) return betterFlank;
     return current;
   }
 
-  for (let step = 0; step < maxSteps; step++) {
-    // Melee: stop when adjacent. Ranged: stop when in range.
-    if (enemy.isRanged) {
-      if (hexDistance(current, target.position) <= enemy.attackRange) break;
-    } else {
-      if (isAdjacent(current, target.position)) break;
-    }
+  // Not adjacent: find best approach hex (flank priority)
+  const goalHexes = hexNeighbors(target.position)
+    .filter(n => !occupied.has(`${n.q},${n.r}`) &&
+                 n.q >= 0 && n.q < GRID_COLS && n.r >= 0 && n.r < GRID_ROWS)
+    .map(h => ({ hex: h, flank: flankScore(h, target.position, allyPositions), dist: hexDistance(current, h) }))
+    .sort((a, b) => {
+      if (b.flank !== a.flank) return b.flank - a.flank;
+      return a.dist - b.dist;
+    });
 
+  for (const goal of goalHexes) {
+    if (goal.dist <= maxSteps) {
+      return greedyPathTo(current, goal.hex, maxSteps, occupied, 0);
+    }
+  }
+
+  const bestGoal = goalHexes[0]?.hex ?? target.position;
+  return greedyPathTo(current, bestGoal, maxSteps, occupied, 1);
+}
+
+/** Simple greedy pathfinding toward destination, stop at minDist */
+function greedyPathTo(
+  start: HexCoord,
+  dest: HexCoord,
+  maxSteps: number,
+  occupied: Set<string>,
+  minDist: number,
+): HexCoord {
+  let current = start;
+  for (let step = 0; step < maxSteps; step++) {
+    if (hexDistance(current, dest) <= minDist) break;
     const neighbors = hexNeighbors(current).filter(
       n => !occupied.has(`${n.q},${n.r}`)
     );
     if (neighbors.length === 0) break;
-
     const best = neighbors.reduce((a, b) =>
-      hexDistance(b, target.position) < hexDistance(a, target.position) ? b : a
+      hexDistance(b, dest) < hexDistance(a, dest) ? b : a
     );
-
-    if (hexDistance(best, target.position) >= hexDistance(current, target.position)) break;
+    if (hexDistance(best, dest) >= hexDistance(current, dest)) break;
     current = best;
   }
-
   return current;
 }
 

@@ -259,9 +259,9 @@ export function travel(
 
 // D&D 3.5 DMG Table 2-6 (simplified): CR = level → 300 XP per character.
 // Easy ≈ CR below level, Medium ≈ CR equal, Hard ≈ CR above.
-export function battleRewards(difficulty: "easy" | "medium" | "hard", playerLevel: number): { xp: number; goldCp: number } {
-  const base = { easy: 150, medium: 300, hard: 600 };
-  const goldBase = { easy: 500, medium: 1500, hard: 3000 }; // in copper
+export function battleRewards(difficulty: "easy" | "medium" | "hard" | "deadly", playerLevel: number): { xp: number; goldCp: number } {
+  const base = { easy: 150, medium: 300, hard: 600, deadly: 1200 };
+  const goldBase = { easy: 500, medium: 1500, hard: 3000, deadly: 6000 }; // in copper
   // Scale with level so higher-level fights stay rewarding
   const scale = 1 + (playerLevel - 1) * 0.15;
   return {

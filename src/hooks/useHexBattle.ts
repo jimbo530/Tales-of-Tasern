@@ -549,7 +549,7 @@ export function useHexBattle() {
     ? state.units.find(u => u.id === state.turnOrder[state.currentTurnIndex]) ?? null
     : null;
 
-  const startBattle = useCallback((character: NftCharacter, difficulty: "easy" | "medium" | "hard", charClass?: CharacterClass, allCharacters?: NftCharacter[], featIds?: string[], weaponName?: string, spellInfo?: SpellUnitInfo, currentHp?: number, followers?: Follower[]) => {
+  const startBattle = useCallback((character: NftCharacter, difficulty: "easy" | "medium" | "hard" | "deadly", charClass?: CharacterClass, allCharacters?: NftCharacter[], featIds?: string[], weaponName?: string, spellInfo?: SpellUnitInfo, currentHp?: number, followers?: Follower[]) => {
     const player = createPlayerUnit(character, { q: 1, r: 5 }, charClass, featIds ?? [], weaponName, spellInfo, currentHp);
     const followerPositions: HexCoord[] = [{ q: 1, r: 4 }, { q: 1, r: 6 }, { q: 2, r: 4 }, { q: 2, r: 6 }];
     const followerUnits = (followers ?? [])

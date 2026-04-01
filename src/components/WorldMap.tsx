@@ -41,7 +41,7 @@ type MapHex = {
 export type EncounterResult = {
   roll: number;
   type: "safe" | "fight" | "lost_time" | "find";
-  difficulty?: "easy" | "medium" | "hard";
+  difficulty?: "easy" | "medium" | "hard" | "deadly";
   description: string;
   hpChange?: number;
   goldChange?: number;
@@ -114,7 +114,7 @@ export type WorldLuckResult = {
   outcome: "nothing" | "fight" | "thug_fight" | "hazard" | "avoided_danger"
     | "find_food" | "find_coins" | "find_valuable" | "find_rare"
     | "find_quest" | "find_dungeon";
-  difficulty?: "easy" | "medium" | "hard";
+  difficulty?: "easy" | "medium" | "hard" | "deadly";
   description: string;
   hpChange: number;
   goldChange: number;           // flat copper change (costs negative, tips positive)
@@ -336,13 +336,22 @@ export function rollWorldLuck(
         hpChange: 0, goldChange: 0, foodChange: 0, xpChange: 5,
       };
     }
-    let difficulty: "easy" | "medium" | "hard";
-    if (isFarm) difficulty = "easy";
-    else if (distFromCity <= 6) difficulty = "easy";
-    else if (distFromCity <= 15) difficulty = "medium";
-    else difficulty = "hard";
-    if (["swamp", "mountain", "jungle"].includes(hex.type) && difficulty !== "hard") {
-      difficulty = difficulty === "easy" ? "medium" : "hard";
+    // World roll drives encounter difficulty:
+    // 1 = deadly (CR+1, class levels), 2 = hard, 3-4 = easy (treasure with extra steps)
+    let difficulty: "easy" | "medium" | "hard" | "deadly";
+    if (worldRoll === 1) {
+      difficulty = "deadly";
+    } else if (worldRoll === 2) {
+      difficulty = "hard";
+    } else {
+      // worldRoll 3+ in danger range = easy pickings
+      difficulty = "easy";
+    }
+    // Terrain and distance can bump medium→hard but never override deadly
+    if (difficulty !== "deadly" && difficulty !== "easy") {
+      if (["swamp", "mountain", "jungle"].includes(hex.type)) {
+        difficulty = "hard";
+      }
     }
     const encounter = generateFightEncounter(hex.type, levelRange, difficulty);
     return {
@@ -840,19 +849,26 @@ export function rollEncounter(hex: MapHex, distFromCity: number): EncounterResul
   const fightThreshold = isFarm ? 1 : 2;
 
   if (roll <= fightThreshold) {
-    let difficulty: "easy" | "medium" | "hard";
+    // World roll drives difficulty: 1 = deadly, 2 = hard, 3-4 = easy
+    let difficulty: "easy" | "medium" | "hard" | "deadly";
     if (isFarm) {
       difficulty = "easy"; // farmland fights are always easy — bandits, wolves, crop pests
-    } else if (distFromCity <= 6) difficulty = "easy";
-    else if (distFromCity <= 15) difficulty = "medium";
-    else difficulty = "hard";
-    // Dangerous terrain bumps difficulty
-    if (["swamp", "mountain", "jungle"].includes(hex.type) && difficulty !== "hard") {
-      difficulty = difficulty === "easy" ? "medium" : "hard";
+    } else if (roll === 1) {
+      difficulty = "deadly";
+    } else {
+      difficulty = "easy";
+    }
+    // Dangerous terrain can bump non-deadly, non-easy fights
+    if (difficulty !== "deadly" && difficulty !== "easy") {
+      if (["swamp", "mountain", "jungle"].includes(hex.type)) {
+        difficulty = "hard";
+      }
     }
     const desc = isFarm
       ? `Bandits ambush you on the farm road! (${difficulty})`
-      : `Hostile creatures attack! (${difficulty})`;
+      : difficulty === "deadly"
+        ? `Something terrible stirs nearby... (deadly)`
+        : `Hostile creatures attack! (${difficulty})`;
     return { roll, type: "fight", difficulty, description: desc };
   }
 
@@ -2015,7 +2031,7 @@ type Props = {
   onTravel: (hex: { q: number; r: number }, result: ReturnType<typeof travel>, destHex: MapHex, encounter: WorldLuckResult) => void;
   onAction: (result: WorldLuckResult) => void;
   onBuyItem: (item: ShopItem) => void;
-  onBattle: (difficulty: "easy" | "medium" | "hard") => void;
+  onBattle: (difficulty: "easy" | "medium" | "hard" | "deadly") => void;
   onQuestBattle: (encounter: QuestEncounter) => void;
   onExhaustionCollapse: (isSafe: boolean) => void;  // collapse from exhaustion; isSafe = town/farm (infirmary)
   onInventory: () => void;
@@ -2062,7 +2078,7 @@ function getEquipSlot(itemId: string, info: { category: string; name: string } |
 
 export function WorldMap({ save, character, characters, onTravel, onAction, onBuyItem, onBattle, onQuestBattle, onExhaustionCollapse, onInventory, onEquip, onUnequip, onSwitchParty, onCreateParty, onBack }: Props) {
   const [selectedHex, setSelectedHex] = useState<MapHex | null>(null);
-  const [zoom, setZoom] = useState(2);
+  const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [mappingMode, setMappingMode] = useState(false);
   const [markedHexes, setMarkedHexes] = useState<Set<string>>(new Set());
@@ -2616,7 +2632,7 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
       {/* Main layout: left panel + map + side panel */}
       <div className="flex gap-2 flex-col lg:flex-row flex-1 min-h-0 overflow-hidden">
         {/* ── Left panel: Character Sheet / Inventory ── */}
-        <div className="hidden lg:flex flex-col gap-1" style={{ width: 320, minWidth: 320 }}>
+        <div className="hidden lg:flex flex-col gap-1" style={{ width: 640, minWidth: 640 }}>
           <div className="flex gap-1">
             <button onClick={() => setLeftPanel("sheet")}
               className="flex-1 px-2 py-1 rounded text-xs font-bold uppercase tracking-widest"
@@ -3010,7 +3026,7 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
         </div>
 
         {/* Side panel */}
-        <div className="w-full lg:w-80 flex flex-col gap-2">
+        <div className="w-full lg:w-[640px] flex flex-col gap-2">
           {/* Mapping mode */}
           <div className="px-3 py-2 rounded-lg" style={{ background: mappingMode ? "rgba(255,0,255,0.1)" : "rgba(0,0,0,0.2)", border: `1px solid ${mappingMode ? "rgba(255,0,255,0.4)" : "rgba(201,168,76,0.1)"}` }}>
             <button onClick={() => setMappingMode(m => !m)}

@@ -314,38 +314,192 @@ export function getLevelRange(q: number, r: number, distFromCity: number): [numb
 
 export type EncounterData = {
   monsters: { monster: Monster; count: number }[];
-  difficulty: "easy" | "medium" | "hard";
+  difficulty: "easy" | "medium" | "hard" | "deadly";
   description: string;
+  crBoost?: number;
+  classLevels?: string;
 };
+
+// Class-level templates for deadly encounters (world roll 1)
+// Any monster can get martial classes; caster classes require minimum mental stats
+type ClassLevel = {
+  label: string;
+  hpBonus: number; acBonus: number; atkBonus: number; dmgBonus: number;
+  reqInt?: number;
+  reqWis?: number;
+  reqCha?: number;
+};
+const CLASS_LEVELS: ClassLevel[] = [
+  // Martial — any monster can get these
+  // Modest stat bumps — the class features (rage, sneak attack, etc.) are the real threat
+  { label: "Fighter 2",   hpBonus: 6, acBonus: 1, atkBonus: 1, dmgBonus: 1 },
+  { label: "Barbarian 1", hpBonus: 8, acBonus: 0, atkBonus: 1, dmgBonus: 1 },
+  { label: "Ranger 2",    hpBonus: 6, acBonus: 0, atkBonus: 1, dmgBonus: 1 },
+  { label: "Rogue 2",     hpBonus: 4, acBonus: 0, atkBonus: 1, dmgBonus: 1 },
+  // Caster — need mental stats
+  { label: "Cleric 1",    hpBonus: 6, acBonus: 1, atkBonus: 0, dmgBonus: 0, reqWis: 3 },
+  { label: "Wizard 1",    hpBonus: 3, acBonus: 0, atkBonus: 0, dmgBonus: 0, reqInt: 3 },
+  { label: "Sorcerer 1",  hpBonus: 3, acBonus: 0, atkBonus: 0, dmgBonus: 0, reqCha: 3 },
+  { label: "Druid 1",     hpBonus: 6, acBonus: 0, atkBonus: 0, dmgBonus: 0, reqWis: 3 },
+];
+
+/** Pick a class the monster qualifies for based on its stats */
+function pickClassForMonster(m: Monster): ClassLevel {
+  const eligible = CLASS_LEVELS.filter(c =>
+    (!c.reqInt || m.int >= c.reqInt) &&
+    (!c.reqWis || m.wis >= c.reqWis) &&
+    (!c.reqCha || m.cha >= c.reqCha)
+  );
+  return eligible[Math.floor(Math.random() * eligible.length)];
+}
+
+/** Apply class levels to a monster — returns a boosted copy */
+function applyClassLevels(base: Monster, cls: ClassLevel): Monster {
+  return {
+    ...base,
+    name: `${base.name} (${cls.label})`,
+    hp: base.hp + cls.hpBonus,
+    ac: base.ac + cls.acBonus,
+    str: base.str + cls.dmgBonus,
+    dex: base.dex + cls.atkBonus,
+    cr: base.cr + 1,
+  };
+}
+
+/** Build a war band leader — same race, class leveled to match the zone. */
+function buildWarBandLeader(base: Monster, zoneHi: number): { leader: Monster; classLabel: string } {
+  const cls = pickClassForMonster(base);
+  const leaderLevel = Math.max(2, zoneHi - Math.floor(Math.random() * 2));
+  const label = cls.label.replace(/\d+$/, String(leaderLevel));
+  const leader: Monster = {
+    ...base,
+    name: `${base.name} Chieftain (${label})`,
+    hp: base.hp + cls.hpBonus * leaderLevel,
+    ac: base.ac + cls.acBonus + Math.floor(leaderLevel / 3),
+    str: base.str + cls.dmgBonus * Math.ceil(leaderLevel / 2),
+    dex: base.dex + cls.atkBonus * Math.ceil(leaderLevel / 2),
+    con: base.con + Math.floor(leaderLevel / 3),
+    cr: base.cr + leaderLevel,
+  };
+  return { leader, classLabel: label };
+}
 
 /** Generate a fight encounter appropriate for the zone and terrain */
 export function generateFightEncounter(
   terrain: string,
   levelRange: [number, number],
-  difficulty: "easy" | "medium" | "hard",
+  difficulty: "easy" | "medium" | "hard" | "deadly",
 ): EncounterData {
   const [minCR, maxCR] = crRange(levelRange);
+  const [, zoneHi] = levelRange;
 
-  // Adjust CR range by difficulty
+  // ── Roving horde check ──
+  // In zones above level 3, 30% chance to get a large band of low-CR monsters
+  // with class levels. Each war band has a leader leveled to the zone.
+  if (zoneHi > 3 && Math.random() < 0.3 && difficulty !== "easy") {
+    const horde = pickEncounterGroup(terrain, 0.25, 1);
+    const baseMonster = horde.monsters[0];
+
+    // Chieftain: zone-level martial leader
+    const { leader, classLabel: leaderLabel } = buildWarBandLeader(baseMonster, zoneHi);
+
+    // Advisor: shaman / witch doctor — evil cleric or druid, 2 levels below chief
+    const advisorLevel = Math.max(1, zoneHi - 2);
+    const advisorCls = (baseMonster.wis >= 3)
+      ? (Math.random() < 0.5
+          ? CLASS_LEVELS.find(c => c.label.startsWith("Cleric"))!
+          : CLASS_LEVELS.find(c => c.label.startsWith("Druid"))!)
+      : CLASS_LEVELS.find(c => c.label.startsWith("Cleric"))!;
+    const advisorLabel = advisorCls.label.replace(/\d+$/, String(advisorLevel));
+    const advisor: Monster = {
+      ...baseMonster,
+      name: `${baseMonster.name} Shaman (${advisorLabel})`,
+      hp: baseMonster.hp + advisorCls.hpBonus * advisorLevel,
+      ac: baseMonster.ac + advisorCls.acBonus + Math.floor(advisorLevel / 4),
+      wis: baseMonster.wis + Math.ceil(advisorLevel / 2),
+      con: baseMonster.con + Math.floor(advisorLevel / 4),
+      cr: baseMonster.cr + advisorLevel,
+    };
+
+    // Grunts: mix of level 1 and level 2 warriors — AOE/cleave fodder
+    const gruntCls = pickClassForMonster(baseMonster);
+    const grunt1 = applyClassLevels(baseMonster, gruntCls);
+    const grunt2Label = gruntCls.label.replace(/\d+$/, "2");
+    const grunt2: Monster = {
+      ...baseMonster,
+      name: `${baseMonster.name} (${grunt2Label})`,
+      hp: baseMonster.hp + gruntCls.hpBonus * 2,
+      ac: baseMonster.ac + gruntCls.acBonus,
+      str: baseMonster.str + gruntCls.dmgBonus,
+      dex: baseMonster.dex + gruntCls.atkBonus,
+      cr: baseMonster.cr + 2,
+    };
+    const totalGrunts = zoneHi <= 5
+      ? 4 + Math.floor(Math.random() * 3)
+      : zoneHi <= 8
+        ? 6 + Math.floor(Math.random() * 4)
+        : 8 + Math.floor(Math.random() * 4);
+    const lvl2Count = Math.floor(totalGrunts / 2);
+    const lvl1Count = totalGrunts - lvl2Count;
+
+    const desc = `A roving war band! A ${leader.name} and their ${advisor.name} lead ${totalGrunts} warriors. The chieftain looks as dangerous as any adventurer.`;
+    return {
+      monsters: [
+        { monster: leader, count: 1 },
+        { monster: advisor, count: 1 },
+        { monster: grunt2, count: lvl2Count },
+        { monster: grunt1, count: lvl1Count },
+      ],
+      difficulty: difficulty === "deadly" ? "deadly" : "hard",
+      description: desc,
+      crBoost: 1,
+      classLevels: leaderLabel,
+    };
+  }
+
+  // ── Normal encounter ──
   let adjMin = minCR;
   let adjMax = maxCR;
   if (difficulty === "easy") {
     adjMax = Math.max(minCR, maxCR - 1);
   } else if (difficulty === "hard") {
     adjMin = Math.max(minCR, maxCR - 1);
+  } else if (difficulty === "deadly") {
+    adjMin = maxCR;
+    adjMax = maxCR + 1;
   }
 
   const group = pickEncounterGroup(terrain, adjMin, adjMax);
-  const monster = group.monsters[0];
+  let monster = group.monsters[0];
+  let classLabel: string | undefined;
 
-  const desc = group.count > 1
-    ? `${group.count} ${monster.name}s attack! ${monster.description}`
-    : `A ${monster.name} attacks! ${monster.description}`;
+  if (difficulty === "deadly") {
+    const cls = pickClassForMonster(monster);
+    monster = applyClassLevels(monster, cls);
+    classLabel = cls.label;
+  }
+
+  let desc: string;
+  if (difficulty === "deadly") {
+    desc = group.count > 1
+      ? `${group.count} battle-hardened ${monster.name}s ambush you! These are no ordinary foes.`
+      : `A veteran ${monster.name} blocks your path. This one has seen real combat.`;
+  } else if (difficulty === "easy") {
+    desc = group.count > 1
+      ? `${group.count} scraggly ${monster.name}s stumble into view. They look half-starved — easy pickings.`
+      : `A lone ${monster.name} wanders nearby, oblivious to your presence. ${monster.description}`;
+  } else {
+    desc = group.count > 1
+      ? `${group.count} ${monster.name}s attack! ${monster.description}`
+      : `A ${monster.name} attacks! ${monster.description}`;
+  }
 
   return {
     monsters: [{ monster, count: group.count }],
     difficulty,
     description: desc,
+    crBoost: difficulty === "deadly" ? 1 : undefined,
+    classLevels: classLabel,
   };
 }
 

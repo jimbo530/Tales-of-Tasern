@@ -21,7 +21,7 @@ export type QuestEncounter = {
   questName: string;
   enemies: EnemySpec[];
   mapImage?: string;          // battle map background (e.g. "/cellar_1.png")
-  difficulty: "easy" | "medium" | "hard";  // for reward calculation
+  difficulty: "easy" | "medium" | "hard" | "deadly";  // for reward calculation
   playerChar?: NftCharacter;              // pre-selected from save
   playerClass?: CharacterClass;           // pre-selected from save
   playerFeats?: string[];                 // feat IDs for combat mechanics
@@ -43,7 +43,7 @@ type Props = {
   playerCurrentHp?: number;         // current HP (battle starts with this, not full)
   playerFollowers?: import("@/lib/party").Follower[];  // combat-capable followers
   onExit: () => void;
-  onBattleEnd?: (outcome: "victory" | "defeat" | "retreat", difficulty: "easy" | "medium" | "hard", enemies: string[], rounds: number, spellSlotsUsed?: number[], remainingHp?: number) => Promise<{ xp: number; goldCp: number; levelsGained: number; newLevel: number } | null> | void;
+  onBattleEnd?: (outcome: "victory" | "defeat" | "retreat", difficulty: "easy" | "medium" | "hard" | "deadly", enemies: string[], rounds: number, spellSlotsUsed?: number[], remainingHp?: number) => Promise<{ xp: number; goldCp: number; levelsGained: number; newLevel: number } | null> | void;
   onDefeatChoice?: (choice: "perish" | "rescue") => void;  // death penalty choice
 };
 
@@ -127,7 +127,7 @@ export function HexBattle({ characters, questEncounter, playerFeats, playerWeapo
   const ownedChars = useMemo(() => characters.filter(c => c.owned && c.stats.con > 0), [characters]);
   const [selectedChar, setSelectedChar] = useState<NftCharacter | null>(null);
   const [selectedClass, setSelectedClass] = useState<CharacterClass | null>(null);
-  const [difficulty, setDifficulty] = useState<"easy" | "medium" | "hard" | null>(null);
+  const [difficulty, setDifficulty] = useState<"easy" | "medium" | "hard" | "deadly" | null>(null);
   const [battleRewards, setBattleRewards] = useState<{ xp: number; goldCp: number; levelsGained: number; newLevel: number } | null>(null);
   const [collectingRewards, setCollectingRewards] = useState(false);
   const [showSpellPicker, setShowSpellPicker] = useState(false);

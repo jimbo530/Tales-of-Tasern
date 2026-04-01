@@ -146,7 +146,7 @@ export function useCharacterSave() {
 
   // Record battle result, award XP/gold, level up
   const recordBattle = useCallback(async (result: {
-    difficulty: "easy" | "medium" | "hard";
+    difficulty: "easy" | "medium" | "hard" | "deadly";
     enemies: string[];
     outcome: "victory" | "defeat" | "retreat";
     rounds: number;
