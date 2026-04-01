@@ -1112,6 +1112,9 @@ const PASSIVE_BONUS_MAP: Record<string, Partial<FeatBonuses>> = {
   "improved-natural-armor":       { ac: 1 },           // +1 natural armor
   "blind-fight":                  { atkBonus: 1 },     // re-roll concealment miss → +1 atk
   // point-blank-shot: REMOVED from passive — applied conditionally in resolveAttack (within 6 hexes / 30ft)
+  "rapid-shot":                   { atkBonus: -2, damage: 3 },   // extra arrow at -2 all attacks → simplified
+  "manyshot":                     { damage: 2 },                  // fire multiple arrows → simplified +2 dmg
+  "shot-on-the-run":              { ac: 1 },                      // move + shoot + move → simplified +1 AC
   // ── General feats ──
   "toughness":                    { hp: 3 },           // +3 HP
   "endurance":                    { hp: 2 },           // +4 CON checks → simplified +2 HP

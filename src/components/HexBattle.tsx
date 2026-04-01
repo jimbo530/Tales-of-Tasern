@@ -40,8 +40,10 @@ type Props = {
   playerPreparedSpells?: string[];  // prepared spells for prepared casters
   playerSpellSlotsUsed?: number[];  // current slots expended
   playerLevel?: number;             // character level
+  playerCurrentHp?: number;         // current HP (battle starts with this, not full)
+  playerFollowers?: import("@/lib/party").Follower[];  // combat-capable followers
   onExit: () => void;
-  onBattleEnd?: (outcome: "victory" | "defeat" | "retreat", difficulty: "easy" | "medium" | "hard", enemies: string[], rounds: number, spellSlotsUsed?: number[]) => Promise<{ xp: number; goldCp: number; levelsGained: number; newLevel: number } | null> | void;
+  onBattleEnd?: (outcome: "victory" | "defeat" | "retreat", difficulty: "easy" | "medium" | "hard", enemies: string[], rounds: number, spellSlotsUsed?: number[], remainingHp?: number) => Promise<{ xp: number; goldCp: number; levelsGained: number; newLevel: number } | null> | void;
   onDefeatChoice?: (choice: "perish" | "rescue") => void;  // death penalty choice
 };
 
@@ -108,8 +110,7 @@ function RollResult({ natural, result }: { natural: number; result: { hit: boole
 
 function phaseLabel(phase: BattlePhase): string {
   switch (phase) {
-    case "playerMove": return "Move Phase";
-    case "playerAction": return "Action Phase";
+    case "playerTurn": return "Your Turn";
     case "playerRoll": return "Roll to Attack";
     case "playerResult": return "Attack Result";
     case "playerReaction": return "Reaction!";
@@ -122,7 +123,7 @@ function phaseLabel(phase: BattlePhase): string {
 
 // ── Main Component ───────────────────────────────────────────────────────────
 
-export function HexBattle({ characters, questEncounter, playerFeats, playerWeapon, playerKnownSpells, playerPreparedSpells, playerSpellSlotsUsed, playerLevel, onExit, onBattleEnd, onDefeatChoice }: Props) {
+export function HexBattle({ characters, questEncounter, playerFeats, playerWeapon, playerKnownSpells, playerPreparedSpells, playerSpellSlotsUsed, playerLevel, playerCurrentHp, playerFollowers, onExit, onBattleEnd, onDefeatChoice }: Props) {
   const ownedChars = useMemo(() => characters.filter(c => c.owned && c.stats.con > 0), [characters]);
   const [selectedChar, setSelectedChar] = useState<NftCharacter | null>(null);
   const [selectedClass, setSelectedClass] = useState<CharacterClass | null>(null);
@@ -170,7 +171,7 @@ export function HexBattle({ characters, questEncounter, playerFeats, playerWeapo
       if (char && cls) {
         questStarted.current = true;
         const si = buildSpellInfo(char, cls);
-        startQuestBattle(char, questEncounter.enemies, cls, questEncounter.playerFeats ?? playerFeats, questEncounter.playerWeapon ?? playerWeapon, si);
+        startQuestBattle(char, questEncounter.enemies, cls, questEncounter.playerFeats ?? playerFeats, questEncounter.playerWeapon ?? playerWeapon, si, playerCurrentHp, playerFollowers);
       }
     }
   }, [questEncounter, selectedChar, selectedClass, state.phase, startQuestBattle, buildSpellInfo]);
@@ -179,7 +180,7 @@ export function HexBattle({ characters, questEncounter, playerFeats, playerWeapo
   useEffect(() => {
     if (!questEncounter && selectedChar && selectedClass && difficulty && state.phase === "setup") {
       const si = buildSpellInfo(selectedChar, selectedClass);
-      startBattle(selectedChar, difficulty, selectedClass, characters, playerFeats, playerWeapon, si);
+      startBattle(selectedChar, difficulty, selectedClass, characters, playerFeats, playerWeapon, si, playerCurrentHp, playerFollowers);
     }
   }, [questEncounter, selectedChar, selectedClass, difficulty, state.phase, startBattle, characters, buildSpellInfo]);
 
@@ -211,7 +212,7 @@ export function HexBattle({ characters, questEncounter, playerFeats, playerWeapo
 
   // Handle hex click with spell targeting
   const handleHexClick = useCallback((hex: HexCoord) => {
-    if (pendingSpell && state.phase === "playerAction" && playerUnit) {
+    if (pendingSpell && state.phase === "playerTurn" && playerUnit) {
       const battle = pendingSpell.battle;
       if (!battle) return;
       // Self-targeting handled at selection time
@@ -381,7 +382,7 @@ export function HexBattle({ characters, questEncounter, playerFeats, playerWeapo
         <span className="text-sm font-black tracking-widest uppercase" style={{ color: "#f0d070", fontFamily: "'Cinzel Decorative', 'Cinzel', serif" }}>
           {questEncounter ? questEncounter.questName : selectedClass.emoji} — Round {state.round} — {phaseLabel(state.phase)}
         </span>
-        {isPlayerTurn && (state.phase === "playerMove" || state.phase === "playerAction") && (
+        {isPlayerTurn && state.phase === "playerTurn" && (
           <button onClick={endTurn} className="px-3 py-1 rounded text-xs font-bold uppercase tracking-widest"
             style={{ background: "rgba(220,38,38,0.15)", color: "rgba(220,38,38,0.7)", border: "1px solid rgba(220,38,38,0.3)" }}>
             End Turn
@@ -530,83 +531,93 @@ export function HexBattle({ characters, questEncounter, playerFeats, playerWeapo
             </div>
           )}
 
-          {/* Phase-specific actions */}
-          {state.phase === "playerMove" && (
-            <div className="px-4 py-3 rounded-lg flex items-center justify-between gap-2" style={{ background: "rgba(74,222,128,0.08)", border: "1px solid rgba(74,222,128,0.2)" }}>
-              <span className="text-xs font-bold tracking-widest uppercase" style={{ color: "rgba(74,222,128,0.8)" }}>
-                Click a green hex to move ({Math.floor((activeUnit?.stats.speed ?? 30) / 5)} hexes)
-              </span>
-              <button onClick={skipMove} className="px-3 py-1 rounded text-xs font-bold uppercase tracking-widest shrink-0"
-                style={{ background: "rgba(201,168,76,0.15)", color: "rgba(201,168,76,0.8)", border: "1px solid rgba(201,168,76,0.3)" }}>
-                Hold
-              </button>
-            </div>
-          )}
-
-          {/* Action used — show end turn prompt */}
-          {state.phase === "playerAction" && !pendingSpell && !showSpellPicker && activeUnit?.hasActed && (
-            <div className="px-4 py-3 rounded-lg flex items-center justify-between gap-2" style={{ background: "rgba(201,168,76,0.08)", border: "1px solid rgba(201,168,76,0.15)" }}>
-              <span className="text-xs tracking-widest uppercase" style={{ color: "rgba(201,168,76,0.6)" }}>
-                Action used — end your turn
-              </span>
-              <button onClick={endTurn} className="px-3 py-1 rounded text-xs font-bold uppercase tracking-widest shrink-0"
-                style={{ background: "rgba(74,222,128,0.15)", color: "rgba(74,222,128,0.8)", border: "1px solid rgba(74,222,128,0.3)" }}>
-                End Turn
-              </button>
-            </div>
-          )}
-
-          {state.phase === "playerAction" && !pendingSpell && !showSpellPicker && !activeUnit?.hasActed && state.attackableEnemies.length > 0 && (
-            <div className="px-4 py-3 rounded-lg flex items-center justify-between gap-2" style={{ background: "rgba(220,38,38,0.08)", border: "1px solid rgba(220,38,38,0.2)" }}>
-              <span className="text-xs font-bold tracking-widest uppercase" style={{ color: "rgba(220,38,38,0.8)" }}>
-                {activeUnit && activeUnit.weaponProperties.includes("charge") && state.attackableEnemies.some(eid => {
-                  const enemy = state.units.find(u => u.id === eid);
-                  return enemy && isCharge(activeUnit, enemy);
-                })
-                  ? "CHARGE! Click enemy for x2 damage"
-                  : activeUnit && activeUnit.attackRange > 1
-                    ? `Click an enemy to attack (range ${activeUnit.attackRange} hex)`
-                    : "Click an adjacent enemy to attack"}
-              </span>
-              <div className="flex gap-1">
-                {canCastSpells && (
-                  <button onClick={() => setShowSpellPicker(true)} className="px-3 py-1 rounded text-xs font-bold uppercase tracking-widest shrink-0"
-                    style={{ background: "rgba(168,85,247,0.15)", color: "rgba(168,85,247,0.8)", border: "1px solid rgba(168,85,247,0.3)" }}>
-                    Cast
-                  </button>
-                )}
-                <button onClick={readyAttack} className="px-3 py-1 rounded text-xs font-bold uppercase tracking-widest shrink-0"
-                  style={{ background: "rgba(201,168,76,0.15)", color: "rgba(201,168,76,0.8)", border: "1px solid rgba(201,168,76,0.3)" }}
-                  title={activeUnit?.weaponProperties.includes("brace") ? "Set against charge — x2 damage when enemies approach" : "Hold attack until an enemy moves into range"}>
-                  {activeUnit?.weaponProperties.includes("brace") ? "Set" : "Ready"}
+          {/* Phase-specific actions — unified playerTurn with 3 action buttons */}
+          {state.phase === "playerTurn" && !pendingSpell && !showSpellPicker && (
+            <div className="px-4 py-3 rounded-lg flex flex-col gap-2" style={{ background: "rgba(0,0,0,0.2)", border: "1px solid rgba(201,168,76,0.2)" }}>
+              {/* Action buttons row */}
+              <div className="flex gap-2 justify-center">
+                <button disabled={!!activeUnit?.hasMoved}
+                  className="px-3 py-1.5 rounded text-xs font-bold uppercase tracking-widest transition-all"
+                  style={{
+                    background: activeUnit?.hasMoved ? "rgba(74,222,128,0.05)" : "rgba(74,222,128,0.15)",
+                    color: activeUnit?.hasMoved ? "rgba(74,222,128,0.3)" : "rgba(74,222,128,0.9)",
+                    border: `1px solid ${activeUnit?.hasMoved ? "rgba(74,222,128,0.1)" : "rgba(74,222,128,0.4)"}`,
+                  }}>
+                  {activeUnit?.hasMoved ? "Moved" : `Move (${Math.floor((activeUnit?.stats.speed ?? 30) / 5)})`}
+                </button>
+                <button disabled={!!activeUnit?.hasActed}
+                  className="px-3 py-1.5 rounded text-xs font-bold uppercase tracking-widest transition-all"
+                  style={{
+                    background: activeUnit?.hasActed ? "rgba(220,38,38,0.05)" : "rgba(220,38,38,0.15)",
+                    color: activeUnit?.hasActed ? "rgba(220,38,38,0.3)" : "rgba(220,38,38,0.9)",
+                    border: `1px solid ${activeUnit?.hasActed ? "rgba(220,38,38,0.1)" : "rgba(220,38,38,0.4)"}`,
+                  }}>
+                  {activeUnit?.hasActed ? "Acted" : "Attack"}
+                </button>
+                <button disabled
+                  className="px-3 py-1.5 rounded text-xs font-bold uppercase tracking-widest"
+                  style={{
+                    background: "rgba(251,191,36,0.05)",
+                    color: "rgba(251,191,36,0.3)",
+                    border: "1px solid rgba(251,191,36,0.1)",
+                  }}>
+                  Bonus
                 </button>
               </div>
-            </div>
-          )}
-
-          {state.phase === "playerAction" && !pendingSpell && !showSpellPicker && !activeUnit?.hasActed && state.attackableEnemies.length === 0 && (
-            <div className="px-4 py-3 rounded-lg flex items-center justify-between gap-2" style={{ background: "rgba(201,168,76,0.08)", border: "1px solid rgba(201,168,76,0.15)" }}>
-              <span className="text-xs tracking-widest uppercase" style={{ color: "rgba(201,168,76,0.5)" }}>
-                No enemies in {activeUnit && activeUnit.attackRange > 1 ? "range" : "melee range"}
-              </span>
-              <div className="flex gap-1">
-                {canCastSpells && (
-                  <button onClick={() => setShowSpellPicker(true)} className="px-3 py-1 rounded text-xs font-bold uppercase tracking-widest shrink-0"
+              {/* Context hints */}
+              {!activeUnit?.hasMoved && (
+                <span className="text-xs text-center" style={{ color: "rgba(74,222,128,0.7)" }}>
+                  Click a green hex to move
+                </span>
+              )}
+              {!activeUnit?.hasActed && state.attackableEnemies.length > 0 && (
+                <span className="text-xs text-center" style={{ color: "rgba(220,38,38,0.7)" }}>
+                  {activeUnit && activeUnit.weaponProperties.includes("charge") && state.attackableEnemies.some(eid => {
+                    const enemy = state.units.find(u => u.id === eid);
+                    return enemy && isCharge(activeUnit, enemy);
+                  })
+                    ? "CHARGE! Click enemy for x2 damage"
+                    : activeUnit && activeUnit.attackRange > 1
+                      ? `Click enemy to attack (range ${activeUnit.attackRange})`
+                      : "Click an adjacent enemy to attack"}
+                </span>
+              )}
+              {!activeUnit?.hasActed && state.attackableEnemies.length === 0 && (
+                <span className="text-xs text-center" style={{ color: "rgba(201,168,76,0.4)" }}>
+                  No enemies in {activeUnit && activeUnit.attackRange > 1 ? "range" : "melee range"}
+                </span>
+              )}
+              {/* Sub-action buttons */}
+              <div className="flex gap-1 justify-center flex-wrap">
+                {!activeUnit?.hasMoved && (
+                  <button onClick={skipMove} className="px-3 py-1 rounded text-xs font-bold uppercase tracking-widest"
+                    style={{ background: "rgba(201,168,76,0.1)", color: "rgba(201,168,76,0.7)", border: "1px solid rgba(201,168,76,0.25)" }}>
+                    Hold
+                  </button>
+                )}
+                {canCastSpells && !activeUnit?.hasActed && (
+                  <button onClick={() => setShowSpellPicker(true)} className="px-3 py-1 rounded text-xs font-bold uppercase tracking-widest"
                     style={{ background: "rgba(168,85,247,0.15)", color: "rgba(168,85,247,0.8)", border: "1px solid rgba(168,85,247,0.3)" }}>
                     Cast
                   </button>
                 )}
-                <button onClick={readyAttack} className="px-3 py-1 rounded text-xs font-bold uppercase tracking-widest shrink-0"
-                  style={{ background: "rgba(201,168,76,0.15)", color: "rgba(201,168,76,0.8)", border: "1px solid rgba(201,168,76,0.3)" }}
-                  title={activeUnit?.weaponProperties.includes("brace") ? "Set against charge — x2 damage when enemies approach" : "Hold attack until an enemy moves into range"}>
-                  {activeUnit?.weaponProperties.includes("brace") ? "Set" : "Ready"}
+                {!activeUnit?.hasActed && (
+                  <button onClick={readyAttack} className="px-3 py-1 rounded text-xs font-bold uppercase tracking-widest"
+                    style={{ background: "rgba(201,168,76,0.1)", color: "rgba(201,168,76,0.7)", border: "1px solid rgba(201,168,76,0.25)" }}
+                    title={activeUnit?.weaponProperties.includes("brace") ? "Set against charge — x2 damage when enemies approach" : "Hold attack until an enemy moves into range"}>
+                    {activeUnit?.weaponProperties.includes("brace") ? "Set" : "Ready"}
+                  </button>
+                )}
+                <button onClick={endTurn} className="px-3 py-1 rounded text-xs font-bold uppercase tracking-widest"
+                  style={{ background: "rgba(96,165,250,0.15)", color: "rgba(96,165,250,0.8)", border: "1px solid rgba(96,165,250,0.3)" }}>
+                  End Turn
                 </button>
               </div>
             </div>
           )}
 
           {/* Spell targeting prompt */}
-          {state.phase === "playerAction" && pendingSpell && (
+          {state.phase === "playerTurn" && pendingSpell && (
             <div className="px-4 py-3 rounded-lg flex items-center justify-between gap-2" style={{ background: "rgba(168,85,247,0.1)", border: "1px solid rgba(168,85,247,0.3)" }}>
               <span className="text-xs font-bold tracking-widest uppercase" style={{ color: "rgba(168,85,247,0.9)" }}>
                 {pendingSpell.name}: click a purple-highlighted target
@@ -619,7 +630,7 @@ export function HexBattle({ characters, questEncounter, playerFeats, playerWeapo
           )}
 
           {/* Spell picker overlay */}
-          {state.phase === "playerAction" && showSpellPicker && (
+          {state.phase === "playerTurn" && showSpellPicker && (
             <div className="px-3 py-2 rounded-lg overflow-y-auto" style={{ background: "rgba(0,0,0,0.5)", border: "1px solid rgba(168,85,247,0.4)", maxHeight: 260 }}>
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs font-black tracking-widest uppercase" style={{ color: "rgba(168,85,247,0.9)" }}>Cast Spell</span>
@@ -740,7 +751,7 @@ export function HexBattle({ characters, questEncounter, playerFeats, playerWeapo
                   setCollectingRewards(true);
                   if (onBattleEnd) {
                     const enemyNames = state.units.filter(u => !u.isPlayer).map(u => u.name);
-                    const result = await onBattleEnd("victory", effectiveDifficulty, enemyNames, state.round, playerUnit?.spellSlotsUsed);
+                    const result = await onBattleEnd("victory", effectiveDifficulty, enemyNames, state.round, playerUnit?.spellSlotsUsed, playerUnit?.currentHp);
                     if (result) { setBattleRewards(result); setCollectingRewards(false); return; }
                   }
                   setCollectingRewards(false);
@@ -766,7 +777,7 @@ export function HexBattle({ characters, questEncounter, playerFeats, playerWeapo
                 <button onClick={() => {
                   if (onBattleEnd) {
                     const enemyNames = state.units.filter(u => !u.isPlayer).map(u => u.name);
-                    onBattleEnd("defeat", effectiveDifficulty, enemyNames, state.round, playerUnit?.spellSlotsUsed);
+                    onBattleEnd("defeat", effectiveDifficulty, enemyNames, state.round, playerUnit?.spellSlotsUsed, playerUnit?.currentHp);
                   }
                   onDefeatChoice?.("rescue");
                 }} className="flex flex-col items-center px-4 py-3 rounded-lg text-sm font-bold uppercase tracking-widest transition-all hover:scale-[1.02]"
@@ -780,7 +791,7 @@ export function HexBattle({ characters, questEncounter, playerFeats, playerWeapo
                 <button onClick={() => {
                   if (onBattleEnd) {
                     const enemyNames = state.units.filter(u => !u.isPlayer).map(u => u.name);
-                    onBattleEnd("defeat", effectiveDifficulty, enemyNames, state.round, playerUnit?.spellSlotsUsed);
+                    onBattleEnd("defeat", effectiveDifficulty, enemyNames, state.round, playerUnit?.spellSlotsUsed, playerUnit?.currentHp);
                   }
                   onDefeatChoice?.("perish");
                 }} className="flex flex-col items-center px-4 py-3 rounded-lg text-sm font-bold uppercase tracking-widest transition-all hover:scale-[1.02]"

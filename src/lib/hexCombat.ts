@@ -5,6 +5,7 @@ import type { CharacterClass } from "./classes";
 import type { Monster } from "./monsters";
 import { getFeatCombatFlags } from "./feats";
 import type { SpellBattleEffect } from "./spells";
+import type { Follower } from "./party";
 
 // ── Weapon Range & Properties System ─────────────────────────────────────────
 // 1 hex = 5ft (matches movement: speed 30 = 6 hexes).
@@ -147,6 +148,7 @@ export type BattleUnit = {
   isPlayer: boolean;
   hasMoved: boolean;
   hasActed: boolean;
+  hasBonusActed: boolean;
   charClass?: CharacterClass;
   feats: string[];
   attackRange: number;     // max attack distance in hexes (1 = melee)
@@ -207,6 +209,12 @@ const ENEMY_DEFS: Record<string, EnemyDef> = {
     displayName: "Skeleton Warrior",
     imageEmoji: "\u{1F480}",
     localImage: "",
+  },
+  rat: {
+    nftName: "Rats",
+    displayName: "Dire Rat",
+    imageEmoji: "\u{1F400}",
+    localImage: "/enemy-rat.jpg",
   },
 };
 
@@ -321,6 +329,7 @@ export type SpellUnitInfo = {
 export function createPlayerUnit(
   char: NftCharacter, position: HexCoord, charClass?: CharacterClass,
   featIds: string[] = [], weaponName?: string, spellInfo?: SpellUnitInfo,
+  currentHpOverride?: number,
 ): BattleUnit {
   const stats = computeStats(char.stats, charClass, 1, featIds);
   const wr = getWeaponRange(weaponName);
@@ -331,11 +340,12 @@ export function createPlayerUnit(
     position,
     stats,
     subtypes: char.subtypes ?? [],
-    currentHp: stats.hp,
+    currentHp: currentHpOverride !== undefined ? Math.min(currentHpOverride, stats.hp) : stats.hp,
     maxHp: stats.hp,
     isPlayer: true,
     hasMoved: false,
     hasActed: false,
+    hasBonusActed: false,
     charClass,
     feats: featIds,
     attackRange: wr.attackRange,
@@ -373,6 +383,7 @@ export function createEnemyUnit(spec: EnemySpec, position: HexCoord, index: numb
     isPlayer: false,
     hasMoved: false,
     hasActed: false,
+    hasBonusActed: false,
     feats: [],
     attackRange: spec.attackRange ?? 1,
     rangeIncrement: spec.rangeIncrement ?? 0,
@@ -383,6 +394,72 @@ export function createEnemyUnit(spec: EnemySpec, position: HexCoord, index: numb
     reactionUsed: false,
     activeEffects: [],
     rawAbilities: { str: spec.stats.str, dex: spec.stats.dex, con: spec.stats.con, int: spec.stats.int, wis: spec.stats.wis, cha: spec.stats.cha },
+  };
+}
+
+/** Create a BattleUnit from a hired follower (fights on player's side).
+ *  Derives proper warrior stats from level: STR-based damage, BAB + ability mod
+ *  for attack rolls, DEX-based initiative, and equipment scaling with level.
+ */
+export function createFollowerUnit(follower: Follower, position: HexCoord, index: number): BattleUnit {
+  const isRanged = follower.role === "ranged";
+  const isMounted = follower.abilities.includes("mounted_charge");
+  const speed = isMounted ? 40 : 30;
+
+  // Derive warrior ability scores (game stats = D&D - 10, min 1)
+  // Melee: STR 14-16 (game 4-6), DEX 12 (game 2)
+  // Ranged: STR 12 (game 2), DEX 14-16 (game 4-6)
+  const abilityBumps = Math.floor(follower.level / 4); // +1 at levels 4, 8, 12, 16, 20
+  const str = isRanged ? 2 : Math.min(10, 4 + abilityBumps);
+  const dex = isRanged ? Math.min(10, 4 + abilityBumps) : 2;
+  const con = 2 + Math.floor(follower.level / 6); // CON 12-14
+
+  // atkBonus = BAB + ability mod (STR for melee, DEX for ranged)
+  const primaryMod = Math.floor((isRanged ? dex : str) / 2);
+  const atkBonus = follower.attack + primaryMod;
+
+  // Damage = STR (game stat) + weapon scaling with level
+  const weaponBonus = Math.floor(follower.level / 3); // better weapons at higher levels
+  const attack = str + weaponBonus;
+
+  const stats: ComputedStats = {
+    attack:       Math.max(1, attack),
+    mAtk:         1,
+    def:          Math.max(1, dex),
+    mDef:         1,
+    hp:           follower.maxHp,
+    healing:      0,
+    initiative:   Math.max(1, dex),
+    carryCapacity: 100,
+    ac:           follower.ac,
+    atkBonus:     atkBonus,
+    speed,
+    lightningDmg: 0,
+    fireDmg:      0,
+  };
+  return {
+    id: `follower-${index}`,
+    name: follower.name,
+    imageEmoji: isRanged ? "\u{1F3F9}" : "\u2694\uFE0F",
+    position,
+    stats,
+    subtypes: [],
+    currentHp: follower.hp,
+    maxHp: follower.maxHp,
+    isPlayer: true,
+    hasMoved: false,
+    hasActed: false,
+    hasBonusActed: false,
+    feats: [],
+    attackRange: isRanged ? 6 : 1,
+    rangeIncrement: isRanged ? 6 : 0,
+    isRanged,
+    weaponProperties: [],
+    readiedAttack: false,
+    turnStartPos: position,
+    reactionUsed: false,
+    activeEffects: [],
+    rawAbilities: { str, dex, con, int: 1, wis: 1, cha: 1 },
   };
 }
 

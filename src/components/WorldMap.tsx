@@ -2019,7 +2019,10 @@ type Props = {
   onQuestBattle: (encounter: QuestEncounter) => void;
   onExhaustionCollapse: (isSafe: boolean) => void;  // collapse from exhaustion; isSafe = town/farm (infirmary)
   onInventory: () => void;
+  onEquip?: (itemId: string, slot: keyof Equipment) => void;
+  onUnequip?: (slot: keyof Equipment) => void;
   onSwitchParty?: (newIndex: number) => void;  // switch active party
+  onCreateParty?: (nftAddress: string) => void; // create new party led by this NFT
   onBack: () => void;
 };
 
@@ -2039,10 +2042,25 @@ const TERRAIN_SPEED: Record<HexType, number> = {
 };
 
 const MAX_TRAVEL = 9; // ~same physical distance as old 5-hex limit on denser grid
-const MIN_ZOOM = 1;
 const MAX_ZOOM = 3.5;
 
-export function WorldMap({ save, character, characters, onTravel, onAction, onBuyItem, onBattle, onQuestBattle, onExhaustionCollapse, onInventory, onSwitchParty, onBack }: Props) {
+/** Determine which equipment slot an item can go in, or null if not equippable */
+function getEquipSlot(itemId: string, info: { category: string; name: string } | undefined): keyof Equipment | null {
+  if (!info) return null;
+  const id = itemId.toLowerCase();
+  const name = info.name.toLowerCase();
+  // Shields → shield slot
+  if (name.includes("shield") || id.includes("shield") || id.includes("buckler") || name.includes("buckler")) return "shield";
+  // Weapons
+  if (info.category === "weapon") return "weapon";
+  // Armor (non-shield armor items)
+  if (info.category === "armor") return "armor";
+  // Accessories: amulets, rings, cloaks, bracers
+  if (name.includes("amulet") || name.includes("ring") || name.includes("cloak") || name.includes("bracer") || name.includes("necklace") || name.includes("pendant")) return "accessory";
+  return null;
+}
+
+export function WorldMap({ save, character, characters, onTravel, onAction, onBuyItem, onBattle, onQuestBattle, onExhaustionCollapse, onInventory, onEquip, onUnequip, onSwitchParty, onCreateParty, onBack }: Props) {
   const [selectedHex, setSelectedHex] = useState<MapHex | null>(null);
   const [zoom, setZoom] = useState(2);
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -2055,7 +2073,16 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
   const [cityShop, setCityShop] = useState<string | null>(null);         // shop or temple id
   const [leftPanel, setLeftPanel] = useState<"sheet" | "inventory">("sheet");
   const [gameLog, setGameLog] = useState<WorldLuckResult[]>([]);
+  const [showNewPartyPicker, setShowNewPartyPicker] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  /** Minimum zoom so the map always fills the container (no empty edges) */
+  const getMinZoom = useCallback(() => {
+    const el = containerRef.current;
+    if (!el) return 1;
+    const rect = el.getBoundingClientRect();
+    return Math.max(rect.width / VB, rect.height / VB, 1);
+  }, []);
 
   // Multi-party: active party position (falls back to save.map_hex for saves without parties)
   const activeParty = save.parties?.[save.active_party_index ?? 0];
@@ -2082,8 +2109,11 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
       const heroCount = Math.max(1, save.party.heroes.length);
       let ratCount = 0;
       for (let i = 0; i < heroCount * save.level; i++) ratCount += Math.floor(Math.random() * 6) + 1;
-      const rats: EnemySpec[] = Array.from({ length: ratCount }, () =>
-        createMonsterSpec(direRat, "\uD83D\uDC00")); // 🐀
+      const ratNft = characters?.find(c => c.name === "Rats");
+      const rats: EnemySpec[] = Array.from({ length: ratCount }, () => ({
+        ...createMonsterSpec(direRat, "\uD83D\uDC00"), // 🐀
+        imageUrl: ratNft?.imageUrl || "/enemy-rat.jpg",
+      }));
       setPendingQuest({
         questId: "rats_in_cellar",
         questName: "Rats in the Cellar",
@@ -2334,21 +2364,30 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
     const el = containerRef.current;
     if (!el) return;
     const rect = el.getBoundingClientRect();
-    // Convert player viewBox coords to fraction of map, then offset so player is centered
-    const px = -(playerPx.x / VB) * VB * zoom + rect.width / 2;
-    const py = -(playerPx.y / VB) * VB * zoom + rect.height / 2;
-    setPan(clampPan({ x: px, y: py }));
+    const ms = VB * zoom;
+    // Convert player viewBox coords to pixel offset, then center in viewport
+    const px = -playerPx.x * zoom + rect.width / 2;
+    const py = -playerPx.y * zoom + rect.height / 2;
+    setPan({
+      x: Math.min(0, Math.max(rect.width - ms, px)),
+      y: Math.min(0, Math.max(rect.height - ms, py)),
+    });
   }, [zoom, playerPx.x, playerPx.y]);
 
   // Auto-center on mount and when player moves
   useEffect(() => {
     if (!didCenter.current) {
-      // Small delay to ensure container is rendered
-      requestAnimationFrame(() => { centerOnPlayer(); didCenter.current = true; });
+      // Small delay to ensure container is rendered and we can measure it
+      requestAnimationFrame(() => {
+        const minZ = getMinZoom();
+        if (zoom < minZ) setZoom(minZ);
+        centerOnPlayer();
+        didCenter.current = true;
+      });
     } else {
       centerOnPlayer();
     }
-  }, [centerOnPlayer]);
+  }, [centerOnPlayer, getMinZoom]);
 
   // Mouse wheel → zoom (centered on cursor)
   useEffect(() => {
@@ -2362,7 +2401,7 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
 
       const oldZoom = zoom;
       const delta = e.deltaY > 0 ? -0.2 : 0.2;
-      const newZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, +(oldZoom + delta).toFixed(1)));
+      const newZoom = Math.min(MAX_ZOOM, Math.max(getMinZoom(), +(oldZoom + delta).toFixed(1)));
       if (newZoom === oldZoom) return;
 
       // Zoom toward cursor: adjust pan so the point under cursor stays fixed
@@ -2377,7 +2416,7 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
     }
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
-  }, [zoom, pan]);
+  }, [zoom, pan, getMinZoom]);
 
   // Click+drag to pan (suppress hex click if dragged > 5px)
   const wasDrag = useRef(false);
@@ -2392,7 +2431,7 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
     const dx = e.clientX - dragRef.current.startX;
     const dy = e.clientY - dragRef.current.startY;
     if (Math.abs(dx) > 5 || Math.abs(dy) > 5) wasDrag.current = true;
-    setPan(clampPan({ x: dragRef.current.panX - dx, y: dragRef.current.panY - dy }));
+    setPan(clampPan({ x: dragRef.current.panX + dx, y: dragRef.current.panY + dy }));
   }
   function onPointerUp() {
     dragRef.current = null;
@@ -2444,7 +2483,7 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
     const rect = el.getBoundingClientRect();
     const cx = rect.width / 2, cy = rect.height / 2;
     const oldZoom = zoom;
-    const newZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, +(oldZoom + delta).toFixed(1)));
+    const newZoom = Math.min(MAX_ZOOM, Math.max(getMinZoom(), +(oldZoom + delta).toFixed(1)));
     const scale = newZoom / oldZoom;
     const newMapSize = VB * newZoom;
     setPan(p => {
@@ -2469,7 +2508,7 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
   }, [mapSize]);
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-2" style={{ height: "100%", maxHeight: "calc(100vh - 60px)", overflow: "hidden" }}>
       {/* Header bar */}
       <div className="flex items-center justify-between px-3 py-2 rounded-lg flex-wrap gap-2"
         style={{ background: "rgba(0,0,0,0.3)", border: "1px solid rgba(201,168,76,0.15)" }}>
@@ -2500,9 +2539,9 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
         </button>
       </div>
 
-      {/* Party selector bar — only shows when multiple parties exist */}
-      {save.parties && save.parties.length > 1 && (
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg overflow-x-auto"
+      {/* Party selector bar — always visible */}
+      {save.parties && (
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg overflow-x-auto relative"
           style={{ background: "rgba(0,0,0,0.25)", border: "1px solid rgba(201,168,76,0.1)" }}>
           <span className="text-xs font-bold uppercase tracking-widest shrink-0" style={{ color: "rgba(201,168,76,0.4)", fontSize: "0.5rem" }}>
             Parties
@@ -2531,13 +2570,53 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
               </button>
             );
           })}
+          {/* New party button */}
+          <button onClick={() => setShowNewPartyPicker(v => !v)}
+            className="flex items-center justify-center shrink-0 rounded"
+            style={{ width: 24, height: 24, background: "rgba(74,222,128,0.1)", border: "1px solid rgba(74,222,128,0.3)", color: "rgba(74,222,128,0.8)", fontSize: "0.8rem", fontWeight: "bold" }}>
+            +
+          </button>
+          {/* NFT picker dropdown */}
+          {showNewPartyPicker && (() => {
+            const usedAddresses = new Set(save.parties?.map(p => p.heroes[0]?.nft_address) ?? []);
+            const available = characters?.filter(c => !usedAddresses.has(c.contractAddress.toLowerCase())) ?? [];
+            return (
+              <div className="absolute top-full left-0 mt-1 z-50 rounded-lg p-2 flex flex-col gap-1"
+                style={{ background: "rgba(15,10,5,0.95)", border: "1px solid rgba(201,168,76,0.3)", minWidth: 200 }}>
+                <span className="text-xs font-bold uppercase tracking-widest px-1" style={{ color: "rgba(201,168,76,0.5)", fontSize: "0.5rem" }}>
+                  Choose NFT Leader
+                </span>
+                {available.length === 0 && (
+                  <span className="text-xs px-1" style={{ color: "rgba(232,213,176,0.4)" }}>No available NFTs</span>
+                )}
+                {available.map(nft => (
+                  <button key={nft.contractAddress} className="flex items-center gap-2 px-2 py-1.5 rounded"
+                    style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(201,168,76,0.1)" }}
+                    onClick={() => { onCreateParty?.(nft.contractAddress.toLowerCase()); setShowNewPartyPicker(false); }}>
+                    {nft.imageUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={nft.imageUrl} alt="" className="rounded-full" style={{ width: 22, height: 22, objectFit: "cover" }} />
+                    ) : (
+                      <span style={{ fontSize: "0.7rem" }}>{"\u{1F6E1}\uFE0F"}</span>
+                    )}
+                    <span className="text-xs" style={{ color: "rgba(232,213,176,0.8)" }}>{nft.name || "Hero"}</span>
+                  </button>
+                ))}
+                <button onClick={() => setShowNewPartyPicker(false)}
+                  className="text-xs px-2 py-1 rounded mt-1"
+                  style={{ background: "rgba(255,255,255,0.03)", color: "rgba(232,213,176,0.4)" }}>
+                  Cancel
+                </button>
+              </div>
+            );
+          })()}
         </div>
       )}
 
       {/* Main layout: left panel + map + side panel */}
-      <div className="flex gap-2 flex-col lg:flex-row">
+      <div className="flex gap-2 flex-col lg:flex-row flex-1 min-h-0 overflow-hidden">
         {/* ── Left panel: Character Sheet / Inventory ── */}
-        <div className="hidden lg:flex flex-col gap-1" style={{ width: 240, minWidth: 240 }}>
+        <div className="hidden lg:flex flex-col gap-1" style={{ width: 320, minWidth: 320 }}>
           <div className="flex gap-1">
             <button onClick={() => setLeftPanel("sheet")}
               className="flex-1 px-2 py-1 rounded text-xs font-bold uppercase tracking-widest"
@@ -2740,9 +2819,18 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
                       const itemId = save.equipment[slot];
                       const info = itemId ? getItemInfo(itemId) : null;
                       return (
-                        <div key={slot} className="flex justify-between">
+                        <div key={slot} className="flex items-center justify-between gap-1">
                           <span className="capitalize" style={{ color: "rgba(232,213,176,0.4)" }}>{slot}</span>
-                          <span>{info?.name ?? (itemId || "—")}{info ? ` (${getItemWeight(itemId!)}lb)` : ""}</span>
+                          <div className="flex items-center gap-1">
+                            <span>{info?.name ?? (itemId || "—")}{info ? ` (${getItemWeight(itemId!)}lb)` : ""}</span>
+                            {itemId && onUnequip && (
+                              <button onClick={() => onUnequip(slot)}
+                                className="px-1 rounded text-[0.45rem] font-bold"
+                                style={{ background: "rgba(239,68,68,0.15)", color: "rgba(239,68,68,0.8)", border: "1px solid rgba(239,68,68,0.3)" }}>
+                                X
+                              </button>
+                            )}
+                          </div>
                         </div>
                       );
                     })}
@@ -2762,10 +2850,20 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
                         {save.inventory.map(item => {
                           const info = getItemInfo(item.id);
                           const w = getItemWeight(item.id);
+                          const slot = getEquipSlot(item.id, info);
                           return (
-                            <div key={item.id} className="flex justify-between">
-                              <span>{info?.name ?? item.id}{item.qty > 1 ? ` x${item.qty}` : ""}</span>
-                              <span style={{ color: "rgba(232,213,176,0.4)" }}>{(w * item.qty).toFixed(1)}lb</span>
+                            <div key={item.id} className="flex items-center justify-between gap-1">
+                              <span className="truncate">{info?.name ?? item.id}{item.qty > 1 ? ` x${item.qty}` : ""}</span>
+                              <div className="flex items-center gap-1 shrink-0">
+                                {slot && onEquip && (
+                                  <button onClick={() => onEquip(item.id, slot)}
+                                    className="px-1 rounded text-[0.45rem] font-bold"
+                                    style={{ background: "rgba(74,222,128,0.15)", color: "rgba(74,222,128,0.8)", border: "1px solid rgba(74,222,128,0.3)" }}>
+                                    Equip
+                                  </button>
+                                )}
+                                <span style={{ color: "rgba(232,213,176,0.4)" }}>{(w * item.qty).toFixed(1)}lb</span>
+                              </div>
                             </div>
                           );
                         })}
@@ -2785,9 +2883,9 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
         </div>
 
         {/* Zoomable map container */}
-        <div className="flex-1 flex flex-col gap-1">
-          <div ref={containerRef} className="overflow-hidden rounded-lg select-none"
-            style={{ height: "min(70vh, 560px)", background: "rgba(0,0,0,0.15)", border: "1px solid rgba(201,168,76,0.1)", cursor: dragRef.current ? "grabbing" : "grab", touchAction: "none" }}
+        <div className="flex-1 flex flex-col gap-1 min-h-0">
+          <div ref={containerRef} className="overflow-hidden rounded-lg select-none flex-1"
+            style={{ minHeight: 200, background: "rgba(0,0,0,0.15)", border: "1px solid rgba(201,168,76,0.1)", cursor: dragRef.current ? "grabbing" : "grab", touchAction: "none" }}
             onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}>
             <div className="relative" style={{ width: mapSize, height: mapSize, transform: `translate(${pan.x}px, ${pan.y}px)`, transformOrigin: "0 0" }}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -2877,6 +2975,19 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
                   );
                 })}
               </svg>
+              {/* Night dimming overlay */}
+              {(() => {
+                const h = (save.hour ?? 0) % 24;
+                // Gradual transitions: dusk 18-21, full night 21-5, dawn 5-7
+                let opacity = 0;
+                if (h >= 21 || h < 5) opacity = 0.45;        // deep night
+                else if (h >= 18) opacity = 0.15 * (h - 18); // dusk: 0→0.45
+                else if (h < 7) opacity = 0.45 - 0.225 * (h - 5); // dawn: 0.45→0
+                if (opacity > 0) return (
+                  <div className="absolute inset-0 pointer-events-none" style={{ background: `rgba(10,10,40,${opacity})`, mixBlendMode: "multiply" }} />
+                );
+                return null;
+              })()}
             </div>
           </div>
 
@@ -2899,7 +3010,7 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
         </div>
 
         {/* Side panel */}
-        <div className="w-full lg:w-64 flex flex-col gap-2">
+        <div className="w-full lg:w-80 flex flex-col gap-2">
           {/* Mapping mode */}
           <div className="px-3 py-2 rounded-lg" style={{ background: mappingMode ? "rgba(255,0,255,0.1)" : "rgba(0,0,0,0.2)", border: `1px solid ${mappingMode ? "rgba(255,0,255,0.4)" : "rgba(201,168,76,0.1)"}` }}>
             <button onClick={() => setMappingMode(m => !m)}
@@ -3886,7 +3997,7 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
       </div>
 
       {/* ── Game Log Footer ── */}
-      <div className="rounded-lg overflow-hidden" style={{ background: "rgba(0,0,0,0.3)", border: "1px solid rgba(201,168,76,0.15)", minHeight: 80, maxHeight: 180 }}>
+      <div className="rounded-lg overflow-hidden shrink-0" style={{ background: "rgba(0,0,0,0.3)", border: "1px solid rgba(201,168,76,0.15)", minHeight: 80, maxHeight: 160 }}>
         <div className="flex items-center justify-between px-3 py-1" style={{ background: "rgba(0,0,0,0.2)", borderBottom: "1px solid rgba(201,168,76,0.1)" }}>
           <span className="text-xs font-bold uppercase tracking-widest" style={{ color: "rgba(201,168,76,0.5)", fontSize: "0.5rem" }}>Game Log</span>
           {gameLog.length > 0 && (

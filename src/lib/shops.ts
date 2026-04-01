@@ -784,51 +784,61 @@ const MERCENARY_GUILD: Shop = {
     "Swords-for-hire. Pay a hiring fee upfront, then a daily wage in gold + food. Unpaid mercenaries lose morale and desert.",
   kardovOnly: true, // also available at fortress hexes
   items: [
-    // ---- Foot Skirmishers (cheap, hit-and-run) ----
-    shopItem("merc_skirmisher", "Skirmisher, Foot", "gear", 12, 0, "A lightly armed harasser with sling and halfspear. Hit-and-run only.", {
-      effect: "\u{1F4B0} UPKEEP: 2sp/day + 1 food/day | +1 ranged support. Flees if engaged in melee. Padded armor, sling, halfspear",
-    }),
-    shopItem("merc_skirmisher_archer", "Skirmisher, Archer", "gear", 50, 0, "A mobile bowman in leather armor. Good at softening targets.", {
-      effect: "\u{1F4B0} UPKEEP: 4sp/day + 1 food/day | +2 ranged support. Light crossbow, handaxe, leather armor. Retreats when pressed",
-    }),
+    // ══════════════════════════════════════════════════════════
+    // Arms & Equipment Guide p.66 — Table 4-4: Mercenary Equipment
+    // Hire cost = one-time upfront fee.  Wage = daily pay in sp.
+    // ══════════════════════════════════════════════════════════
 
-    // ---- Light Foot (frontline infantry) ----
-    shopItem("merc_light_foot", "Light Footman", "gear", 25, 0, "A basic soldier with shield and sword. Holds the line.", {
-      effect: "\u{1F4B0} UPKEEP: 3sp/day + 1 food/day | +1 melee support, absorbs 1 hit/fight. Studded leather, short sword, shield",
-    }),
-    shopItem("merc_light_archer", "Light Archer", "gear", 90, 0, "An archer trained to march in formation and hold position.", {
-      effect: "\u{1F4B0} UPKEEP: 4sp/day + 1 food/day | +2 ranged support. Leather, longbow, dagger. Covering fire",
-    }),
+    // ---- Skirmishers, Foot (Lv 1, 2sp/day) ----
+    shopItem("merc_skirm_sling",        "Skirmisher (Sling & Halfspear)",       "gear", 21,  0, "Padded, buckler, sling, halfspear. Lv 1 warrior.", { effect: "\u{1F4B0} UPKEEP: 2sp/day + 1 food | AC 13, Atk +3" }),
+    shopItem("merc_skirm_axe",          "Skirmisher (Throwing Axes)",           "gear", 31,  0, "Padded, throwing axes (3), dagger. Lv 1 warrior.", { effect: "\u{1F4B0} UPKEEP: 2sp/day + 1 food | AC 12, Atk +3" }),
+    shopItem("merc_skirm_javelin",      "Skirmisher (Javelin & Shield)",        "gear", 32,  0, "Leather, lg wooden shield, javelins (5), short sword. Lv 1 warrior.", { effect: "\u{1F4B0} UPKEEP: 2sp/day + 1 food | AC 14, Atk +3" }),
+    shopItem("merc_skirm_shortbow",     "Skirmisher (Shortbow)",                "gear", 41,  0, "Padded, shortbow, light mace. Lv 1 warrior.", { effect: "\u{1F4B0} UPKEEP: 2sp/day + 1 food | AC 12, Atk +3" }),
+    shopItem("merc_skirm_crossbow",     "Skirmisher (Light Crossbow)",          "gear", 51,  0, "Leather, light crossbow, handaxe. Lv 1 warrior.", { effect: "\u{1F4B0} UPKEEP: 2sp/day + 1 food | AC 13, Atk +3" }),
+    shopItem("merc_skirm_scimitar",     "Skirmisher (Shortbow & Scimitar)",     "gear", 86,  0, "Studded leather, buckler, shortbow, scimitar. Lv 1 warrior.", { effect: "\u{1F4B0} UPKEEP: 2sp/day + 1 food | AC 14, Atk +3" }),
 
-    // ---- Medium Foot (professional soldiers) ----
-    shopItem("merc_medium_foot", "Medium Footman", "gear", 65, 0, "A well-armed, well-armored professional soldier. City guard quality.", {
-      effect: "\u{1F4B0} UPKEEP: 8sp/day + 1 food/day | +2 melee support, absorbs 2 hits/fight. Chain shirt, longsword, shield",
-      minLevel: 5,
-    }),
-    shopItem("merc_pikeman", "Pikeman", "gear", 115, 0, "A spear-wielding soldier trained to counter cavalry charges.", {
-      effect: "\u{1F4B0} UPKEEP: 1gp/day + 1 food/day | +3 melee support vs mounted, set against charge. Scale mail, longspear",
-      minLevel: 5,
-    }),
+    // ---- Skirmishers, Mounted (Lv 4, 4sp/day) ----
+    shopItem("merc_skirm_mt_sling",     "Mounted Skirmisher (Sling)",           "gear", 205, 0, "Studded leather, sling, light pick, light warhorse. Lv 4 warrior.", { effect: "\u{1F4B0} UPKEEP: 4sp/day + 2 food | AC 14, Atk +6", minLevel: 5 }),
+    shopItem("merc_skirm_mt_javelin",   "Mounted Skirmisher (Javelin)",         "gear", 219, 0, "Studded leather, sm wooden shield, javelins (5), short sword, light warhorse. Lv 4 warrior.", { effect: "\u{1F4B0} UPKEEP: 4sp/day + 2 food | AC 15, Atk +6", minLevel: 5 }),
+    shopItem("merc_skirm_mt_bow",       "Mounted Skirmisher (Shortbow)",        "gear", 266, 0, "Leather, composite shortbow, light mace, light warhorse. Lv 4 warrior.", { effect: "\u{1F4B0} UPKEEP: 4sp/day + 2 food | AC 14, Atk +6", minLevel: 5 }),
 
-    // ---- Heavy Foot (shock troops) ----
-    shopItem("merc_heavy_foot", "Heavy Footman", "gear", 850, 0, "A heavily armored shock trooper. First into the breach.", {
-      effect: "\u{1F4B0} UPKEEP: 2gp/day + 1 food/day | +3 melee support, absorbs 3 hits/fight. Half-plate, greatsword, heavy shield",
-      minLevel: 15,
-    }),
+    // ---- Light Foot (Lv 1, 2sp/day) ----
+    shopItem("merc_light_battleaxe",    "Light Foot (Battleaxe & Shield)",      "gear", 31,  0, "Leather, sm wooden shield, battleaxe, throwing axe. Lv 1 warrior.", { effect: "\u{1F4B0} UPKEEP: 2sp/day + 1 food | AC 13, Atk +3" }),
+    shopItem("merc_light_spear",        "Light Foot (Shortspear & Shield)",     "gear", 35,  0, "Studded leather, lg wooden shield, shortspear, light hammer. Lv 1 warrior.", { effect: "\u{1F4B0} UPKEEP: 2sp/day + 1 food | AC 14, Atk +3" }),
+    shopItem("merc_light_longspear",    "Light Foot (Longspear)",               "gear", 40,  0, "Studded leather, longspear, short sword. Lv 1 warrior.", { effect: "\u{1F4B0} UPKEEP: 2sp/day + 1 food | AC 11, Atk +3" }),
+    shopItem("merc_light_hvy_xbow",     "Light Foot (Heavy Crossbow)",          "gear", 63,  0, "Leather, heavy crossbow, dagger. Lv 1 warrior.", { effect: "\u{1F4B0} UPKEEP: 2sp/day + 1 food | AC 11, Atk +3" }),
+    shopItem("merc_light_longbow",      "Light Foot (Longbow)",                 "gear", 88,  0, "Leather, longbow, dagger. Lv 1 warrior.", { effect: "\u{1F4B0} UPKEEP: 2sp/day + 1 food | AC 11, Atk +3" }),
+    shopItem("merc_light_comp_bow",     "Light Foot (Composite Longbow)",       "gear", 113, 0, "Leather, composite longbow, dagger. Lv 1 warrior.", { effect: "\u{1F4B0} UPKEEP: 2sp/day + 1 food | AC 11, Atk +3" }),
 
-    // ---- Mounted (require stabling) ----
-    shopItem("merc_light_mounted", "Light Cavalry", "gear", 230, 0, "A fast rider in leather armor. Exploits flanks and weak spots.", {
-      effect: "\u{1F4B0} UPKEEP: 1.6gp/day + 1 food/day | +2 melee support, mobile flanking. Leather, lance, short sword, light warhorse",
-      minLevel: 10,
-    }),
-    shopItem("merc_medium_mounted", "Medium Cavalry", "gear", 530, 0, "An armored lancer on a barded warhorse. Serious combat power.", {
-      effect: "\u{1F4B0} UPKEEP: 3.6gp/day + 1 food/day | +4 melee support, devastating charge. Chain, lance, longsword, heavy warhorse w/ barding",
-      minLevel: 20,
-    }),
-    shopItem("merc_heavy_mounted", "Heavy Cavalry", "gear", 830, 0, "A knight-grade heavy lancer. Masters of the battlefield.", {
-      effect: "\u{1F4B0} UPKEEP: 4.8gp/day + 1 food/day | +5 melee support, charge breaks lines. Half-plate, heavy lance, heavy warhorse w/ heavy barding",
-      minLevel: 25,
-    }),
+    // ---- Light Mounted (Lv 4, 4sp/day) ----
+    shopItem("merc_light_mt_spear",     "Light Cavalry (Shortspear & Flail)",   "gear", 214, 0, "Studded leather, sm wooden shield, shortspear, light flail, light warhorse. Lv 4.", { effect: "\u{1F4B0} UPKEEP: 4sp/day + 2 food | AC 14, Atk +6", minLevel: 5 }),
+    shopItem("merc_light_mt_lance",     "Light Cavalry (Lance & Mace)",         "gear", 215, 0, "Studded leather, sm wooden shield, light lance, light mace, light warhorse. Lv 4.", { effect: "\u{1F4B0} UPKEEP: 4sp/day + 2 food | AC 14, Atk +6", minLevel: 5 }),
+    shopItem("merc_light_mt_scimitar",  "Light Cavalry (Scimitar)",             "gear", 218, 0, "Leather, buckler, scimitar, dagger, light warhorse. Lv 4 warrior.", { effect: "\u{1F4B0} UPKEEP: 4sp/day + 2 food | AC 14, Atk +6", minLevel: 5 }),
+
+    // ---- Medium Foot (Lv 2-5, 4-10sp/day) ----
+    shopItem("merc_med_halberd",        "Medium Foot (Halberd)",                "gear", 68,  0, "Scale mail, halberd, morningstar. Lv 2 warrior.", { effect: "\u{1F4B0} UPKEEP: 4sp/day + 1 food | AC 14, Atk +4", minLevel: 3 }),
+    shopItem("merc_med_ranseur",        "Medium Foot (Ranseur)",                "gear", 75,  0, "Scale mail, ranseur, longsword. Lv 2 warrior.", { effect: "\u{1F4B0} UPKEEP: 4sp/day + 1 food | AC 14, Atk +4", minLevel: 3 }),
+    shopItem("merc_med_longsword",      "Medium Foot (Longsword & Shield)",     "gear", 76,  0, "Scale mail, sm steel shield, longsword, dagger. Lv 2 warrior.", { effect: "\u{1F4B0} UPKEEP: 4sp/day + 1 food | AC 15, Atk +4", minLevel: 3 }),
+    shopItem("merc_med_chain",          "Medium Foot (Chainmail)",              "gear", 165, 0, "Chainmail, longspear, short sword. Lv 3 warrior.", { effect: "\u{1F4B0} UPKEEP: 6sp/day + 1 food | AC 15, Atk +5", minLevel: 5 }),
+    shopItem("merc_med_splint",         "Medium Foot (Splint Mail)",            "gear", 217, 0, "Splint mail, guisarme, heavy pick. Lv 5 warrior.", { effect: "\u{1F4B0} UPKEEP: 10sp/day + 1 food | AC 16, Atk +7", minLevel: 10 }),
+    shopItem("merc_med_breastplate",    "Medium Foot (Breastplate & Shield)",   "gear", 223, 0, "Breastplate, sm steel shield, warhammer, dagger. Lv 5 warrior.", { effect: "\u{1F4B0} UPKEEP: 10sp/day + 1 food | AC 16, Atk +7", minLevel: 10 }),
+
+    // ---- Medium Mounted (Lv 8-9, 16-18sp/day) ----
+    shopItem("merc_med_mt_longsword",   "Medium Cavalry (Longsword)",           "gear", 602, 0, "Chainmail, sm steel shield, longsword, dagger, heavy warhorse. Lv 8.", { effect: "\u{1F4B0} UPKEEP: 16sp/day + 2 food | AC 16, Atk +11/+6", minLevel: 15 }),
+    shopItem("merc_med_mt_trident",     "Medium Cavalry (Trident)",             "gear", 604, 0, "Scale mail, sm wooden shield, trident, short sword, heavy warhorse w/ barding. Lv 8.", { effect: "\u{1F4B0} UPKEEP: 16sp/day + 2 food | AC 16, Atk +11/+6", minLevel: 15 }),
+    shopItem("merc_med_mt_breastplate", "Medium Cavalry (Breastplate)",         "gear", 687, 0, "Breastplate, sm steel shield, light flail, light pick, heavy warhorse w/ barding. Lv 9.", { effect: "\u{1F4B0} UPKEEP: 18sp/day + 2 food | AC 16, Atk +12/+7", minLevel: 15 }),
+
+    // ---- Heavy Foot (Lv 5, 10sp/day) ----
+    shopItem("merc_heavy_greatsword",   "Heavy Foot (Greatsword)",              "gear", 252, 0, "Splint mail, greatsword, dagger. Lv 5 warrior.", { effect: "\u{1F4B0} UPKEEP: 10sp/day + 1 food | AC 16, Atk +7", minLevel: 10 }),
+    shopItem("merc_heavy_mace",         "Heavy Foot (Mace & Tower Shield)",     "gear", 242, 0, "Splint mail, lg steel shield, heavy mace, short sword. Lv 5 warrior.", { effect: "\u{1F4B0} UPKEEP: 10sp/day + 1 food | AC 18, Atk +7", minLevel: 10 }),
+    shopItem("merc_heavy_flail",        "Heavy Foot (Heavy Flail)",             "gear", 267, 0, "Banded mail, heavy flail, dagger. Lv 5 warrior.", { effect: "\u{1F4B0} UPKEEP: 10sp/day + 1 food | AC 16, Atk +7", minLevel: 10 }),
+    shopItem("merc_heavy_battleaxe",    "Heavy Foot (Battleaxe & Shield)",      "gear", 288, 0, "Banded mail, lg steel shield, battleaxe, throwing axe. Lv 5 warrior.", { effect: "\u{1F4B0} UPKEEP: 10sp/day + 1 food | AC 18, Atk +7", minLevel: 10 }),
+    shopItem("merc_heavy_greataxe",     "Heavy Foot (Greataxe)",                "gear", 230, 0, "Splint mail, greataxe, short sword. Lv 5 warrior.", { effect: "\u{1F4B0} UPKEEP: 10sp/day + 1 food | AC 16, Atk +7", minLevel: 10 }),
+
+    // ---- Heavy Mounted (Lv 10-12, 20-24sp/day) ----
+    shopItem("merc_heavy_mt_warhammer", "Heavy Cavalry (Warhammer)",            "gear", 916,  0, "Banded mail, lg steel shield, warhammer, short sword, heavy warhorse w/ scale barding. Lv 10.", { effect: "\u{1F4B0} UPKEEP: 20sp/day + 2 food | AC 19, Atk +13/+8", minLevel: 20 }),
+    shopItem("merc_heavy_mt_pick",      "Heavy Cavalry (Heavy Pick)",           "gear", 1664, 0, "Half-plate, lg steel shield, heavy pick, battleaxe, heavy warhorse w/ chainmail barding. Lv 10.", { effect: "\u{1F4B0} UPKEEP: 20sp/day + 2 food | AC 18, Atk +13/+8", minLevel: 20 }),
+    shopItem("merc_heavy_mt_lance",     "Heavy Cavalry (Heavy Lance)",          "gear", 1671, 0, "Half-plate, lg steel shield, heavy lance, longsword, heavy warhorse w/ chainmail barding. Lv 12.", { effect: "\u{1F4B0} UPKEEP: 24sp/day + 2 food | AC 20, Atk +16/+10/+6", minLevel: 25 }),
 
     // ---- Exotic Troops ----
     shopItem("merc_goblin", "Goblin Scouts", "gear", 3, 0, "Cheap, expendable scouts. Useful for scouting ahead and setting ambushes.", {

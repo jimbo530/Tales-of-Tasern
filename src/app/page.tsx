@@ -24,9 +24,10 @@ import { SKILLS, abilityMod, type Skill } from "@/lib/skills";
 import { FEATS, getAvailableFeats, getStartingFeatCount, featsForLevelUp, featNeedsChoice, parseFeatChoice, type Feat } from "@/lib/feats";
 import { SPELLS, SPELL_SCHOOLS, SPECIALIZABLE_SCHOOLS, getClassSpells, getSpellsKnown, getSpellSlots, type Spell, type SpellSchool } from "@/lib/spells";
 import { DOMAINS, type Domain } from "@/lib/domains";
-import { formatCoins, addCp, subtractCp, totalCp, addCoinsRaw, setQuestCooldown, setQuestCooldownDays, getExhaustionPoints, lowestExhaustedStat } from "@/lib/saveSystem";
+import { formatCoins, addCp, subtractCp, totalCp, addCoinsRaw, setQuestCooldown, setQuestCooldownDays, getExhaustionPoints, lowestExhaustedStat, addXp } from "@/lib/saveSystem";
 import { changeRep } from "@/lib/factions";
-import { allPartiesActed, resetPartyRound, nextUnactedParty, hireFollower, GENERAL_TEMPLATES, maxFollowers } from "@/lib/party";
+import { getItemInfo } from "@/lib/itemRegistry";
+import { allPartiesActed, resetPartyRound, nextUnactedParty, hireFollower, GENERAL_TEMPLATES, maxFollowers, createAdventureParty } from "@/lib/party";
 import { downloadAndCache, getCacheCount, clearImageCache } from "@/lib/imageCache";
 import { resolveImage, toHttp } from "@/lib/resolveImage";
 
@@ -117,10 +118,9 @@ function LevelUpFlow({ save, character, fromLevel, toLevel, onComplete }: {
   const conMod = abilityMod(stats.con);
   const levelsGained = toLevel - fromLevel;
 
-  // ── HP gain ──
+  // ── HP gain (rolled by player) ──
   const hitDieValue = cls ? HIT_DIE_VALUES[cls.hitDie] : 8;
-  const hpPerLevel = Math.ceil(hitDieValue / 2) + conMod;
-  const totalHpGain = Math.max(levelsGained, hpPerLevel * levelsGained); // min 1 HP/level
+  const hitDieLabel = `d${hitDieValue}`;
 
   // ── Skill points ──
   const skillPointsPerLevel = Math.max(1, (cls?.skillPoints ?? 2) + intMod);
@@ -154,8 +154,8 @@ function LevelUpFlow({ save, character, fromLevel, toLevel, onComplete }: {
   const needsSpells = newSpellSlots.length > 0 || wizardNewSpells > 0;
 
   // ── Steps ──
-  type LuStep = "summary" | "skills" | "feats" | "spells" | "done";
-  const steps: LuStep[] = ["summary", "skills"];
+  type LuStep = "summary" | "hp" | "skills" | "feats" | "spells" | "done";
+  const steps: LuStep[] = ["summary", "hp", "skills"];
   if (totalFeatSlots > 0) steps.push("feats");
   if (needsSpells) steps.push("spells");
   steps.push("done");
@@ -175,6 +175,12 @@ function LevelUpFlow({ save, character, fromLevel, toLevel, onComplete }: {
   const allFeats = [...save.feats, ...luFeats];
   const availableFeats = cls ? getAvailableFeats(toLevel, cls.id, stats as Record<string, number>, allFeats) : [];
   const filteredFeats = luFeatFilter === "all" ? availableFeats : availableFeats.filter(f => f.category === luFeatFilter);
+
+  // HP roll state — one roll per level gained, reroll 1s allowed
+  const [hpRolls, setHpRolls] = useState<number[]>([]);  // one entry per level gained
+  const totalHpGain = hpRolls.length === levelsGained
+    ? hpRolls.reduce((s, r) => s + Math.max(1, r + conMod), 0)
+    : 0;
 
   // Spell selection state
   const [luSpells, setLuSpells] = useState<string[]>([]);
@@ -198,12 +204,86 @@ function LevelUpFlow({ save, character, fromLevel, toLevel, onComplete }: {
           <span className="text-lg font-bold" style={{ color: "rgba(251,191,36,0.8)" }}>Level {fromLevel} → {toLevel}</span>
         </div>
         <div className="w-full flex flex-col gap-2 px-4 py-3 rounded-lg" style={{ background: "rgba(0,0,0,0.2)", border: "1px solid rgba(201,168,76,0.15)", fontSize: "0.8rem", color: parchment }}>
-          <div className="flex justify-between"><span>HP Gained</span><span className="font-bold" style={{ color: "rgba(74,222,128,0.9)" }}>+{totalHpGain}</span></div>
+          <div className="flex justify-between"><span>Hit Die</span><span className="font-bold" style={{ color: "rgba(74,222,128,0.9)" }}>{levelsGained}x {hitDieLabel} + {conMod} CON</span></div>
           <div className="flex justify-between"><span>Skill Points</span><span className="font-bold" style={{ color: "rgba(96,165,250,0.9)" }}>{totalSkillPoints}</span></div>
           {totalFeatSlots > 0 && <div className="flex justify-between"><span>Feats</span><span className="font-bold" style={{ color: "rgba(168,85,247,0.9)" }}>{totalFeatSlots}{fighterBonus > 0 ? ` (${featSlots} std + ${fighterBonus} fighter)` : ""}</span></div>}
           {needsSpells && <div className="flex justify-between"><span>New Spells</span><span className="font-bold" style={{ color: "rgba(251,191,36,0.9)" }}>{totalSpellsNeeded}</span></div>}
         </div>
         <button onClick={() => setStepIdx(stepIdx + 1)} className={btn} style={btnStyle}>Allocate Points</button>
+      </div>
+    );
+  }
+
+  // ── HP Rolling Step ──
+  if (step === "hp") {
+    const currentLevelIdx = hpRolls.length; // which level we're rolling for (0-based)
+    const allRolled = hpRolls.length >= levelsGained;
+    const lastRoll = hpRolls.length > 0 ? hpRolls[hpRolls.length - 1] : null;
+    const canReroll = lastRoll === 1; // reroll 1s
+
+    function rollHitDie() {
+      const roll = Math.floor(Math.random() * hitDieValue) + 1;
+      setHpRolls(prev => [...prev, roll]);
+    }
+
+    function rerollLast() {
+      const roll = Math.floor(Math.random() * hitDieValue) + 1;
+      setHpRolls(prev => [...prev.slice(0, -1), roll]);
+    }
+
+    return (
+      <div className="flex flex-col items-center gap-4 max-w-md mx-auto">
+        <div className="text-center">
+          <span className="text-sm font-black tracking-widest uppercase" style={{ color: "rgba(74,222,128,0.9)" }}>Roll for Hit Points</span>
+          <div className="text-xs mt-1" style={{ color: parchment }}>{hitDieLabel} + {conMod} CON per level ({levelsGained} {levelsGained === 1 ? "level" : "levels"})</div>
+        </div>
+
+        {/* Previous rolls */}
+        {hpRolls.length > 0 && (
+          <div className="w-full flex flex-col gap-1 px-4 py-3 rounded-lg" style={{ background: "rgba(0,0,0,0.2)", border: "1px solid rgba(201,168,76,0.15)" }}>
+            {hpRolls.map((roll, i) => {
+              const hpForLevel = Math.max(1, roll + conMod);
+              return (
+                <div key={i} className="flex justify-between text-sm" style={{ color: parchment }}>
+                  <span>Level {fromLevel + i + 1}</span>
+                  <span>
+                    <span className="font-bold" style={{ color: roll === 1 ? "rgba(239,68,68,0.9)" : roll === hitDieValue ? "rgba(251,191,36,0.9)" : "rgba(74,222,128,0.9)" }}>
+                      {roll}
+                    </span>
+                    <span style={{ color: gold }}> ({hitDieLabel})</span>
+                    <span> + {conMod}</span>
+                    <span> = </span>
+                    <span className="font-bold" style={{ color: "rgba(74,222,128,0.9)" }}>+{hpForLevel} HP</span>
+                  </span>
+                </div>
+              );
+            })}
+            {allRolled && (
+              <div className="flex justify-between text-sm font-bold mt-1 pt-1" style={{ borderTop: "1px solid rgba(201,168,76,0.15)", color: "rgba(74,222,128,0.9)" }}>
+                <span>Total HP Gained</span>
+                <span>+{totalHpGain}</span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Roll / Reroll buttons */}
+        <div className="flex flex-col items-center gap-2">
+          {canReroll && (
+            <button onClick={rerollLast} className={btn}
+              style={{ background: "rgba(251,191,36,0.15)", color: "rgba(251,191,36,0.9)", border: "1px solid rgba(251,191,36,0.4)" }}>
+              Reroll the 1
+            </button>
+          )}
+          {!allRolled && !canReroll && (
+            <button onClick={rollHitDie} className={btn} style={btnStyle}>
+              Roll {hitDieLabel} for Level {fromLevel + currentLevelIdx + 1}
+            </button>
+          )}
+          {allRolled && !canReroll && (
+            <button onClick={() => setStepIdx(stepIdx + 1)} className={btn} style={btnStyle}>Next</button>
+          )}
+        </div>
       </div>
     );
   }
@@ -1373,6 +1453,8 @@ export default function Home() {
     playerPreparedSpells={save?.prepared_spells}
     playerSpellSlotsUsed={save?.spell_slots_used}
     playerLevel={save?.level}
+    playerCurrentHp={save?.current_hp !== undefined && save.current_hp < save.max_hp ? save.current_hp : undefined}
+    playerFollowers={save?.party?.heroes?.[0]?.followers}
     onExit={() => {
       setQuestEncounter(null);
       if (lastBattleRewards && lastBattleRewards.levelsGained > 0 && save) {
@@ -1386,14 +1468,19 @@ export default function Home() {
         cycleView(hasCharacter ? "worldMap" : "menu");
       }
     }}
-    onBattleEnd={async (outcome, difficulty, enemies, rounds, spellSlotsUsed) => {
+    onBattleEnd={async (outcome, difficulty, enemies, rounds, spellSlotsUsed, remainingHp) => {
       const result = await recordBattle({ difficulty, enemies, outcome, rounds });
       const rewards = result ? { xp: result.rewards.xp, goldCp: result.rewards.goldCp, levelsGained: result.levelsGained, newLevel: (save?.level ?? 1) + result.levelsGained } : null;
       if (rewards) setLastBattleRewards(rewards);
-      // Persist spell slots used in battle
+      // Persist spell slots and remaining HP after battle (no auto-heal)
+      const battleUpdates: Record<string, unknown> = {};
       if (spellSlotsUsed && spellSlotsUsed.length > 0) {
-        updateSave({ spell_slots_used: spellSlotsUsed });
+        battleUpdates.spell_slots_used = spellSlotsUsed;
       }
+      if (remainingHp !== undefined && save) {
+        battleUpdates.current_hp = Math.max(0, Math.round(remainingHp));
+      }
+      if (Object.keys(battleUpdates).length > 0) updateSave(battleUpdates);
       // Quest completion: set cooldowns (repeatable) or flags (one-time rumors)
       if (outcome === "victory" && questEncounter && save) {
         const qid = questEncounter.questId;
@@ -1598,6 +1685,14 @@ export default function Home() {
         if (!save.parties || newIndex === save.active_party_index) return;
         updateSave({ active_party_index: newIndex });
       }}
+      onCreateParty={(nftAddress) => {
+        if (!save.parties) return;
+        const newId = `party-${save.parties.length}`;
+        const newParty = createAdventureParty(newId, `Party ${save.parties.length + 1}`, nftAddress);
+        updateSave({
+          parties: [...save.parties, newParty],
+        });
+      }}
       onTravel={(hex, result, destHex, encounter) => {
         const updates: Record<string, unknown> = {
           map_hex: hex,
@@ -1615,7 +1710,13 @@ export default function Home() {
           updates.food = (updates.food as number) + encounter.foodChange!;
           updates.last_ate_hour = result.newHour; // found food = fed
         }
-        if ((encounter.xpChange ?? 0) > 0) updates.xp = save.xp + encounter.xpChange!;
+        let travelLevelsGained = 0;
+        if ((encounter.xpChange ?? 0) > 0) {
+          const xpResult = addXp(save.level, save.xp, encounter.xpChange!);
+          updates.xp = xpResult.xp;
+          updates.level = xpResult.level;
+          travelLevelsGained = xpResult.levelsGained;
+        }
 
         // Multi-party: move this party's hex and mark as acted
         if (save.parties && save.parties.length > 1) {
@@ -1643,6 +1744,13 @@ export default function Home() {
         }
 
         updateSave(updates);
+
+        // Force level-up screen if XP pushed past threshold
+        if (travelLevelsGained > 0) {
+          const toLevel = (updates.level as number) ?? save.level;
+          setPendingLevelUp({ fromLevel: toLevel - travelLevelsGained, toLevel });
+          setView("levelUp");
+        }
         // Fights from world luck are handled by WorldMap — player chooses Fight or Escape
       }}
       onAction={(result: WorldLuckResult) => {
@@ -1681,7 +1789,13 @@ export default function Home() {
           const base2 = (updates.coins as { gp: number; sp: number; cp: number } | undefined) ?? coinBase;
           updates.coins = addCp(base2, result.goldChange);
         }
-        if (result.xpChange > 0) updates.xp = save.xp + result.xpChange;
+        let actionLevelsGained = 0;
+        if (result.xpChange > 0) {
+          const xpResult = addXp(save.level, save.xp, result.xpChange);
+          updates.xp = xpResult.xp;
+          updates.level = xpResult.level;
+          actionLevelsGained = xpResult.levelsGained;
+        }
         if (result.fameChange && result.fameChange > 0) updates.fame = (save.fame ?? 0) + result.fameChange;
         if (result.factionRepChange) {
           const { newRep } = changeRep(save.faction_rep ?? {}, result.factionRepChange.factionId, result.factionRepChange.amount);
@@ -1709,6 +1823,13 @@ export default function Home() {
         }
 
         updateSave(updates);
+
+        // Force level-up screen if XP pushed past threshold
+        if (actionLevelsGained > 0) {
+          const toLevel = (updates.level as number) ?? save.level;
+          setPendingLevelUp({ fromLevel: toLevel - actionLevelsGained, toLevel });
+          setView("levelUp");
+        }
         // Fights from world luck are handled by WorldMap — player chooses Fight or Escape
       }}
       onBuyItem={(item) => {
@@ -1730,7 +1851,7 @@ export default function Home() {
             if (template) {
               const hero = save.party.heroes[0];
               const chaScore = playerCharacter?.stats.cha ?? 10;
-              const maxF = maxFollowers(chaScore, save.level);
+              const maxF = maxFollowers(chaScore);
               if (hero.followers.length >= maxF) return; // party full
               const follower = hireFollower(template);
               const newHeroes = save.party.heroes.map((h, i) =>
@@ -1795,6 +1916,40 @@ export default function Home() {
         updateSave(updates);
       }}
       onInventory={() => cycleView("inventory")}
+      onEquip={(itemId, slot) => {
+        const item = save.inventory.find(i => i.id === itemId);
+        if (!item) return;
+        // Move currently equipped item (if any) back to inventory
+        const oldItemId = save.equipment[slot];
+        let newInventory = save.inventory.map(i =>
+          i.id === itemId ? { ...i, qty: i.qty - 1 } : i
+        ).filter(i => i.qty > 0);
+        if (oldItemId) {
+          const existing = newInventory.find(i => i.id === oldItemId);
+          if (existing) {
+            newInventory = newInventory.map(i => i.id === oldItemId ? { ...i, qty: i.qty + 1 } : i);
+          } else {
+            const oldInfo = getItemInfo(oldItemId);
+            newInventory.push({ id: oldItemId, name: oldInfo?.name ?? oldItemId, qty: 1 });
+          }
+        }
+        updateSave({
+          equipment: { ...save.equipment, [slot]: itemId },
+          inventory: newInventory,
+        });
+      }}
+      onUnequip={(slot) => {
+        const itemId = save.equipment[slot];
+        if (!itemId) return;
+        const existing = save.inventory.find(i => i.id === itemId);
+        const newInventory = existing
+          ? save.inventory.map(i => i.id === itemId ? { ...i, qty: i.qty + 1 } : i)
+          : [...save.inventory, { id: itemId, name: getItemInfo(itemId)?.name ?? itemId, qty: 1 }];
+        updateSave({
+          equipment: { ...save.equipment, [slot]: undefined },
+          inventory: newInventory,
+        });
+      }}
       onBack={() => cycleView("adventure")}
     />
   ));

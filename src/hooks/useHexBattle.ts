@@ -20,18 +20,19 @@ import {
   isCharge,
   hasCondition,
   getAoOThreats,
+  createFollowerUnit,
 } from "@/lib/hexCombat";
 import { getSpell, type SpellBattleEffect } from "@/lib/spells";
 import { getFeatCombatFlags } from "@/lib/feats";
 import type { NftCharacter } from "@/hooks/useNftStats";
 import type { CharacterClass } from "@/lib/classes";
+import type { Follower } from "@/lib/party";
 
 // ── State ────────────────────────────────────────────────────────────────────
 
 export type BattlePhase =
   | "setup"
-  | "playerMove"
-  | "playerAction"
+  | "playerTurn"
   | "playerRoll"
   | "playerResult"
   | "playerReaction"
@@ -39,12 +40,15 @@ export type BattlePhase =
   | "victory"
   | "defeat";
 
+export type PlayerSubMode = "idle" | "moving" | "attacking" | "casting";
+
 type BattleState = {
   units: BattleUnit[];
   turnOrder: string[];
   currentTurnIndex: number;
   round: number;
   phase: BattlePhase;
+  subMode: PlayerSubMode;
   reachableHexes: HexCoord[];
   attackableEnemies: string[];
   pendingTargetId: string | null;
@@ -58,7 +62,7 @@ type BattleState = {
 // ── Actions ──────────────────────────────────────────────────────────────────
 
 type Action =
-  | { type: "INIT"; player: BattleUnit; enemies: BattleUnit[] }
+  | { type: "INIT"; player: BattleUnit; enemies: BattleUnit[]; followers?: BattleUnit[] }
   | { type: "MOVE"; hex: HexCoord }
   | { type: "SELECT_TARGET"; targetId: string }
   | { type: "ROLL"; natural: number }
@@ -70,6 +74,7 @@ type Action =
   | { type: "READIED_TRIGGER"; attackerId: string; targetId: string; natural: number; result: AttackResult }
   | { type: "NEXT_TURN" }
   | { type: "CAST_SPELL"; spellId: string; targetId: string }
+  | { type: "SET_SUBMODE"; subMode: PlayerSubMode }
   | { type: "AOO_TAKE" }
   | { type: "AOO_PASS" };
 
@@ -128,14 +133,14 @@ function advanceTurn(state: BattleState): BattleState {
       const tickedEffects = u.activeEffects
         .map(e => e.remainingRounds === -1 ? e : { ...e, remainingRounds: e.remainingRounds - 1 })
         .filter(e => e.remainingRounds !== 0);
-      return { ...u, hasMoved: false, hasActed: false, readiedAttack: false, turnStartPos: u.position, activeEffects: tickedEffects, reactionUsed: newRound ? false : u.reactionUsed };
+      return { ...u, hasMoved: false, hasActed: false, hasBonusActed: false, readiedAttack: false, turnStartPos: u.position, activeEffects: tickedEffects, reactionUsed: newRound ? false : u.reactionUsed };
     }
     // Reset reactions for all units on new round
     return newRound ? { ...u, reactionUsed: false } : u;
   });
 
-  const phase: BattlePhase = nextUnit.isPlayer ? "playerMove" : "enemyTurn";
-  let s: BattleState = { ...state, units, currentTurnIndex: idx, round, phase, pendingTargetId: null, lastRollNatural: null, lastAttackResult: null };
+  const phase: BattlePhase = nextUnit.isPlayer ? "playerTurn" : "enemyTurn";
+  let s: BattleState = { ...state, units, currentTurnIndex: idx, round, phase, subMode: "idle", pendingTargetId: null, lastRollNatural: null, lastAttackResult: null };
 
   // Check conditions that skip turns (dazed, stunned)
   const updatedNext = s.units.find(u => u.id === nextUnit.id)!;
@@ -144,9 +149,9 @@ function advanceTurn(state: BattleState): BattleState {
     return advanceTurn(s);
   }
 
-  if (phase === "playerMove") {
+  if (phase === "playerTurn") {
     s.reachableHexes = calcReachable(updatedNext, units);
-    s.attackableEnemies = [];
+    s.attackableEnemies = calcAttackable(updatedNext, units);
     s = addLog(s, `--- Round ${round} --- ${updatedNext.name}'s turn`, "system");
   } else {
     s.reachableHexes = [];
@@ -161,17 +166,18 @@ function advanceTurn(state: BattleState): BattleState {
 function reducer(state: BattleState, action: Action): BattleState {
   switch (action.type) {
     case "INIT": {
-      const allUnits = [action.player, ...action.enemies];
+      const allUnits = [action.player, ...(action.followers ?? []), ...action.enemies];
       const sorted = [...allUnits].sort((a, b) => b.stats.initiative - a.stats.initiative);
       const turnOrder = sorted.map(u => u.id);
       const first = sorted[0];
-      const phase: BattlePhase = first.isPlayer ? "playerMove" : "enemyTurn";
+      const phase: BattlePhase = first.isPlayer ? "playerTurn" : "enemyTurn";
       let s: BattleState = {
         units: allUnits,
         turnOrder,
         currentTurnIndex: 0,
         round: 1,
         phase,
+        subMode: "idle",
         reachableHexes: [],
         attackableEnemies: [],
         pendingTargetId: null,
@@ -183,8 +189,9 @@ function reducer(state: BattleState, action: Action): BattleState {
       };
       s = addLog(s, "Battle begins!", "system");
       s = addLog(s, `Initiative: ${sorted.map(u => `${u.name} (${u.stats.initiative})`).join(", ")}`, "info");
-      if (phase === "playerMove") {
+      if (phase === "playerTurn") {
         s.reachableHexes = calcReachable(first, allUnits);
+        s.attackableEnemies = calcAttackable(first, allUnits);
         s = addLog(s, `--- Round 1 --- ${first.name}'s turn`, "system");
       }
       return s;
@@ -222,7 +229,7 @@ function reducer(state: BattleState, action: Action): BattleState {
 
       const active = s.units.find(u => u.id === activeId)!;
       const attackable = calcAttackable(active, s.units);
-      s = { ...s, phase: "playerAction", reachableHexes: [], attackableEnemies: attackable };
+      s = { ...s, phase: "playerTurn", subMode: "idle", reachableHexes: [], attackableEnemies: attackable };
       s = addLog(s, `${active.name} moves to (${action.hex.q}, ${action.hex.r})`, "info");
       return s;
     }
@@ -255,7 +262,9 @@ function reducer(state: BattleState, action: Action): BattleState {
       if (!hit) {
         const active = state.units.find(u => u.id === state.turnOrder[state.currentTurnIndex])!;
         const units = state.units.map(u => u.id === active.id ? { ...u, hasActed: true } : u);
-        return checkEnd({ ...state, units, phase: "playerAction", attackableEnemies: [], pendingTargetId: null });
+        const updActive = units.find(u => u.id === active.id)!;
+        const reachLeft = !updActive.hasMoved ? calcReachable(updActive, units) : [];
+        return checkEnd({ ...state, units, phase: "playerTurn", subMode: "idle", reachableHexes: reachLeft, attackableEnemies: [], pendingTargetId: null });
       }
       // Lance charge: double damage when attacker has charge property and moved 2+ hexes toward target
       const activeId2 = state.turnOrder[state.currentTurnIndex];
@@ -270,17 +279,24 @@ function reducer(state: BattleState, action: Action): BattleState {
       const activeId = state.turnOrder[state.currentTurnIndex];
       const attacker = units.find(u => u.id === activeId)!;
       units = units.map(u => u.id === activeId ? { ...u, hasActed: true } : u);
-      let s: BattleState = { ...state, units, phase: "playerAction", attackableEnemies: [], pendingTargetId: null };
+      const updAtk = units.find(u => u.id === activeId)!;
+      const mvLeft = !updAtk.hasMoved ? calcReachable(updAtk, units) : [];
+      let s: BattleState = { ...state, units, phase: "playerTurn", subMode: "idle", reachableHexes: mvLeft, attackableEnemies: [], pendingTargetId: null };
       if (target.currentHp <= 0) {
         s = addLog(s, `${target.name} is defeated!`, "kill");
 
         // Cleave: free attack on adjacent enemy after a kill
+        // Great Cleave: chain indefinitely as long as each swing kills
         const flags = getFeatCombatFlags(attacker.feats);
         if (flags.cleave || flags.greatCleave) {
-          const cleaveTarget = s.units.find(u =>
-            u.currentHp > 0 && !u.isPlayer && u.id !== target.id && isAdjacent(attacker.position, u.position)
-          );
-          if (cleaveTarget) {
+          const cleavedIds = new Set<string>([target.id]);
+          let keepCleaving = true;
+          while (keepCleaving) {
+            keepCleaving = false;
+            const cleaveTarget = s.units.find(u =>
+              u.currentHp > 0 && !u.isPlayer && !cleavedIds.has(u.id) && isAdjacent(attacker.position, u.position)
+            );
+            if (!cleaveTarget) break;
             const cleaveRoll = rollD20();
             const cleaveResult = resolveAttack(attacker, cleaveTarget, cleaveRoll, 1);
             const logType: CombatLogEntry["type"] = !cleaveResult.hit ? "miss" : (cleaveResult.damage > 0 ? "hit" : "miss");
@@ -292,9 +308,11 @@ function reducer(state: BattleState, action: Action): BattleState {
                   u.id === cleaveTarget.id ? { ...u, currentHp: Math.max(0, u.currentHp - cleaveResult.damage) } : u
                 ),
               };
-              const cleaved = s.units.find(u => u.id === cleaveTarget.id)!;
-              if (cleaved.currentHp <= 0) {
-                s = addLog(s, `${cleaved.name} is defeated!`, "kill");
+              const cleavedUnit = s.units.find(u => u.id === cleaveTarget.id)!;
+              if (cleavedUnit.currentHp <= 0) {
+                s = addLog(s, `${cleavedUnit.name} is defeated!`, "kill");
+                cleavedIds.add(cleaveTarget.id);
+                if (flags.greatCleave) keepCleaving = true; // chain continues
               }
             }
           }
@@ -368,7 +386,9 @@ function reducer(state: BattleState, action: Action): BattleState {
 
       const logType: CombatLogEntry["type"] = result.success ? (result.damage ? "hit" : "info") : "miss";
       s = addLog(s, result.breakdown, logType);
-      s = { ...s, phase: "playerAction", attackableEnemies: [], pendingTargetId: null };
+      const casterNow = s.units.find(u => u.id === activeId)!;
+      const castReach = !casterNow.hasMoved ? calcReachable(casterNow, s.units) : [];
+      s = { ...s, phase: "playerTurn", subMode: "idle", reachableHexes: castReach, attackableEnemies: [], pendingTargetId: null };
       return checkEnd(s);
     }
 
@@ -486,6 +506,10 @@ function reducer(state: BattleState, action: Action): BattleState {
       return { ...state, pendingAoO: null, phase: "enemyTurn" };
     }
 
+    case "SET_SUBMODE": {
+      return { ...state, subMode: action.subMode };
+    }
+
     case "NEXT_TURN": {
       return advanceTurn(state);
     }
@@ -503,6 +527,7 @@ const INITIAL_STATE: BattleState = {
   currentTurnIndex: 0,
   round: 0,
   phase: "setup",
+  subMode: "idle",
   reachableHexes: [],
   attackableEnemies: [],
   pendingTargetId: null,
@@ -524,35 +549,50 @@ export function useHexBattle() {
     ? state.units.find(u => u.id === state.turnOrder[state.currentTurnIndex]) ?? null
     : null;
 
-  const startBattle = useCallback((character: NftCharacter, difficulty: "easy" | "medium" | "hard", charClass?: CharacterClass, allCharacters?: NftCharacter[], featIds?: string[], weaponName?: string, spellInfo?: SpellUnitInfo) => {
-    const player = createPlayerUnit(character, { q: 1, r: 5 }, charClass, featIds ?? [], weaponName, spellInfo);
+  const startBattle = useCallback((character: NftCharacter, difficulty: "easy" | "medium" | "hard", charClass?: CharacterClass, allCharacters?: NftCharacter[], featIds?: string[], weaponName?: string, spellInfo?: SpellUnitInfo, currentHp?: number, followers?: Follower[]) => {
+    const player = createPlayerUnit(character, { q: 1, r: 5 }, charClass, featIds ?? [], weaponName, spellInfo, currentHp);
+    const followerPositions: HexCoord[] = [{ q: 1, r: 4 }, { q: 1, r: 6 }, { q: 2, r: 4 }, { q: 2, r: 6 }];
+    const followerUnits = (followers ?? [])
+      .filter(f => f.alive && f.hp > 0 && (f.role === "melee" || f.role === "ranged"))
+      .slice(0, 4)
+      .map((f, i) => createFollowerUnit(f, followerPositions[i], i));
     const specs = generateEncounter(difficulty, allCharacters ?? []);
     const startPositions: HexCoord[] = [{ q: 8, r: 4 }, { q: 8, r: 6 }, { q: 7, r: 5 }];
     const enemies = specs.map((s, i) => createEnemyUnit(s, startPositions[i], i));
-    dispatch({ type: "INIT", player, enemies });
+    dispatch({ type: "INIT", player, enemies, followers: followerUnits });
   }, []);
 
   /** Start a quest battle with pre-built enemy specs (bypasses encounter generation) */
-  const startQuestBattle = useCallback((character: NftCharacter, specs: EnemySpec[], charClass?: CharacterClass, featIds?: string[], weaponName?: string, spellInfo?: SpellUnitInfo) => {
+  const startQuestBattle = useCallback((character: NftCharacter, specs: EnemySpec[], charClass?: CharacterClass, featIds?: string[], weaponName?: string, spellInfo?: SpellUnitInfo, currentHp?: number, followers?: Follower[]) => {
     const playerPos = { q: 1, r: 5 };
-    const player = createPlayerUnit(character, playerPos, charClass, featIds ?? [], weaponName, spellInfo);
+    const player = createPlayerUnit(character, playerPos, charClass, featIds ?? [], weaponName, spellInfo, currentHp);
+    const followerPositions: HexCoord[] = [{ q: 1, r: 4 }, { q: 1, r: 6 }, { q: 2, r: 4 }, { q: 2, r: 6 }];
+    const followerUnits = (followers ?? [])
+      .filter(f => f.alive && f.hp > 0 && (f.role === "melee" || f.role === "ranged"))
+      .slice(0, 4)
+      .map((f, i) => createFollowerUnit(f, followerPositions[i], i));
     const spawnPositions = generateSpawnPositions(specs.length, playerPos);
     const enemies = specs.map((s, i) => createEnemyUnit(s, spawnPositions[i], i));
-    dispatch({ type: "INIT", player, enemies });
+    dispatch({ type: "INIT", player, enemies, followers: followerUnits });
   }, []);
 
   const clickHex = useCallback((hex: HexCoord) => {
-    if (state.phase === "playerMove") {
+    if (state.phase !== "playerTurn") return;
+    const au = state.units.find(u => u.id === state.turnOrder[state.currentTurnIndex]);
+    if (!au) return;
+    // Move: click a reachable hex (if haven't moved yet)
+    if (!au.hasMoved) {
       const isReachable = state.reachableHexes.some(h => h.q === hex.q && h.r === hex.r);
-      if (isReachable) dispatch({ type: "MOVE", hex });
-    } else if (state.phase === "playerAction") {
-      // Check if clicked an attackable enemy
+      if (isReachable) { dispatch({ type: "MOVE", hex }); return; }
+    }
+    // Attack: click an attackable enemy (if haven't acted yet)
+    if (!au.hasActed) {
       const enemy = state.units.find(u => u.position.q === hex.q && u.position.r === hex.r && !u.isPlayer && u.currentHp > 0);
       if (enemy && state.attackableEnemies.includes(enemy.id)) {
         dispatch({ type: "SELECT_TARGET", targetId: enemy.id });
       }
     }
-  }, [state.phase, state.reachableHexes, state.attackableEnemies, state.units]);
+  }, [state.phase, state.reachableHexes, state.attackableEnemies, state.units, state.turnOrder, state.currentTurnIndex]);
 
   const playerRoll = useCallback(() => {
     if (state.phase !== "playerRoll") return;
@@ -563,7 +603,7 @@ export function useHexBattle() {
   }, [state.phase]);
 
   const skipMove = useCallback(() => {
-    if (state.phase === "playerMove") {
+    if (state.phase === "playerTurn") {
       const activeId = state.turnOrder[state.currentTurnIndex];
       const active = state.units.find(u => u.id === activeId)!;
       const attackable = calcAttackable(active, state.units);
@@ -573,19 +613,19 @@ export function useHexBattle() {
   }, [state.phase, state.turnOrder, state.currentTurnIndex, state.units]);
 
   const endTurn = useCallback(() => {
-    if (state.phase === "playerMove" || state.phase === "playerAction") {
+    if (state.phase === "playerTurn") {
       dispatch({ type: "END_TURN" });
     }
   }, [state.phase]);
 
   const readyAttack = useCallback(() => {
-    if (state.phase === "playerAction") {
+    if (state.phase === "playerTurn") {
       dispatch({ type: "READY_ATTACK" });
     }
   }, [state.phase]);
 
   const castSpell = useCallback((spellId: string, targetId: string) => {
-    if (state.phase !== "playerAction") return;
+    if (state.phase !== "playerTurn") return;
     dispatch({ type: "CAST_SPELL", spellId, targetId });
   }, [state.phase]);
 
@@ -693,6 +733,16 @@ export function useHexBattle() {
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.phase, state.currentTurnIndex]);
+
+  // Auto-end turn when all actions are used
+  useEffect(() => {
+    if (state.phase !== "playerTurn") return;
+    const au = state.units.find(u => u.id === state.turnOrder[state.currentTurnIndex]);
+    if (au && au.hasMoved && au.hasActed) {
+      const timer = setTimeout(() => dispatch({ type: "END_TURN" }), 600);
+      return () => clearTimeout(timer);
+    }
+  }, [state.phase, state.units, state.turnOrder, state.currentTurnIndex]);
 
   return {
     state,

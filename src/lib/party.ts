@@ -52,10 +52,9 @@ export type Party = {
 
 // ── Follower Capacity ───────────────────────────────────────────────────────
 
-/** Max followers a hero can lead = CHA mod + floor(level/2), min 1 */
-export function maxFollowers(chaScore: number, level: number): number {
-  const chaMod = Math.floor((chaScore - 10) / 2);
-  return Math.max(1, chaMod + Math.floor(level / 2));
+/** Max followers a hero can lead = CHA bonus (floor(chaScore/2)), min 1 */
+export function maxFollowers(chaScore: number): number {
+  return Math.max(1, Math.floor(chaScore / 2));
 }
 
 /** Total party follower count */
@@ -141,19 +140,81 @@ export type FollowerTemplate = {
 
 // General Mercenary Guild templates (match shop items)
 export const GENERAL_TEMPLATES: FollowerTemplate[] = [
-  { templateId: "merc_skirmisher",        name: "Skirmisher",       role: "ranged",     level: 1, maxHp: 6,  attack: 1, ac: 11, dailyCost: 20,  foodCost: 1, abilities: ["ranged_support"] },
-  { templateId: "merc_skirmisher_archer", name: "Archer Skirmisher",role: "ranged",     level: 1, maxHp: 8,  attack: 2, ac: 12, dailyCost: 40,  foodCost: 1, abilities: ["ranged_support", "covering_fire"] },
-  { templateId: "merc_light_foot",        name: "Light Footman",    role: "melee",      level: 1, maxHp: 10, attack: 1, ac: 13, dailyCost: 30,  foodCost: 1, abilities: ["absorb_hit"] },
-  { templateId: "merc_light_archer",      name: "Light Archer",     role: "ranged",     level: 1, maxHp: 8,  attack: 2, ac: 12, dailyCost: 40,  foodCost: 1, abilities: ["ranged_support", "covering_fire"] },
-  { templateId: "merc_medium_foot",       name: "Medium Footman",   role: "melee",      level: 2, maxHp: 16, attack: 2, ac: 15, dailyCost: 80,  foodCost: 1, abilities: ["absorb_hit", "absorb_hit"] },
-  { templateId: "merc_pikeman",           name: "Pikeman",          role: "melee",      level: 3, maxHp: 20, attack: 3, ac: 14, dailyCost: 100, foodCost: 1, abilities: ["set_against_charge", "absorb_hit"] },
-  { templateId: "merc_heavy_foot",        name: "Heavy Footman",    role: "melee",      level: 5, maxHp: 35, attack: 3, ac: 18, dailyCost: 200, foodCost: 1, abilities: ["absorb_hit", "absorb_hit", "absorb_hit"] },
-  { templateId: "merc_goblin",            name: "Goblin Scout",     role: "specialist",  level: 1, maxHp: 5,  attack: 1, ac: 13, dailyCost: 10,  foodCost: 1, abilities: ["scouting"] },
-  { templateId: "merc_ogre",              name: "Ogre Mercenary",   role: "melee",      level: 4, maxHp: 29, attack: 5, ac: 14, dailyCost: 400, foodCost: 3, abilities: ["absorb_hit", "absorb_hit", "break_barriers"] },
-  { templateId: "merc_guide",             name: "Wilderness Guide",  role: "specialist", level: 1, maxHp: 8,  attack: 0, ac: 12, dailyCost: 30,  foodCost: 1, abilities: ["scouting", "survival_bonus", "reveal_terrain"] },
-  { templateId: "merc_healer",            name: "Field Healer",     role: "specialist",  level: 2, maxHp: 10, attack: 0, ac: 11, dailyCost: 50,  foodCost: 1, abilities: ["healing_1d8"] },
-  { templateId: "merc_cook",              name: "Camp Cook",        role: "specialist",  level: 1, maxHp: 6,  attack: 0, ac: 10, dailyCost: 10,  foodCost: 1, abilities: ["reduce_food_cost", "rest_bonus"] },
-  { templateId: "merc_teamster",          name: "Teamster",         role: "labor",       level: 1, maxHp: 8,  attack: 0, ac: 10, dailyCost: 30,  foodCost: 1, abilities: ["carry_bonus_50"] },
+  // ══════════════════════════════════════════════════════════════
+  // Arms & Equipment Guide p.66 — Table 4-4: Mercenary Equipment
+  // Stats: attack = book BAB, ac = book AC, dailyCost in cp
+  // HP = level × 5.5 + 3 (warrior d8 + CON 12)
+  // ══════════════════════════════════════════════════════════════
+
+  // ── Skirmishers, Foot (Lv 1, 2sp/day = 20cp) ──
+  { templateId: "merc_skirm_sling",       name: "Skirmisher (Sling)",         role: "ranged",  level: 1, maxHp: 8,  attack: 3, ac: 13, dailyCost: 20, foodCost: 1, abilities: ["ranged_support"] },
+  { templateId: "merc_skirm_axe",         name: "Skirmisher (Throwing Axes)", role: "ranged",  level: 1, maxHp: 8,  attack: 3, ac: 12, dailyCost: 20, foodCost: 1, abilities: ["ranged_support"] },
+  { templateId: "merc_skirm_javelin",     name: "Skirmisher (Javelin)",       role: "ranged",  level: 1, maxHp: 8,  attack: 3, ac: 14, dailyCost: 20, foodCost: 1, abilities: ["ranged_support", "absorb_hit"] },
+  { templateId: "merc_skirm_shortbow",    name: "Skirmisher (Shortbow)",      role: "ranged",  level: 1, maxHp: 8,  attack: 3, ac: 12, dailyCost: 20, foodCost: 1, abilities: ["ranged_support"] },
+  { templateId: "merc_skirm_crossbow",    name: "Skirmisher (Crossbow)",      role: "ranged",  level: 1, maxHp: 8,  attack: 3, ac: 13, dailyCost: 20, foodCost: 1, abilities: ["ranged_support"] },
+  { templateId: "merc_skirm_scimitar",    name: "Skirmisher (Bow & Scimitar)",role: "ranged",  level: 1, maxHp: 8,  attack: 3, ac: 14, dailyCost: 20, foodCost: 1, abilities: ["ranged_support", "covering_fire"] },
+
+  // ── Skirmishers, Mounted (Lv 4, 4sp/day = 40cp) ──
+  { templateId: "merc_skirm_mt_sling",    name: "Mtd Skirmisher (Sling)",     role: "ranged",  level: 4, maxHp: 25, attack: 6, ac: 14, dailyCost: 40, foodCost: 2, abilities: ["ranged_support", "mounted_charge"] },
+  { templateId: "merc_skirm_mt_javelin",  name: "Mtd Skirmisher (Javelin)",   role: "ranged",  level: 4, maxHp: 25, attack: 6, ac: 15, dailyCost: 40, foodCost: 2, abilities: ["ranged_support", "absorb_hit", "mounted_charge"] },
+  { templateId: "merc_skirm_mt_bow",      name: "Mtd Skirmisher (Shortbow)",  role: "ranged",  level: 4, maxHp: 25, attack: 6, ac: 14, dailyCost: 40, foodCost: 2, abilities: ["ranged_support", "covering_fire", "mounted_charge"] },
+
+  // ── Light Foot (Lv 1, 2sp/day = 20cp) ──
+  { templateId: "merc_light_battleaxe",   name: "Light Foot (Battleaxe)",     role: "melee",   level: 1, maxHp: 8,  attack: 3, ac: 13, dailyCost: 20, foodCost: 1, abilities: ["absorb_hit"] },
+  { templateId: "merc_light_spear",       name: "Light Foot (Spear & Shield)",role: "melee",   level: 1, maxHp: 8,  attack: 3, ac: 14, dailyCost: 20, foodCost: 1, abilities: ["absorb_hit"] },
+  { templateId: "merc_light_longspear",   name: "Light Foot (Longspear)",     role: "melee",   level: 1, maxHp: 8,  attack: 3, ac: 11, dailyCost: 20, foodCost: 1, abilities: ["set_against_charge"] },
+  { templateId: "merc_light_hvy_xbow",    name: "Light Foot (Heavy Crossbow)",role: "ranged",  level: 1, maxHp: 8,  attack: 3, ac: 11, dailyCost: 20, foodCost: 1, abilities: ["ranged_support", "covering_fire"] },
+  { templateId: "merc_light_longbow",     name: "Light Foot (Longbow)",       role: "ranged",  level: 1, maxHp: 8,  attack: 3, ac: 11, dailyCost: 20, foodCost: 1, abilities: ["ranged_support", "covering_fire"] },
+  { templateId: "merc_light_comp_bow",    name: "Light Foot (Comp Longbow)",  role: "ranged",  level: 1, maxHp: 8,  attack: 3, ac: 11, dailyCost: 20, foodCost: 1, abilities: ["ranged_support", "covering_fire"] },
+
+  // ── Light Mounted (Lv 4, 4sp/day = 40cp) ──
+  { templateId: "merc_light_mt_spear",    name: "Light Cav (Spear & Flail)",  role: "melee",   level: 4, maxHp: 25, attack: 6, ac: 14, dailyCost: 40, foodCost: 2, abilities: ["absorb_hit", "mounted_charge"] },
+  { templateId: "merc_light_mt_lance",    name: "Light Cav (Lance & Mace)",   role: "melee",   level: 4, maxHp: 25, attack: 6, ac: 14, dailyCost: 40, foodCost: 2, abilities: ["absorb_hit", "mounted_charge"] },
+  { templateId: "merc_light_mt_scimitar", name: "Light Cav (Scimitar)",       role: "melee",   level: 4, maxHp: 25, attack: 6, ac: 14, dailyCost: 40, foodCost: 2, abilities: ["absorb_hit", "mounted_charge"] },
+
+  // ── Medium Foot (Lv 2-5, 4-10sp/day) ──
+  { templateId: "merc_med_halberd",       name: "Medium Foot (Halberd)",      role: "melee",   level: 2, maxHp: 14, attack: 4, ac: 14, dailyCost: 40, foodCost: 1, abilities: ["absorb_hit", "absorb_hit"] },
+  { templateId: "merc_med_ranseur",       name: "Medium Foot (Ranseur)",      role: "melee",   level: 2, maxHp: 14, attack: 4, ac: 14, dailyCost: 40, foodCost: 1, abilities: ["absorb_hit", "absorb_hit"] },
+  { templateId: "merc_med_longsword",     name: "Medium Foot (Longsword)",    role: "melee",   level: 2, maxHp: 14, attack: 4, ac: 15, dailyCost: 40, foodCost: 1, abilities: ["absorb_hit", "absorb_hit"] },
+  { templateId: "merc_med_chain",         name: "Medium Foot (Chainmail)",    role: "melee",   level: 3, maxHp: 20, attack: 5, ac: 15, dailyCost: 60, foodCost: 1, abilities: ["absorb_hit", "absorb_hit"] },
+  { templateId: "merc_med_splint",        name: "Medium Foot (Splint Mail)",  role: "melee",   level: 5, maxHp: 31, attack: 7, ac: 16, dailyCost: 100,foodCost: 1, abilities: ["absorb_hit", "absorb_hit", "absorb_hit"] },
+  { templateId: "merc_med_breastplate",   name: "Medium Foot (Breastplate)",  role: "melee",   level: 5, maxHp: 31, attack: 7, ac: 16, dailyCost: 100,foodCost: 1, abilities: ["absorb_hit", "absorb_hit", "absorb_hit"] },
+
+  // ── Medium Mounted (Lv 8-9, 16-18sp/day) ──
+  { templateId: "merc_med_mt_longsword",  name: "Medium Cav (Longsword)",     role: "melee",   level: 8, maxHp: 50, attack: 11, ac: 16, dailyCost: 160, foodCost: 2, abilities: ["absorb_hit", "absorb_hit", "mounted_charge"] },
+  { templateId: "merc_med_mt_trident",    name: "Medium Cav (Trident)",       role: "melee",   level: 8, maxHp: 50, attack: 11, ac: 16, dailyCost: 160, foodCost: 2, abilities: ["absorb_hit", "absorb_hit", "mounted_charge"] },
+  { templateId: "merc_med_mt_breastplate",name: "Medium Cav (Breastplate)",   role: "melee",   level: 9, maxHp: 56, attack: 12, ac: 16, dailyCost: 180, foodCost: 2, abilities: ["absorb_hit", "absorb_hit", "absorb_hit", "mounted_charge"] },
+
+  // ── Heavy Foot (Lv 5, 10sp/day = 100cp) ──
+  { templateId: "merc_heavy_greatsword",  name: "Heavy Foot (Greatsword)",    role: "melee",   level: 5, maxHp: 31, attack: 7, ac: 16, dailyCost: 100, foodCost: 1, abilities: ["absorb_hit", "absorb_hit", "absorb_hit"] },
+  { templateId: "merc_heavy_mace",        name: "Heavy Foot (Mace & Shield)", role: "melee",   level: 5, maxHp: 31, attack: 7, ac: 18, dailyCost: 100, foodCost: 1, abilities: ["absorb_hit", "absorb_hit", "absorb_hit"] },
+  { templateId: "merc_heavy_flail",       name: "Heavy Foot (Heavy Flail)",   role: "melee",   level: 5, maxHp: 31, attack: 7, ac: 16, dailyCost: 100, foodCost: 1, abilities: ["absorb_hit", "absorb_hit", "absorb_hit"] },
+  { templateId: "merc_heavy_battleaxe",   name: "Heavy Foot (Battleaxe)",     role: "melee",   level: 5, maxHp: 31, attack: 7, ac: 18, dailyCost: 100, foodCost: 1, abilities: ["absorb_hit", "absorb_hit", "absorb_hit"] },
+  { templateId: "merc_heavy_greataxe",    name: "Heavy Foot (Greataxe)",      role: "melee",   level: 5, maxHp: 31, attack: 7, ac: 16, dailyCost: 100, foodCost: 1, abilities: ["absorb_hit", "absorb_hit", "absorb_hit"] },
+
+  // ── Heavy Mounted (Lv 10-12, 20-24sp/day) ──
+  { templateId: "merc_heavy_mt_warhammer",name: "Heavy Cav (Warhammer)",      role: "melee",   level: 10, maxHp: 62, attack: 13, ac: 19, dailyCost: 200, foodCost: 2, abilities: ["absorb_hit", "absorb_hit", "absorb_hit", "mounted_charge"] },
+  { templateId: "merc_heavy_mt_pick",     name: "Heavy Cav (Heavy Pick)",     role: "melee",   level: 10, maxHp: 62, attack: 13, ac: 18, dailyCost: 200, foodCost: 2, abilities: ["absorb_hit", "absorb_hit", "absorb_hit", "mounted_charge"] },
+  { templateId: "merc_heavy_mt_lance",    name: "Heavy Cav (Heavy Lance)",    role: "melee",   level: 12, maxHp: 74, attack: 16, ac: 20, dailyCost: 240, foodCost: 2, abilities: ["absorb_hit", "absorb_hit", "absorb_hit", "mounted_charge"] },
+
+  // ── Exotic Troops ──
+  { templateId: "merc_goblin",            name: "Goblin Scout",       role: "specialist",  level: 1, maxHp: 5,  attack: 1, ac: 13, dailyCost: 10,  foodCost: 1, abilities: ["scouting"] },
+  { templateId: "merc_hobgoblin",         name: "Hobgoblin Soldier",  role: "melee",       level: 1, maxHp: 8,  attack: 1, ac: 14, dailyCost: 20,  foodCost: 1, abilities: ["absorb_hit"] },
+  { templateId: "merc_gnoll",             name: "Gnoll Brute",        role: "melee",       level: 2, maxHp: 14, attack: 3, ac: 13, dailyCost: 20,  foodCost: 2, abilities: ["absorb_hit"] },
+  { templateId: "merc_bugbear",           name: "Bugbear Enforcer",   role: "melee",       level: 3, maxHp: 16, attack: 4, ac: 14, dailyCost: 400, foodCost: 2, abilities: ["absorb_hit", "stealth"] },
+  { templateId: "merc_ogre",              name: "Ogre Mercenary",     role: "melee",       level: 4, maxHp: 29, attack: 8, ac: 14, dailyCost: 400, foodCost: 3, abilities: ["absorb_hit", "absorb_hit", "break_barriers"] },
+  { templateId: "merc_centaur",           name: "Centaur Lancer",     role: "melee",       level: 4, maxHp: 26, attack: 7, ac: 15, dailyCost: 600, foodCost: 2, abilities: ["absorb_hit", "mounted_charge", "ranged_support"] },
+  { templateId: "merc_minotaur",          name: "Minotaur Champion",  role: "melee",       level: 6, maxHp: 36, attack: 9, ac: 14, dailyCost: 800, foodCost: 3, abilities: ["absorb_hit", "absorb_hit", "break_barriers"] },
+
+  // ── Specialist Hirelings (non-combat) ──
+  { templateId: "merc_guide",             name: "Wilderness Guide",   role: "specialist",  level: 1, maxHp: 8,  attack: 0, ac: 12, dailyCost: 30,  foodCost: 1, abilities: ["scouting", "survival_bonus", "reveal_terrain"] },
+  { templateId: "merc_healer",            name: "Field Healer",       role: "specialist",  level: 2, maxHp: 10, attack: 0, ac: 11, dailyCost: 50,  foodCost: 1, abilities: ["healing_1d8"] },
+  { templateId: "merc_cook",              name: "Camp Cook",          role: "specialist",  level: 1, maxHp: 6,  attack: 0, ac: 10, dailyCost: 10,  foodCost: 1, abilities: ["reduce_food_cost", "rest_bonus"] },
+  { templateId: "merc_teamster",          name: "Teamster",           role: "labor",       level: 1, maxHp: 8,  attack: 0, ac: 10, dailyCost: 30,  foodCost: 1, abilities: ["carry_bonus_50"] },
+  { templateId: "merc_animal_trainer",    name: "Animal Trainer",     role: "specialist",  level: 1, maxHp: 8,  attack: 0, ac: 11, dailyCost: 80,  foodCost: 1, abilities: ["handle_animal_basic", "scouting"] },
+  { templateId: "merc_sage",              name: "Sage",               role: "specialist",  level: 2, maxHp: 6,  attack: 0, ac: 10, dailyCost: 200, foodCost: 1, abilities: ["identify_item", "knowledge_bonus"] },
+  { templateId: "merc_interpreter",       name: "Interpreter",        role: "specialist",  level: 1, maxHp: 6,  attack: 0, ac: 10, dailyCost: 30,  foodCost: 1, abilities: ["languages", "gather_info_bonus"] },
+  { templateId: "merc_siege_engineer",    name: "Siege Engineer",     role: "specialist",  level: 3, maxHp: 12, attack: 1, ac: 12, dailyCost: 200, foodCost: 1, abilities: ["build_camp", "break_barriers", "siege_craft"] },
 ];
 
 // Faction-specific follower templates
