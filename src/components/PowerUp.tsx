@@ -24,7 +24,7 @@ const CONTRACTS: Record<string, { address: `0x${string}`; abi: readonly any[]; c
   egp:     { address: "0x79F9208847848Ce4a0CF107d1115aa5a3c5CE849", abi: POWERUP_ABI, chainId: 8453 },
   wethegp: { address: "0x127AE66CdFA262c8A9CBA82F43da2953411D6Cf4", abi: POWERUP_ABI, chainId: 8453 },
   char:    { address: "0x97eC03aE9072923937dDBCFBf4D05c8000C13431", abi: POWERUP_ABI, chainId: 8453 },
-  burgers: { address: "0xDe76722Ec72F86D64B54DbB11A5c9211FE6FC8FF", abi: POWERUP_ABI, chainId: 8453 },
+  burgers: { address: "0x16DDE86c9b849a29d9DAc7Cc8c1dca899f3ACB66", abi: POWERUP_ABI, chainId: 8453 },
   // Polygon (chainId 137)
   pol_egpusdglo: { address: "0x627E6a6093403f415051755e3a85D85419cb0aBD", abi: POWERUP_ABI, chainId: 137 },
 };

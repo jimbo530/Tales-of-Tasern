@@ -7,6 +7,10 @@
     {
       "path": "/api/images",
       "schedule": "0 1 * * 0"
+    },
+    {
+      "path": "/api/stats/refresh",
+      "schedule": "30 0 * * *"
     }
   ]
 }

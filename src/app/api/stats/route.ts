@@ -115,8 +115,25 @@ const TOKEN_CATEGORY: Record<string, "traditional" | "game" | "impact"> = {
   "0xd84415c956f44b2300a2e56c5b898401913e9a29": "impact", // PR24 — kids in school
 };
 
-export async function GET() {
-  try {
+export type StatsResponse = {
+  characters: Array<{
+    name: string;
+    contractAddress: string;
+    chain: string;
+    stats: { str: number; dex: number; con: number; int: number; wis: number; cha: number; ac: number; atk: number; speed: number; lightningDmg: number; fireDmg: number };
+    subtypes: string[];
+    tokenAmounts: Array<{ symbol: string; amount: number; stat: string; addr?: string }>;
+    usdBacking: number;
+  }>;
+  sellerOwned: string[];
+  assetTotals: { traditional: number; game: number; impact: number };
+  tokenBreakdown: Array<{ symbol: string; usd: number; category: string }>;
+  prices: { btcHigh24h: number; ethHigh24h: number; polHigh24h: number; mftLow24h: number };
+  updatedAt: string;
+};
+
+/** Heavy computation: fetches all on-chain data and computes D20 stats. Takes 2-5 minutes. */
+export async function computeAllStats(): Promise<StatsResponse> {
     // Fetch shared NFT/LP data from Supabase (fallback to hardcoded)
     let GAME_NFTS: GameNft[];
     let KNOWN_LP_PAIRS: { base: `0x${string}`[]; polygon: `0x${string}`[] };
@@ -526,18 +543,16 @@ export async function GET() {
           stat = "lightning"; lightningUsd += usdValue;
         } else if (fireTokens.includes(addr)) {
           stat = "fire"; fireUsd += usdValue;
-        } else if (strTokens.includes(addr)) {
-          stat = "str"; strUsd += usdValue;
-        } else if (dexTokens.includes(addr)) {
-          stat = "dex"; dexUsd += usdValue;
-        } else if (conTokens.includes(addr)) {
-          stat = "con"; conUsd += usdValue;
-        } else if (intTokens.includes(addr)) {
-          stat = "int"; intUsd += usdValue;
-        } else if (wisTokens.includes(addr)) {
-          stat = "wis"; wisUsd += usdValue;
-        } else if (chaTokens.includes(addr)) {
-          stat = "cha"; chaUsd += usdValue;
+        } else if (strTokens.includes(addr) || dexTokens.includes(addr) || conTokens.includes(addr) || intTokens.includes(addr) || wisTokens.includes(addr) || chaTokens.includes(addr)) {
+          // Single-stat tokens — a token can appear in multiple lists (e.g. REGEN → con+dex+wis)
+          const hits: string[] = [];
+          if (strTokens.includes(addr)) { strUsd += usdValue; hits.push("str"); }
+          if (dexTokens.includes(addr)) { dexUsd += usdValue; hits.push("dex"); }
+          if (conTokens.includes(addr)) { conUsd += usdValue; hits.push("con"); }
+          if (intTokens.includes(addr)) { intUsd += usdValue; hits.push("int"); }
+          if (wisTokens.includes(addr)) { wisUsd += usdValue; hits.push("wis"); }
+          if (chaTokens.includes(addr)) { chaUsd += usdValue; hits.push("cha"); }
+          stat = hits.join("+");
         } else {
           // Unrecognized tokens → CON (general hardiness)
           stat = "con"; conUsd += usdValue;
@@ -690,14 +705,20 @@ export async function GET() {
       }
     }
 
-    return NextResponse.json({
+    return {
       characters,
       sellerOwned: [...sellerOwned],
       assetTotals: categoryTotals,
       tokenBreakdown: Object.values(tokenBreakdown),
       prices: { btcHigh24h, ethHigh24h, polHigh24h, mftLow24h },
       updatedAt: new Date().toISOString(),
-    }, {
+    };
+}
+
+export async function GET() {
+  try {
+    const result = await computeAllStats();
+    return NextResponse.json(result, {
       headers: { "Cache-Control": "public, s-maxage=86400, stale-while-revalidate=3600" },
     });
   } catch (error) {

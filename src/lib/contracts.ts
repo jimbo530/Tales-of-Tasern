@@ -364,6 +364,7 @@ export const STAT_TOKENS = {
     ] as `0x${string}`[],
     dex: [
       "0x146642d83879257ac9ed35074b1c3714b7e8f452", // AU24T → dexterity
+      "0xdfffe0c33b4011c4218acd61e68a62a32eaf9a8b", // REGEN → dexterity
     ] as `0x${string}`[],
     ac: [
       "0xcb2a97776c87433050e0ddf9de0f53ead661dab4", // TB01 → armor class
@@ -408,6 +409,7 @@ export const STAT_TOKENS = {
       "0xD838290e877E0188a4A44700463419ED96c16107", // NCT → wisdom
       "0x2F800Db0fdb5223b3C3f354886d907A671414A7f", // BCT → wisdom
       "0xdb7a2607b71134d0b09c27ca2d77b495e4dbeedb", // Grant Wizard → wisdom
+      "0xdfffe0c33b4011c4218acd61e68a62a32eaf9a8b", // REGEN → wisdom
     ] as `0x${string}`[],
     speed: [
       "0xd84415c956f44b2300a2e56c5b898401913e9a29", // PR24 → move speed

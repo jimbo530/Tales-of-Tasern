@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useAccount, usePublicClient } from "wagmi";
 import { base, polygon } from "viem/chains";
 import { ERC1155_ABI, GAME_NFTS } from "@/lib/contracts";
+import { supabase } from "@/lib/supabase";
 
 const TOKEN_ID = BigInt(1);
 const MAX_TOKEN_ID = 200;
@@ -48,6 +49,29 @@ function setCachedOwnership(wallet: string, map: Map<string, number>) {
     map.forEach((v, k) => { obj[k] = v; });
     localStorage.setItem(`${OWNERSHIP_CACHE_KEY}-${wallet.toLowerCase()}`, JSON.stringify({ map: obj, timestamp: Date.now() }));
   } catch {}
+}
+
+/** Fetch computed D20 stats from Supabase nft_d20_stats table (fast, ~100ms) */
+async function fetchFromSupabase(): Promise<any | null> {
+  try {
+    const { data: rows, error } = await supabase
+      .from("nft_d20_stats")
+      .select("key, data");
+    if (error || !rows || rows.length === 0) return null;
+
+    const summaryRow = rows.find((r: any) => r.key === "__summary__");
+    const characterRows = rows.filter((r: any) => r.key !== "__summary__");
+    if (characterRows.length === 0) return null;
+
+    return {
+      characters: characterRows.map((r: any) => r.data),
+      sellerOwned: summaryRow?.data?.sellerOwned ?? [],
+      assetTotals: summaryRow?.data?.assetTotals ?? { traditional: 0, game: 0, impact: 0 },
+      tokenBreakdown: summaryRow?.data?.tokenBreakdown ?? [],
+    };
+  } catch {
+    return null;
+  }
 }
 
 export type TokenAmount = {
@@ -102,12 +126,22 @@ export function useNftStats() {
       setError(null);
 
       try {
-        // Load stats: local file (dev) → localStorage → API
+        // Load stats: Supabase → local file → localStorage → API
         let data: any;
         let fetched = false;
 
-        // In dev mode, always try local file first (npm run refresh-stats)
-        if (process.env.NODE_ENV === "development") {
+        // Priority 1: Supabase nft_d20_stats (fast, always fresh from daily cron)
+        try {
+          const sbData = await fetchFromSupabase();
+          if (sbData && sbData.characters?.length > 0) {
+            data = sbData;
+            fetched = true;
+            console.log("[ToT] Loaded from Supabase:", data.characters.length, "NFTs");
+          }
+        } catch {}
+
+        // Priority 2: In dev mode, try local file (npm run refresh-stats)
+        if (!fetched && process.env.NODE_ENV === "development") {
           try {
             const localRes = await fetch("/stats-cache.json?t=" + Date.now());
             if (localRes.ok) {
@@ -118,7 +152,7 @@ export function useNftStats() {
           } catch {}
         }
 
-        // Then check localStorage cache
+        // Priority 3: localStorage cache
         if (!fetched) {
           const cached = getCachedStats();
           if (cached && (Date.now() - cached.timestamp) < STATS_CACHE_TTL) {
@@ -178,20 +212,11 @@ export function useNftStats() {
 
         setCachedStats(data);
 
-        // Check ownership — cached for 48h per wallet
+        // Check ownership — always fresh from chain (fast multicall)
         let ownershipMap = new Map<string, number>();
-
-        if (isConnected && address) {
-          const cachedOwn = getCachedOwnership(address);
-          if (cachedOwn && (Date.now() - cachedOwn.timestamp) < STATS_CACHE_TTL) {
-            Object.entries(cachedOwn.map).forEach(([k, v]) => ownershipMap.set(k, v));
-            console.log("[ToT] Using cached ownership (age:", Math.round((Date.now() - cachedOwn.timestamp) / 60000), "min)");
-          }
-        }
 
         async function checkOwnership(client: any, nfts: typeof GAME_NFTS, chainName: string) {
           if (!client || nfts.length === 0) return;
-          // Build balanceOfBatch calls: one per contract, checking IDs 1-MAX_TOKEN_ID
           const accounts = Array(MAX_TOKEN_ID).fill(address) as `0x${string}`[];
           const ids = Array.from({ length: MAX_TOKEN_ID }, (_, i) => BigInt(i + 1));
           const calls = nfts.map((nft) => ({
@@ -213,7 +238,6 @@ export function useNftStats() {
             });
           } catch (e) {
             console.warn(`[ToT] ${chainName} batch ownership check failed, falling back to ID 1:`, e);
-            // Fallback: just check token ID 1
             try {
               const fallbackCalls = nfts.map((nft) => ({
                 address: nft.contractAddress,
@@ -230,11 +254,41 @@ export function useNftStats() {
           }
         }
 
-        if (isConnected && address && ownershipMap.size === 0) {
-          // Only hit RPC if no cached ownership
+        if (isConnected && address) {
+          // Always check chain for fresh ownership (multicall is fast)
           await checkOwnership(baseClient, GAME_NFTS.filter(n => n.chain === "base"), "Base");
           await checkOwnership(polygonClient, GAME_NFTS.filter(n => n.chain === "polygon"), "Polygon");
-          setCachedOwnership(address, ownershipMap);
+          // Fall back to cache only if RPC returned nothing
+          if (ownershipMap.size === 0) {
+            const cachedOwn = getCachedOwnership(address);
+            if (cachedOwn) {
+              Object.entries(cachedOwn.map).forEach(([k, v]) => ownershipMap.set(k, v));
+              console.log("[ToT] RPC failed, using cached ownership");
+            }
+          } else {
+            setCachedOwnership(address, ownershipMap);
+            console.log("[ToT] Fresh ownership:", [...ownershipMap.entries()].filter(([,v]) => v > 0).length, "owned NFTs");
+          }
+        }
+
+        // Backfill: ensure every NFT in GAME_NFTS appears — use last known stats if available
+        const dataAddrs = new Set((data.characters ?? []).map((c: any) => c.contractAddress?.toLowerCase()));
+        const prevCachedForBackfill = getCachedStats();
+        const prevMap = new Map((prevCachedForBackfill?.data?.characters ?? []).map((c: any) => [c.contractAddress?.toLowerCase(), c]));
+        for (const nft of GAME_NFTS) {
+          if (!dataAddrs.has(nft.contractAddress.toLowerCase())) {
+            const prev = prevMap.get(nft.contractAddress.toLowerCase());
+            data.characters.push(prev ?? {
+              name: nft.name,
+              contractAddress: nft.contractAddress,
+              chain: nft.chain,
+              stats: { str: 1, dex: 1, con: 1, int: 1, wis: 1, cha: 1, ac: 10, atk: 0, speed: 30, lightningDmg: 0, fireDmg: 0 },
+              subtypes: [],
+              tokenAmounts: [],
+              usdBacking: 0,
+            });
+            console.log("[ToT] Backfilled missing NFT:", nft.name, prev ? "(last known stats)" : "(baseline)");
+          }
         }
 
         // Merge API data with ownership + seller info
@@ -258,31 +312,34 @@ export function useNftStats() {
         setCharacters(characters);
         if (data.assetTotals) setAssetTotals(data.assetTotals);
         if (data.tokenBreakdown) setTokenBreakdown(data.tokenBreakdown);
-
-        // Fetch cached images from API (7-day cache, much faster than per-card IPFS)
-        try {
-          const imgRes = await fetch("/api/images");
-          if (imgRes.ok) {
-            const imgData: Record<string, { metadataUri?: string; imageUrl?: string; chain?: string }> = await imgRes.json();
-            setCharacters(prev => prev.map(char => {
-              const img = imgData[char.contractAddress.toLowerCase()];
-              if (!img) return char;
-              return {
-                ...char,
-                metadataUri: img.metadataUri ?? char.metadataUri,
-                imageUrl: img.imageUrl ?? char.imageUrl,
-                chain: (img.chain as "base" | "polygon") ?? char.chain,
-              };
-            }));
-            console.log("[ToT] Loaded cached images for", Object.keys(imgData).length, "NFTs");
-          }
-        } catch { /* images optional, cards still show without them */ }
       } catch (err) {
         console.error("[ToT]", err);
         setError(String(err));
       }
 
       setLoading(false);
+
+      // Fetch cached images AFTER loading completes (non-blocking)
+      try {
+        const imgController = new AbortController();
+        const imgTimeout = setTimeout(() => imgController.abort(), 8000);
+        const imgRes = await fetch("/api/images", { signal: imgController.signal });
+        clearTimeout(imgTimeout);
+        if (imgRes.ok) {
+          const imgData: Record<string, { metadataUri?: string; imageUrl?: string; chain?: string }> = await imgRes.json();
+          setCharacters(prev => prev.map(char => {
+            const img = imgData[char.contractAddress.toLowerCase()];
+            if (!img) return char;
+            return {
+              ...char,
+              metadataUri: img.metadataUri ?? char.metadataUri,
+              imageUrl: img.imageUrl ?? char.imageUrl,
+              chain: (img.chain as "base" | "polygon") ?? char.chain,
+            };
+          }));
+          console.log("[ToT] Loaded cached images for", Object.keys(imgData).length, "NFTs");
+        }
+      } catch { /* images optional, cards still show without them */ }
     }
 
     load();
