@@ -459,8 +459,62 @@ export async function GET() {
     await checkSeller(baseClient, GAME_NFTS.filter(n => n.chain === "base"), "Base");
     await checkSeller(polygonClient, GAME_NFTS.filter(n => n.chain === "polygon"), "Polygon");
 
-    // ── Step 7: Write everything to Supabase ────────────────────────────────
+    // ── Step 7: Zero-protection — read existing data and preserve non-zero values
     const now = new Date().toISOString();
+
+    // Read existing prices from Supabase so we don't overwrite good data with zeros
+    let existingPrices: Record<string, number> = {};
+    let existingAmounts: Map<string, Map<string, number>> = new Map();
+    try {
+      const { data: oldPrices } = await supabaseAdmin.from("token_prices").select("token_address, usd_price");
+      if (oldPrices) {
+        for (const p of oldPrices) existingPrices[p.token_address] = p.usd_price;
+      }
+      const { data: oldAmounts } = await supabaseAdmin.from("nft_token_amounts").select("nft_address, token_address, raw_amount");
+      if (oldAmounts) {
+        for (const a of oldAmounts) {
+          if (!existingAmounts.has(a.nft_address)) existingAmounts.set(a.nft_address, new Map());
+          existingAmounts.get(a.nft_address)!.set(a.token_address, a.raw_amount);
+        }
+      }
+    } catch {}
+
+    // For prices: if we got 0 but had a good value before, keep the old value
+    for (const [addr, oldPrice] of Object.entries(existingPrices)) {
+      if (oldPrice > 0 && (!tokenUsdPrices[addr] || tokenUsdPrices[addr] <= 0)) {
+        tokenUsdPrices[addr] = oldPrice;
+      }
+    }
+
+    // For token amounts: if an NFT had tokens before but now shows 0, keep old amounts
+    for (const row of allTokenAmountRows) {
+      if (row.raw_amount <= 0) {
+        const oldAmt = existingAmounts.get(row.nft_address)?.get(row.token_address);
+        if (oldAmt && oldAmt > 0) {
+          row.raw_amount = oldAmt;
+          row.usd_value = oldAmt * (tokenUsdPrices[row.token_address] ?? 0);
+        }
+      }
+    }
+
+    // Recompute NFT summaries with corrected amounts
+    for (const summary of allNftSummaryRows) {
+      const nftTokens = allTokenAmountRows.filter(r => r.nft_address === summary.nft_address);
+      let totalUsd = 0, tradUsd = 0, gameUsd = 0, impactUsd = 0;
+      for (const t of nftTokens) {
+        const usdVal = t.raw_amount * (tokenUsdPrices[t.token_address] ?? 0);
+        t.usd_value = usdVal;
+        totalUsd += usdVal;
+        const cat = TOKEN_CATEGORY[t.token_address] ?? "game";
+        if (cat === "traditional") tradUsd += usdVal;
+        else if (cat === "game") gameUsd += usdVal;
+        else impactUsd += usdVal;
+      }
+      summary.usd_backing = totalUsd;
+      summary.usd_traditional = tradUsd;
+      summary.usd_game = gameUsd;
+      summary.usd_impact = impactUsd;
+    }
 
     // Token prices
     const priceRows = Object.entries(tokenUsdPrices)

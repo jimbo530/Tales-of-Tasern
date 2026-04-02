@@ -42,8 +42,9 @@ type Props = {
   playerLevel?: number;             // character level
   playerCurrentHp?: number;         // current HP (battle starts with this, not full)
   playerFollowers?: import("@/lib/party").Follower[];  // combat-capable followers
+  playerProgression?: import("@/lib/party").EntityProgression;  // multiclass progression
   onExit: () => void;
-  onBattleEnd?: (outcome: "victory" | "defeat" | "retreat", difficulty: "easy" | "medium" | "hard" | "deadly", enemies: string[], rounds: number, spellSlotsUsed?: number[], remainingHp?: number) => Promise<{ xp: number; goldCp: number; levelsGained: number; newLevel: number } | null> | void;
+  onBattleEnd?: (outcome: "victory" | "defeat" | "retreat", difficulty: "easy" | "medium" | "hard" | "deadly", enemies: string[], rounds: number, spellSlotsUsed?: number[], remainingHp?: number) => Promise<{ xp: number; goldCp: number; loot: { name: string }[]; levelsGained: number; newLevel: number } | null> | void;
   onDefeatChoice?: (choice: "perish" | "rescue") => void;  // death penalty choice
 };
 
@@ -123,12 +124,12 @@ function phaseLabel(phase: BattlePhase): string {
 
 // ── Main Component ───────────────────────────────────────────────────────────
 
-export function HexBattle({ characters, questEncounter, playerFeats, playerWeapon, playerKnownSpells, playerPreparedSpells, playerSpellSlotsUsed, playerLevel, playerCurrentHp, playerFollowers, onExit, onBattleEnd, onDefeatChoice }: Props) {
+export function HexBattle({ characters, questEncounter, playerFeats, playerWeapon, playerKnownSpells, playerPreparedSpells, playerSpellSlotsUsed, playerLevel, playerCurrentHp, playerFollowers, playerProgression, onExit, onBattleEnd, onDefeatChoice }: Props) {
   const ownedChars = useMemo(() => characters.filter(c => c.owned && c.stats.con > 0), [characters]);
   const [selectedChar, setSelectedChar] = useState<NftCharacter | null>(null);
   const [selectedClass, setSelectedClass] = useState<CharacterClass | null>(null);
   const [difficulty, setDifficulty] = useState<"easy" | "medium" | "hard" | "deadly" | null>(null);
-  const [battleRewards, setBattleRewards] = useState<{ xp: number; goldCp: number; levelsGained: number; newLevel: number } | null>(null);
+  const [battleRewards, setBattleRewards] = useState<{ xp: number; goldCp: number; loot: { name: string }[]; levelsGained: number; newLevel: number } | null>(null);
   const [collectingRewards, setCollectingRewards] = useState(false);
   const [showSpellPicker, setShowSpellPicker] = useState(false);
   const [pendingSpell, setPendingSpell] = useState<Spell | null>(null);
@@ -171,7 +172,7 @@ export function HexBattle({ characters, questEncounter, playerFeats, playerWeapo
       if (char && cls) {
         questStarted.current = true;
         const si = buildSpellInfo(char, cls);
-        startQuestBattle(char, questEncounter.enemies, cls, questEncounter.playerFeats ?? playerFeats, questEncounter.playerWeapon ?? playerWeapon, si, playerCurrentHp, playerFollowers);
+        startQuestBattle(char, questEncounter.enemies, cls, questEncounter.playerFeats ?? playerFeats, questEncounter.playerWeapon ?? playerWeapon, si, playerCurrentHp, playerFollowers, playerProgression);
       }
     }
   }, [questEncounter, selectedChar, selectedClass, state.phase, startQuestBattle, buildSpellInfo]);
@@ -180,7 +181,7 @@ export function HexBattle({ characters, questEncounter, playerFeats, playerWeapo
   useEffect(() => {
     if (!questEncounter && selectedChar && selectedClass && difficulty && state.phase === "setup") {
       const si = buildSpellInfo(selectedChar, selectedClass);
-      startBattle(selectedChar, difficulty, selectedClass, characters, playerFeats, playerWeapon, si, playerCurrentHp, playerFollowers);
+      startBattle(selectedChar, difficulty, selectedClass, characters, playerFeats, playerWeapon, si, playerCurrentHp, playerFollowers, playerProgression);
     }
   }, [questEncounter, selectedChar, selectedClass, difficulty, state.phase, startBattle, characters, buildSpellInfo]);
 
@@ -267,7 +268,8 @@ export function HexBattle({ characters, questEncounter, playerFeats, playerWeapo
   }, [pendingSpell, playerUnit, state.units]);
 
   // ── Character Picker ───────────────────────────────────────────────────
-  if (!selectedChar) {
+  // Skip pickers when quest encounter provides char/class (auto-start via useEffect)
+  if (!selectedChar && !questEncounter?.playerChar) {
     return (
       <div className="flex flex-col items-center gap-6">
         <h2 className="text-xl font-black tracking-widest uppercase" style={{ color: "#f0d070", fontFamily: "'Cinzel Decorative', 'Cinzel', serif" }}>
@@ -303,13 +305,13 @@ export function HexBattle({ characters, questEncounter, playerFeats, playerWeapo
   }
 
   // ── Class Picker ──────────────────────────────────────────────────────
-  if (!selectedClass) {
+  if (!selectedClass && !questEncounter?.playerClass) {
     return (
       <div className="flex flex-col items-center gap-6">
         <h2 className="text-xl font-black tracking-widest uppercase" style={{ color: "#f0d070", fontFamily: "'Cinzel Decorative', 'Cinzel', serif" }}>
           Choose Your Class
         </h2>
-        <p className="text-sm" style={{ color: "rgba(201,168,76,0.5)" }}>Playing as {selectedChar.name}</p>
+        <p className="text-sm" style={{ color: "rgba(201,168,76,0.5)" }}>Playing as {selectedChar?.name ?? questEncounter?.playerChar?.name ?? "?"}</p>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 max-w-2xl w-full">
           {CLASSES.map(cls => {
             const keyAb = cls.keyAbilities.map(a => a.toUpperCase()).join("/");
@@ -344,7 +346,7 @@ export function HexBattle({ characters, questEncounter, playerFeats, playerWeapo
         <h2 className="text-xl font-black tracking-widest uppercase" style={{ color: "#f0d070", fontFamily: "'Cinzel Decorative', 'Cinzel', serif" }}>
           Choose Encounter
         </h2>
-        <p className="text-sm" style={{ color: "rgba(201,168,76,0.5)" }}>{selectedChar.name} — {selectedClass.emoji} {selectedClass.name}</p>
+        <p className="text-sm" style={{ color: "rgba(201,168,76,0.5)" }}>{selectedChar!.name} — {selectedClass!.emoji} {selectedClass!.name}</p>
         <div className="flex flex-col gap-3 w-full max-w-sm">
           {([["easy", "1 Goblin", "rgba(74,222,128,0.8)"], ["medium", "Wolf + Goblin", "rgba(251,191,36,0.8)"], ["hard", "Skeleton + Wolf + Goblin", "rgba(220,38,38,0.8)"]] as const).map(([d, label, color]) => (
             <button key={d} onClick={() => setDifficulty(d)}
@@ -380,7 +382,7 @@ export function HexBattle({ characters, questEncounter, playerFeats, playerWeapo
           Retreat
         </button>
         <span className="text-sm font-black tracking-widest uppercase" style={{ color: "#f0d070", fontFamily: "'Cinzel Decorative', 'Cinzel', serif" }}>
-          {questEncounter ? questEncounter.questName : selectedClass.emoji} — Round {state.round} — {phaseLabel(state.phase)}
+          {questEncounter ? questEncounter.questName : selectedClass!.emoji} — Round {state.round} — {phaseLabel(state.phase)}
         </span>
         {isPlayerTurn && state.phase === "playerTurn" && (
           <button onClick={endTurn} className="px-3 py-1 rounded text-xs font-bold uppercase tracking-widest"
@@ -731,7 +733,17 @@ export function HexBattle({ characters, questEncounter, playerFeats, playerWeapo
                 <>
                   <div className="flex flex-col items-center gap-1 text-sm" style={{ color: "rgba(232,213,176,0.9)" }}>
                     <span>+{battleRewards.xp} XP</span>
-                    <span>+{Math.floor(battleRewards.goldCp / 100)}g {Math.floor((battleRewards.goldCp % 100) / 10)}s {battleRewards.goldCp % 10}c</span>
+                    {battleRewards.goldCp > 0 && (
+                      <span>+{Math.floor(battleRewards.goldCp / 100)}g {Math.floor((battleRewards.goldCp % 100) / 10)}s {battleRewards.goldCp % 10}c loose coin</span>
+                    )}
+                    {battleRewards.loot.length > 0 && (
+                      <div className="flex flex-col items-center gap-0.5 mt-1">
+                        <span style={{ fontSize: "0.6rem", color: "rgba(201,168,76,0.6)" }} className="uppercase tracking-widest font-bold">Loot</span>
+                        {battleRewards.loot.map((item, i) => (
+                          <span key={i} style={{ color: "rgba(251,191,36,0.9)" }}>{item.name}</span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   {battleRewards.levelsGained > 0 && (
                     <div className="flex flex-col items-center gap-1 px-4 py-2 rounded-lg" style={{ background: "rgba(251,191,36,0.15)", border: "1px solid rgba(251,191,36,0.5)" }}>

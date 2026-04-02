@@ -16,6 +16,17 @@ import {
   setQuestCooldown,
   addCp,
 } from "@/lib/saveSystem";
+import { type EntityProgression, type Follower, getLeaderProgression, autoLevelFollower, isFollowerLoyal } from "@/lib/party";
+
+export type LevelUpEntry = {
+  entityId: string;           // hero nft_address or follower id
+  entityType: "hero" | "follower";
+  entityName: string;
+  heroIndex: number;          // which hero owns this follower (or is self)
+  followerIndex?: number;     // index in hero's followers array
+  fromLevel: number;
+  toLevel: number;
+};
 
 export function useCharacterSave() {
   const { address, isConnected } = useAccount();
@@ -144,7 +155,7 @@ export function useCharacterSave() {
     return saveCharacter(save);
   }, [save]);
 
-  // Record battle result, award XP/gold, level up
+  // Record battle result, distribute XP per-entity (ALL heroes + their combat followers), award gold/loot
   const recordBattle = useCallback(async (result: {
     difficulty: "easy" | "medium" | "hard" | "deadly";
     enemies: string[];
@@ -153,38 +164,138 @@ export function useCharacterSave() {
   }) => {
     if (!save || !address) return null;
 
+    const leaderProg = getLeaderProgression(save);
+    const leaderHeroIdx = save.party.heroes.findIndex(h => h.isLeader) ?? 0;
+
+    // Count ALL combat participants across ALL heroes
+    let participantCount = 0;
+    for (const hero of save.party.heroes) {
+      participantCount += 1; // the hero itself
+      participantCount += hero.followers.filter(f =>
+        f.alive && f.hp > 0 && (f.role === "melee" || f.role === "ranged" || f.role === "faction")
+      ).length;
+    }
+
     const rewards = result.outcome === "victory"
-      ? battleRewards(result.difficulty, save.level)
-      : { xp: 0, goldCp: 0 };
+      ? battleRewards(result.difficulty, leaderProg.total_level, participantCount)
+      : { xp: 0, xpPerEntity: 0, goldCp: 0, loot: [] };
 
-    const { level, xp, levelsGained } = addXp(save.level, save.xp, rewards.xp);
+    const xpEach = rewards.xpPerEntity;
+    const levelUpQueue: LevelUpEntry[] = [];
+    let leaderLevelsGained = 0;
+    let leaderNewLevel = leaderProg.total_level;
+    let leaderNewXp = leaderProg.xp;
 
+    // ── Process every hero and their followers ──
+    const updatedHeroes = save.party.heroes.map((hero, hIdx) => {
+      // Hero XP
+      const heroProg = hero.progression;
+      const heroLevel = heroProg?.total_level ?? (hIdx === (leaderHeroIdx >= 0 ? leaderHeroIdx : 0) ? save.level : 1);
+      const heroXp = heroProg?.xp ?? (hIdx === (leaderHeroIdx >= 0 ? leaderHeroIdx : 0) ? save.xp : 0);
+      const heroResult = addXp(heroLevel, heroXp, xpEach);
+
+      let updatedProg = heroProg
+        ? { ...heroProg, xp: heroResult.xp, total_level: heroResult.level }
+        : undefined;
+
+      if (heroResult.levelsGained > 0) {
+        const isLeader = hIdx === (leaderHeroIdx >= 0 ? leaderHeroIdx : 0);
+        levelUpQueue.push({
+          entityId: hero.nft_address,
+          entityType: "hero",
+          entityName: isLeader ? "Leader" : `Hero ${hIdx + 1}`,
+          heroIndex: hIdx,
+          fromLevel: heroLevel,
+          toLevel: heroResult.level,
+        });
+        if (isLeader) {
+          leaderLevelsGained = heroResult.levelsGained;
+          leaderNewLevel = heroResult.level;
+          leaderNewXp = heroResult.xp;
+        }
+      } else {
+        const isLeader = hIdx === (leaderHeroIdx >= 0 ? leaderHeroIdx : 0);
+        if (isLeader) {
+          leaderNewLevel = heroResult.level;
+          leaderNewXp = heroResult.xp;
+        }
+      }
+
+      // Follower XP for this hero's followers
+      const combatFollowers = hero.followers.filter(f =>
+        f.alive && f.hp > 0 && (f.role === "melee" || f.role === "ranged" || f.role === "faction"));
+      const updatedFollowers = hero.followers.map((f, fIdx) => {
+        if (!f.alive || !combatFollowers.includes(f)) return f;
+        const fLevel = f.progression?.total_level ?? f.level;
+        const fXp = f.progression?.xp ?? f.xp ?? 0;
+        const fResult = addXp(fLevel, fXp, xpEach);
+
+        let updated = { ...f, xp: fResult.xp };
+        if (fResult.levelsGained > 0) {
+          if (f.progression) {
+            updated = { ...updated, progression: { ...f.progression, xp: fResult.xp, total_level: fResult.level } };
+            levelUpQueue.push({
+              entityId: f.id, entityType: "follower", entityName: f.name,
+              heroIndex: hIdx, followerIndex: fIdx,
+              fromLevel: fLevel, toLevel: fResult.level,
+            });
+          } else if (isFollowerLoyal(f)) {
+            levelUpQueue.push({
+              entityId: f.id, entityType: "follower", entityName: f.name,
+              heroIndex: hIdx, followerIndex: fIdx,
+              fromLevel: fLevel, toLevel: fResult.level,
+            });
+            updated = { ...updated, level: fResult.level };
+          } else {
+            let autoF = updated;
+            for (let i = 0; i < fResult.levelsGained; i++) autoF = autoLevelFollower(autoF);
+            updated = autoF;
+          }
+        }
+        return updated;
+      });
+
+      return { ...hero, progression: updatedProg ?? hero.progression, followers: updatedFollowers };
+    });
+
+    // ── Build save patch ──
+    let newInventory = [...save.inventory];
+    for (const item of rewards.loot) {
+      const existing = newInventory.find(i => i.id === item.id);
+      if (existing) {
+        newInventory = newInventory.map(i => i.id === item.id ? { ...i, qty: i.qty + 1 } : i);
+      } else {
+        newInventory.push({ id: item.id, name: item.name, qty: 1 });
+      }
+    }
+
+    // Keep top-level fields in sync with leader for backward compat
     const patch: Partial<CharacterSave> = {
-      level,
-      xp,
+      level: leaderNewLevel,
+      xp: leaderNewXp,
       coins: addCp(save.coins, rewards.goldCp),
+      inventory: newInventory,
+      party: { heroes: updatedHeroes },
       battles_won: save.battles_won + (result.outcome === "victory" ? 1 : 0),
       battles_lost: save.battles_lost + (result.outcome === "defeat" ? 1 : 0),
     };
 
-    // Local save is instant
     updateSave(patch);
 
-    // Battle log to cloud (best-effort, non-blocking)
     logBattle({
       wallet: address,
       nft_address: save.nft_address,
-      class_id: save.class_id,
-      level: save.level,
+      class_id: leaderProg.class_levels[0]?.class_id ?? save.class_id,
+      level: leaderProg.total_level,
       difficulty: result.difficulty,
       enemies: result.enemies,
       result: result.outcome,
       rounds: result.rounds,
       xp_earned: rewards.xp,
       gold_earned: rewards.goldCp,
-    }).catch(() => {}); // offline is fine
+    }).catch(() => {});
 
-    return { rewards, levelsGained };
+    return { rewards, levelsGained: leaderLevelsGained, levelUpQueue };
   }, [save, address, updateSave]);
 
   // Set a quest flag

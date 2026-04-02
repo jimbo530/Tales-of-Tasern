@@ -273,6 +273,21 @@ export async function GET() {
     ]);
 
     if (summaries.length === 0) {
+      // Try static file before returning empty — game needs data to function
+      try {
+        const fs = await import("fs");
+        const path = await import("path");
+        const cacheFile = path.join(process.cwd(), "public", "stats-cache.json");
+        if (fs.existsSync(cacheFile)) {
+          const cached = JSON.parse(fs.readFileSync(cacheFile, "utf-8"));
+          if (cached.characters?.length > 0) {
+            console.log("[API/stats] Supabase empty — serving static fallback with", cached.characters.length, "characters");
+            return NextResponse.json(cached, {
+              headers: { "Cache-Control": "public, s-maxage=14400, stale-while-revalidate=7200" },
+            });
+          }
+        }
+      } catch {}
       return NextResponse.json(
         { error: "No chain data yet — run /api/update-chain-data first", characters: [] },
         { status: 200 },
@@ -340,10 +355,23 @@ export async function GET() {
       tokenBreakdown: Object.values(tokenBreakdown),
       updatedAt: new Date().toISOString(),
     }, {
-      headers: { "Cache-Control": "public, s-maxage=3600, stale-while-revalidate=600" },
+      headers: { "Cache-Control": "public, s-maxage=14400, stale-while-revalidate=7200" },
     });
   } catch (error) {
     console.error("[API/stats]", error);
+    // Fallback: try serving the static cache file so the game still works
+    try {
+      const fs = await import("fs");
+      const path = await import("path");
+      const cacheFile = path.join(process.cwd(), "public", "stats-cache.json");
+      if (fs.existsSync(cacheFile)) {
+        const cached = JSON.parse(fs.readFileSync(cacheFile, "utf-8"));
+        console.log("[API/stats] Serving static fallback with", cached.characters?.length, "characters");
+        return NextResponse.json(cached, {
+          headers: { "Cache-Control": "public, s-maxage=14400, stale-while-revalidate=7200" },
+        });
+      }
+    } catch {}
     return NextResponse.json({ error: String(error) }, { status: 500 });
   }
 }

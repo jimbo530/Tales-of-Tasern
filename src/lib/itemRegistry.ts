@@ -5,7 +5,7 @@
 
 import { JUNK_LOOT, COMMON_LOOT, UNCOMMON_LOOT, RARE_LOOT, type LootItem } from "./loot";
 import { ALL_SHOPS, type ShopItem } from "./shops";
-import { COMMON_FOOD, EXOTIC_FOOD, type FoodItem } from "./foodItems";
+import { COMMON_FOOD, EXOTIC_FOOD, FRESH_FOOD, type FoodItem } from "./foodItems";
 
 export type ItemInfo = {
   id: string;
@@ -66,6 +66,11 @@ addLoot(RARE_LOOT);
 for (const shop of ALL_SHOPS) addShop(shop.items);
 addFood(COMMON_FOOD);
 addFood(EXOTIC_FOOD);
+addFood(FRESH_FOOD);
+
+// Special items
+registry.set("spoiled_meat", { id: "spoiled_meat", name: "Spoiled Meat", weight: 1, valueCp: 1, category: "alchemical", description: "Rotten meat. Useless as food, but an alchemist can brew poison from it." });
+registry.set("loam", { id: "loam", name: "Loam", weight: 2, valueCp: 5, category: "trade_good", description: "Rich decomposed organic matter. Farmers pay well for it — excellent fertilizer." });
 
 /** Look up item info by ID. Returns undefined if unknown. */
 export function getItemInfo(id: string): ItemInfo | undefined {

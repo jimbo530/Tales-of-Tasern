@@ -135,11 +135,14 @@ export type CraftRecipe = {
   id: string;
   name: string;
   craftType: CraftType;
+  altSkill?: string;        // alternative field skill that can also craft this (e.g. "survival")
+  altDC?: number;           // DC when using the alt skill (defaults to baseDC + 5)
   materials: { material: CraftMaterial; qty: number }[];
   baseDC: number;           // DC with general Craft skill
   hoursRequired: number;    // base hours (8h = 1 action)
   resultItemId: string;     // shop item id or custom item id
   resultValue: number;      // gold value of finished item
+  requiresFreshMeat?: boolean;  // needs a fresh_* meat item in inventory as input
   description: string;
 };
 
@@ -157,6 +160,7 @@ export const RECIPES: CraftRecipe[] = [
 
   // ── Cooking (uses herb materials, restores HP/buffs) ──
   { id: "r_trail_rations",  name: "Trail Rations",      craftType: "cooking",        materials: [{ material: "herb", qty: 1 }],                          baseDC: 8,  hoursRequired: 2, resultItemId: "shop_rations_1",     resultValue: 1,  description: "Dried food that keeps for days." },
+  { id: "r_salt_meat",      name: "Salt & Preserve Meat", craftType: "cooking", altSkill: "survival", altDC: 20, materials: [{ material: "herb", qty: 1 }], baseDC: 10, hoursRequired: 4, resultItemId: "food_pork_salted", resultValue: 3, requiresFreshMeat: true, description: "Salt and dry fresh meat so it keeps for weeks. Cooking DC 10 or Survival DC 20. Requires fresh game." },
   { id: "r_healing_meal",   name: "Healing Stew",       craftType: "cooking",        materials: [{ material: "herb", qty: 2 }],                          baseDC: 15, hoursRequired: 4, resultItemId: "craft_healing_stew",  resultValue: 5,  description: "A hearty stew that restores 1d6 HP." },
   { id: "r_stamina_meal",   name: "Stamina Bread",      craftType: "cooking",        materials: [{ material: "herb", qty: 2 }, { material: "wood", qty: 1 }], baseDC: 18, hoursRequired: 4, resultItemId: "craft_stamina_bread", resultValue: 8, description: "Dense travel bread that reduces food consumption for a day." },
 
@@ -184,6 +188,7 @@ export const RECIPES: CraftRecipe[] = [
 
   // ── Poison (hidden, requires poisonmaking knowledge) ──
   { id: "r_basic_poison",   name: "Blade Venom",        craftType: "poisonmaking",   materials: [{ material: "herb", qty: 3 }, { material: "bone", qty: 1 }], baseDC: 20, hoursRequired: 8, resultItemId: "craft_blade_venom", resultValue: 50, description: "A toxin applied to blades. Extra 1d4 damage for 3 hits." },
+  { id: "r_rot_poison",     name: "Rot Poison",         craftType: "poisonmaking",   materials: [{ material: "herb", qty: 1 }], baseDC: 15, hoursRequired: 4, resultItemId: "craft_rot_poison", resultValue: 25, description: "Foul toxin brewed from spoiled meat and noxious herbs. 1d3 CON damage." },
 ];
 
 // ── Craft Check ─────────────────────────────────────────────────────────────

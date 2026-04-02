@@ -26,7 +26,7 @@ import { getSpell, type SpellBattleEffect } from "@/lib/spells";
 import { getFeatCombatFlags } from "@/lib/feats";
 import type { NftCharacter } from "@/hooks/useNftStats";
 import type { CharacterClass } from "@/lib/classes";
-import type { Follower } from "@/lib/party";
+import type { Follower, EntityProgression } from "@/lib/party";
 
 // ── State ────────────────────────────────────────────────────────────────────
 
@@ -469,10 +469,10 @@ function reducer(state: BattleState, action: Action): BattleState {
 
       if (action.result.hit) {
         const units = s.units.map(u =>
-          u.isPlayer ? { ...u, currentHp: Math.max(0, u.currentHp - action.result.damage) } : u
+          u.id === target.id ? { ...u, currentHp: Math.max(0, u.currentHp - action.result.damage) } : u
         );
         s = { ...s, units };
-        const p = units.find(u => u.isPlayer)!;
+        const p = units.find(u => u.id === target.id)!;
         if (p.currentHp <= 0) {
           s = addLog(s, `${p.name} has fallen!`, "kill");
         }
@@ -549,8 +549,8 @@ export function useHexBattle() {
     ? state.units.find(u => u.id === state.turnOrder[state.currentTurnIndex]) ?? null
     : null;
 
-  const startBattle = useCallback((character: NftCharacter, difficulty: "easy" | "medium" | "hard" | "deadly", charClass?: CharacterClass, allCharacters?: NftCharacter[], featIds?: string[], weaponName?: string, spellInfo?: SpellUnitInfo, currentHp?: number, followers?: Follower[]) => {
-    const player = createPlayerUnit(character, { q: 1, r: 5 }, charClass, featIds ?? [], weaponName, spellInfo, currentHp);
+  const startBattle = useCallback((character: NftCharacter, difficulty: "easy" | "medium" | "hard" | "deadly", charClass?: CharacterClass, allCharacters?: NftCharacter[], featIds?: string[], weaponName?: string, spellInfo?: SpellUnitInfo, currentHp?: number, followers?: Follower[], progression?: EntityProgression) => {
+    const player = createPlayerUnit(character, { q: 1, r: 5 }, charClass, featIds ?? [], weaponName, spellInfo, currentHp, progression);
     const followerPositions: HexCoord[] = [{ q: 1, r: 4 }, { q: 1, r: 6 }, { q: 2, r: 4 }, { q: 2, r: 6 }];
     const followerUnits = (followers ?? [])
       .filter(f => f.alive && f.hp > 0 && (f.role === "melee" || f.role === "ranged"))
@@ -563,9 +563,9 @@ export function useHexBattle() {
   }, []);
 
   /** Start a quest battle with pre-built enemy specs (bypasses encounter generation) */
-  const startQuestBattle = useCallback((character: NftCharacter, specs: EnemySpec[], charClass?: CharacterClass, featIds?: string[], weaponName?: string, spellInfo?: SpellUnitInfo, currentHp?: number, followers?: Follower[]) => {
+  const startQuestBattle = useCallback((character: NftCharacter, specs: EnemySpec[], charClass?: CharacterClass, featIds?: string[], weaponName?: string, spellInfo?: SpellUnitInfo, currentHp?: number, followers?: Follower[], progression?: EntityProgression) => {
     const playerPos = { q: 1, r: 5 };
-    const player = createPlayerUnit(character, playerPos, charClass, featIds ?? [], weaponName, spellInfo, currentHp);
+    const player = createPlayerUnit(character, playerPos, charClass, featIds ?? [], weaponName, spellInfo, currentHp, progression);
     const followerPositions: HexCoord[] = [{ q: 1, r: 4 }, { q: 1, r: 6 }, { q: 2, r: 4 }, { q: 2, r: 6 }];
     const followerUnits = (followers ?? [])
       .filter(f => f.alive && f.hp > 0 && (f.role === "melee" || f.role === "ranged"))

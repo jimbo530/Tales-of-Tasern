@@ -1,11 +1,11 @@
 import { computeStats, type ComputedStats } from "./battleStats";
 import { type HexCoord, hexDistance, hexNeighbors, isAdjacent, GRID_COLS, GRID_ROWS } from "./hexGrid";
 import type { NftCharacter } from "@/hooks/useNftStats";
-import type { CharacterClass } from "./classes";
+import { type CharacterClass, getBAB, HIT_DIE_VALUES, getClassById } from "./classes";
 import type { Monster } from "./monsters";
-import { getFeatCombatFlags } from "./feats";
+import { getFeatCombatFlags, getFeatBonuses } from "./feats";
 import type { SpellBattleEffect } from "./spells";
-import type { Follower } from "./party";
+import { type Follower, type EntityProgression, totalBAB, totalSaves } from "./party";
 
 // ── Weapon Range & Properties System ─────────────────────────────────────────
 // 1 hex = 5ft (matches movement: speed 30 = 6 hexes).
@@ -329,10 +329,39 @@ export type SpellUnitInfo = {
 export function createPlayerUnit(
   char: NftCharacter, position: HexCoord, charClass?: CharacterClass,
   featIds: string[] = [], weaponName?: string, spellInfo?: SpellUnitInfo,
-  currentHpOverride?: number,
+  currentHpOverride?: number, progression?: EntityProgression,
 ): BattleUnit {
-  const stats = computeStats(char.stats, charClass, 1, featIds);
+  const level = progression?.total_level ?? 1;
+  const feats = progression?.feats ?? featIds;
+  const stats = computeStats(char.stats, charClass, level, feats);
+  // Override stats from progression (multiclass BAB, tracked HP)
+  if (progression) {
+    stats.atkBonus = totalBAB(progression.class_levels) + Math.floor(Math.max(0, char.stats.str) / 2);
+    stats.hp = progression.max_hp;
+    // Sum class passive bonuses across all classes
+    let speedBonus = 0, damageBonus = 0, acBonus = 0, hpBonus = 0;
+    for (const cl of progression.class_levels) {
+      const c = getClassById(cl.class_id);
+      if (!c) continue;
+      for (const feat of c.features) {
+        if (feat.passive && feat.level <= cl.levels) {
+          speedBonus += feat.passive.speedBonus ?? 0;
+          damageBonus += feat.passive.damageBonus ?? 0;
+          acBonus += feat.passive.acBonus ?? 0;
+          hpBonus += feat.passive.hpBonus ?? 0;
+        }
+      }
+    }
+    const fb = getFeatBonuses(feats);
+    stats.attack = Math.max(1, char.stats.str) + damageBonus + fb.damage;
+    stats.ac = char.stats.ac + acBonus + fb.ac;
+    stats.speed = (char.stats.speed || 30) + speedBonus + fb.speed;
+    stats.hp += hpBonus + fb.hp;
+  }
   const wr = getWeaponRange(weaponName);
+  const maxHp = progression ? stats.hp : stats.hp;
+  const curHp = currentHpOverride !== undefined ? Math.min(currentHpOverride, maxHp)
+    : progression ? Math.min(progression.current_hp, maxHp) : maxHp;
   return {
     id: "player",
     name: char.name,
@@ -340,14 +369,14 @@ export function createPlayerUnit(
     position,
     stats,
     subtypes: char.subtypes ?? [],
-    currentHp: currentHpOverride !== undefined ? Math.min(currentHpOverride, stats.hp) : stats.hp,
-    maxHp: stats.hp,
+    currentHp: curHp,
+    maxHp,
     isPlayer: true,
     hasMoved: false,
     hasActed: false,
     hasBonusActed: false,
     charClass,
-    feats: featIds,
+    feats,
     attackRange: wr.attackRange,
     rangeIncrement: wr.increment,
     isRanged: wr.isRanged,
@@ -398,28 +427,92 @@ export function createEnemyUnit(spec: EnemySpec, position: HexCoord, index: numb
 }
 
 /** Create a BattleUnit from a hired follower (fights on player's side).
- *  Derives proper warrior stats from level: STR-based damage, BAB + ability mod
- *  for attack rolls, DEX-based initiative, and equipment scaling with level.
+ *  If follower has EntityProgression, builds unit from class stats.
+ *  Otherwise derives warrior stats from template level.
  */
 export function createFollowerUnit(follower: Follower, position: HexCoord, index: number): BattleUnit {
   const isRanged = follower.role === "ranged";
   const isMounted = follower.abilities.includes("mounted_charge");
-  const speed = isMounted ? 40 : 30;
+  const prog = follower.progression;
 
-  // Derive warrior ability scores (game stats = D&D - 10, min 1)
-  // Melee: STR 14-16 (game 4-6), DEX 12 (game 2)
-  // Ranged: STR 12 (game 2), DEX 14-16 (game 4-6)
-  const abilityBumps = Math.floor(follower.level / 4); // +1 at levels 4, 8, 12, 16, 20
+  // ── Progression-based stats (loyal followers with class levels) ──
+  if (prog) {
+    const speed = isMounted ? 40 : 30;
+    // Derive ability scores from level (same formula as template, but use progression level)
+    const abilityBumps = Math.floor(prog.total_level / 4);
+    const str = isRanged ? 2 : Math.min(10, 4 + abilityBumps);
+    const dex = isRanged ? Math.min(10, 4 + abilityBumps) : 2;
+    const con = 2 + Math.floor(prog.total_level / 6);
+    const primaryMod = Math.floor((isRanged ? dex : str) / 2);
+    const bab = totalBAB(prog.class_levels);
+    const fb = getFeatBonuses(prog.feats);
+
+    // Sum class passive bonuses
+    let speedBonus = 0, damageBonus = 0, acBonus = 0, hpBonus = 0;
+    for (const cl of prog.class_levels) {
+      const c = getClassById(cl.class_id);
+      if (!c) continue;
+      for (const feat of c.features) {
+        if (feat.passive && feat.level <= cl.levels) {
+          speedBonus += feat.passive.speedBonus ?? 0;
+          damageBonus += feat.passive.damageBonus ?? 0;
+          acBonus += feat.passive.acBonus ?? 0;
+          hpBonus += feat.passive.hpBonus ?? 0;
+        }
+      }
+    }
+
+    const weaponBonus = Math.floor(prog.total_level / 3);
+    const stats: ComputedStats = {
+      attack:       Math.max(1, str + weaponBonus + damageBonus + fb.damage),
+      mAtk:         1,
+      def:          Math.max(1, dex),
+      mDef:         1,
+      hp:           prog.max_hp + hpBonus + fb.hp,
+      healing:      0,
+      initiative:   Math.max(1, dex) + fb.initiative,
+      carryCapacity: 100,
+      ac:           follower.ac + acBonus + fb.ac,
+      atkBonus:     bab + primaryMod + fb.atkBonus,
+      speed:        speed + speedBonus + fb.speed,
+      lightningDmg: 0,
+      fireDmg:      0,
+    };
+    return {
+      id: `follower-${index}`,
+      name: follower.name,
+      imageEmoji: isRanged ? "\u{1F3F9}" : "\u2694\uFE0F",
+      position,
+      stats,
+      subtypes: [],
+      currentHp: Math.min(prog.current_hp, stats.hp),
+      maxHp: stats.hp,
+      isPlayer: true,
+      hasMoved: false,
+      hasActed: false,
+      hasBonusActed: false,
+      feats: prog.feats,
+      attackRange: isRanged ? 6 : 1,
+      rangeIncrement: isRanged ? 6 : 0,
+      isRanged,
+      weaponProperties: [],
+      readiedAttack: false,
+      turnStartPos: position,
+      reactionUsed: false,
+      activeEffects: [],
+      rawAbilities: { str, dex, con, int: 1, wis: 1, cha: 1 },
+    };
+  }
+
+  // ── Template-based stats (non-loyal / no progression) ──
+  const speed = isMounted ? 40 : 30;
+  const abilityBumps = Math.floor(follower.level / 4);
   const str = isRanged ? 2 : Math.min(10, 4 + abilityBumps);
   const dex = isRanged ? Math.min(10, 4 + abilityBumps) : 2;
-  const con = 2 + Math.floor(follower.level / 6); // CON 12-14
-
-  // atkBonus = BAB + ability mod (STR for melee, DEX for ranged)
+  const con = 2 + Math.floor(follower.level / 6);
   const primaryMod = Math.floor((isRanged ? dex : str) / 2);
   const atkBonus = follower.attack + primaryMod;
-
-  // Damage = STR (game stat) + weapon scaling with level
-  const weaponBonus = Math.floor(follower.level / 3); // better weapons at higher levels
+  const weaponBonus = Math.floor(follower.level / 3);
   const attack = str + weaponBonus;
 
   const stats: ComputedStats = {
