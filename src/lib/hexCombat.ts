@@ -115,6 +115,7 @@ export type ActiveSpellEffect = {
   spellName: string;
   sourceId: string;
   remainingRounds: number;  // -1 = until end of combat, 0 = instant (shouldn't be stored)
+  concentration?: boolean;  // true if maintained by caster's concentration
   buffAC?: number;
   buffAtk?: number;
   buffDmg?: number;
@@ -160,6 +161,7 @@ export type BattleUnit = {
   reactionUsed: boolean;   // true if used their reaction this round (AoO)
   // ── Spell combat fields ──
   activeEffects: ActiveSpellEffect[];
+  concentrationSpellId?: string;  // spell ID the unit is concentrating on (max 1)
   rawAbilities: { str: number; dex: number; con: number; int: number; wis: number; cha: number };
   spellSlots?: number[];          // max spell slots per level [0th, 1st, ...]
   spellSlotsUsed?: number[];      // slots used this battle
@@ -624,6 +626,7 @@ export function resolveSpellCast(
   spellName: string,
   spellLevel: number,
   effect: SpellBattleEffect,
+  isConcentration?: boolean,
 ): SpellCastResult {
   const casterLvl = caster.casterLevel ?? 1;
   const casterMod = caster.castingAbilityMod ?? 0;
@@ -672,6 +675,7 @@ export function resolveSpellCast(
     const dur = effect.durationRounds ?? 1;
     const eff: ActiveSpellEffect = {
       spellId, spellName, sourceId: caster.id, remainingRounds: dur,
+      concentration: isConcentration,
       buffAC: effect.buffAC, buffAtk: effect.buffAtk, buffDmg: effect.buffDmg,
       buffSave: effect.buffSave, buffSpeed: effect.buffSpeed,
     };
@@ -694,6 +698,7 @@ export function resolveSpellCast(
     const dur = effect.durationRounds ?? 1;
     const eff: ActiveSpellEffect = {
       spellId, spellName, sourceId: caster.id, remainingRounds: dur,
+      concentration: isConcentration,
       debuffAC: effect.debuffAC, debuffAtk: effect.debuffAtk, debuffDmg: effect.debuffDmg,
     };
     const parts: string[] = [];
@@ -713,6 +718,7 @@ export function resolveSpellCast(
     const dur = effect.durationRounds ?? 1;
     const eff: ActiveSpellEffect = {
       spellId, spellName, sourceId: caster.id, remainingRounds: dur,
+      concentration: isConcentration,
       condition: effect.condition,
     };
     return {

@@ -22,7 +22,7 @@ import {
   getAoOThreats,
   createFollowerUnit,
 } from "@/lib/hexCombat";
-import { getSpell, type SpellBattleEffect } from "@/lib/spells";
+import { getSpell, requiresConcentration, type SpellBattleEffect } from "@/lib/spells";
 import { getFeatCombatFlags } from "@/lib/feats";
 import type { NftCharacter } from "@/hooks/useNftStats";
 import type { CharacterClass } from "@/lib/classes";
@@ -87,6 +87,50 @@ function addLog(state: BattleState, text: string, logType: CombatLogEntry["type"
   };
 }
 
+/** 5e Concentration check: when a concentrating unit takes damage, roll CON save
+ *  DC = max(10, floor(damage/2)). On failure, remove all effects from that spell. */
+function checkConcentration(state: BattleState, unitId: string, damage: number): BattleState {
+  const unit = state.units.find(u => u.id === unitId);
+  if (!unit || !unit.concentrationSpellId || damage <= 0) return state;
+
+  const dc = Math.max(10, Math.floor(damage / 2));
+  const conMod = Math.floor((unit.rawAbilities.con - 10) / 2);
+  const roll = rollD20();
+  const total = roll + conMod;
+
+  if (total >= dc) {
+    return addLog(state, `${unit.name} maintains concentration (d20(${roll})+${conMod}=${total} vs DC ${dc})`, "info");
+  }
+
+  // Failed — break concentration: remove all effects with this spellId from this caster
+  const spellId = unit.concentrationSpellId;
+  const spellName = unit.activeEffects.find(e => e.spellId === spellId)?.spellName ?? "spell";
+  const units = state.units.map(u => {
+    const cleaned = { ...u, activeEffects: u.activeEffects.filter(e => !(e.concentration && e.sourceId === unitId && e.spellId === spellId)) };
+    if (u.id === unitId) cleaned.concentrationSpellId = undefined;
+    return cleaned;
+  });
+  let s = { ...state, units };
+  s = addLog(s, `${unit.name} loses concentration on ${spellName}! (d20(${roll})+${conMod}=${total} vs DC ${dc})`, "system");
+  return s;
+}
+
+/** Drop an existing concentration spell from a caster (used when casting a new one) */
+function dropConcentration(state: BattleState, casterId: string): BattleState {
+  const caster = state.units.find(u => u.id === casterId);
+  if (!caster?.concentrationSpellId) return state;
+  const spellId = caster.concentrationSpellId;
+  const spellName = caster.activeEffects.find(e => e.spellId === spellId)?.spellName ?? "spell";
+  const units = state.units.map(u => {
+    const cleaned = { ...u, activeEffects: u.activeEffects.filter(e => !(e.concentration && e.sourceId === casterId && e.spellId === spellId)) };
+    if (u.id === casterId) cleaned.concentrationSpellId = undefined;
+    return cleaned;
+  });
+  let s = { ...state, units };
+  s = addLog(s, `${caster.name} drops concentration on ${spellName}.`, "system");
+  return s;
+}
+
 function calcReachable(unit: BattleUnit, units: BattleUnit[]): HexCoord[] {
   const occupied = new Set(
     units.filter(u => u.id !== unit.id && u.currentHp > 0).map(u => `${u.position.q},${u.position.r}`)
@@ -101,6 +145,20 @@ function calcAttackable(unit: BattleUnit, units: BattleUnit[]): string[] {
 }
 
 function checkEnd(state: BattleState): BattleState {
+  // Clean up concentration effects from dead units
+  const deadConcentrators = state.units.filter(u => u.currentHp <= 0 && u.concentrationSpellId);
+  if (deadConcentrators.length > 0) {
+    let units = state.units;
+    for (const dead of deadConcentrators) {
+      const sid = dead.concentrationSpellId!;
+      units = units.map(u => {
+        const cleaned = { ...u, activeEffects: u.activeEffects.filter(e => !(e.concentration && e.sourceId === dead.id && e.spellId === sid)) };
+        if (u.id === dead.id) cleaned.concentrationSpellId = undefined;
+        return cleaned;
+      });
+    }
+    state = { ...state, units };
+  }
   const player = state.units.find(u => u.isPlayer);
   const enemiesAlive = state.units.filter(u => !u.isPlayer && u.currentHp > 0);
   if (!player || player.currentHp <= 0) return { ...state, phase: "defeat" };
@@ -219,6 +277,7 @@ function reducer(state: BattleState, action: Action): BattleState {
         s = addLog(s, `Opportunity attack! ${enemy.name} strikes at ${playerNow.name}: ${result.breakdown}`, result.hit ? "hit" : "miss");
         if (result.hit) {
           s = { ...s, units: s.units.map(u => u.id === activeId ? { ...u, currentHp: Math.max(0, u.currentHp - result.damage) } : u) };
+          s = checkConcentration(s, activeId, result.damage);
           const hitUnit = s.units.find(u => u.id === activeId)!;
           if (hitUnit.currentHp <= 0) {
             s = addLog(s, `${hitUnit.name} has fallen!`, "kill");
@@ -282,6 +341,7 @@ function reducer(state: BattleState, action: Action): BattleState {
       const updAtk = units.find(u => u.id === activeId)!;
       const mvLeft = !updAtk.hasMoved ? calcReachable(updAtk, units) : [];
       let s: BattleState = { ...state, units, phase: "playerTurn", subMode: "idle", reachableHexes: mvLeft, attackableEnemies: [], pendingTargetId: null };
+      s = checkConcentration(s, state.pendingTargetId!, finalDamage);
       if (target.currentHp <= 0) {
         s = addLog(s, `${target.name} is defeated!`, "kill");
 
@@ -308,6 +368,7 @@ function reducer(state: BattleState, action: Action): BattleState {
                   u.id === cleaveTarget.id ? { ...u, currentHp: Math.max(0, u.currentHp - cleaveResult.damage) } : u
                 ),
               };
+              s = checkConcentration(s, cleaveTarget.id, cleaveResult.damage);
               const cleavedUnit = s.units.find(u => u.id === cleaveTarget.id)!;
               if (cleavedUnit.currentHp <= 0) {
                 s = addLog(s, `${cleavedUnit.name} is defeated!`, "kill");
@@ -328,40 +389,54 @@ function reducer(state: BattleState, action: Action): BattleState {
       const spell = getSpell(action.spellId);
       if (!spell?.battle) return state;
 
+      const isConc = requiresConcentration(spell);
+
       // Determine spell level for this caster's class
       const casterClassId = caster.charClass?.spellcasting?.casterClass;
       const spellLevel = casterClassId ? (spell.levels[casterClassId] ?? 0) : 0;
 
+      // If casting a concentration spell, drop existing concentration first
+      let s: BattleState = state;
+      if (isConc) {
+        s = dropConcentration(s, activeId);
+      }
+
       // Deduct spell slot
-      let units = state.units.map(u => {
+      let units = s.units.map(u => {
         if (u.id !== activeId || !u.spellSlotsUsed) return u;
         const used = [...u.spellSlotsUsed];
         while (used.length <= spellLevel) used.push(0);
         used[spellLevel]++;
         return { ...u, spellSlotsUsed: used, hasActed: true };
       });
+      s = { ...s, units };
 
-      // Resolve spell
-      const result = resolveSpellCast(caster, target, action.spellId, spell.name, spellLevel, spell.battle as SpellBattleEffect);
-      let s: BattleState = { ...state, units };
+      // Resolve spell (pass concentration flag so effect gets marked)
+      const result = resolveSpellCast(caster, target, action.spellId, spell.name, spellLevel, spell.battle as SpellBattleEffect, isConc);
 
       // Apply damage
       if (result.damage) {
         // AoE: hit all enemies within area (if hexArea defined)
+        const dmgAmt = result.damage ?? 0;
         if (spell.battle.hexArea && spell.battle.hexArea > 0) {
+          const hitIds: string[] = [];
           units = s.units.map(u => {
             if (u.id === activeId || u.currentHp <= 0) return u;
             if (hexDistance(u.position, target.position) <= (spell.battle!.hexArea ?? 0)) {
-              return { ...u, currentHp: Math.max(0, u.currentHp - (result.damage ?? 0)) };
+              hitIds.push(u.id);
+              return { ...u, currentHp: Math.max(0, u.currentHp - dmgAmt) };
             }
             return u;
           });
+          s = { ...s, units };
+          for (const hid of hitIds) s = checkConcentration(s, hid, dmgAmt);
         } else {
           units = s.units.map(u =>
-            u.id === action.targetId ? { ...u, currentHp: Math.max(0, u.currentHp - (result.damage ?? 0)) } : u
+            u.id === action.targetId ? { ...u, currentHp: Math.max(0, u.currentHp - dmgAmt) } : u
           );
+          s = { ...s, units };
+          s = checkConcentration(s, action.targetId, dmgAmt);
         }
-        s = { ...s, units };
         const killed = s.units.find(u => u.id === action.targetId);
         if (killed && killed.currentHp <= 0) {
           s = addLog(s, `${killed.name} is defeated!`, "kill");
@@ -382,6 +457,13 @@ function reducer(state: BattleState, action: Action): BattleState {
           u.id === action.targetId ? { ...u, activeEffects: [...u.activeEffects, result.effect!] } : u
         );
         s = { ...s, units };
+      }
+
+      // Set concentration on caster if this is a concentration spell with an applied effect
+      if (isConc && result.effect) {
+        s = { ...s, units: s.units.map(u =>
+          u.id === activeId ? { ...u, concentrationSpellId: action.spellId } : u
+        ) };
       }
 
       const logType: CombatLogEntry["type"] = result.success ? (result.damage ? "hit" : "info") : "miss";
@@ -450,7 +532,8 @@ function reducer(state: BattleState, action: Action): BattleState {
           u.id === action.targetId ? { ...u, currentHp: Math.max(0, u.currentHp - finalDmg) } : u
         );
         s = { ...s, units };
-        const hit = units.find(u => u.id === action.targetId)!;
+        s = checkConcentration(s, action.targetId, finalDmg);
+        const hit = s.units.find(u => u.id === action.targetId)!;
         if (hit.currentHp <= 0) {
           s = addLog(s, `${hit.name} is defeated!`, "kill");
         }
@@ -472,7 +555,8 @@ function reducer(state: BattleState, action: Action): BattleState {
           u.id === target.id ? { ...u, currentHp: Math.max(0, u.currentHp - action.result.damage) } : u
         );
         s = { ...s, units };
-        const p = units.find(u => u.id === target.id)!;
+        s = checkConcentration(s, target.id, action.result.damage);
+        const p = s.units.find(u => u.id === target.id)!;
         if (p.currentHp <= 0) {
           s = addLog(s, `${p.name} has fallen!`, "kill");
         }
@@ -494,6 +578,7 @@ function reducer(state: BattleState, action: Action): BattleState {
       s = addLog(s, `Opportunity attack! ${attacker.name} strikes at ${target.name}: ${result.breakdown}`, result.hit ? "hit" : "miss");
       if (result.hit) {
         s = { ...s, units: s.units.map(u => u.id === targetId ? { ...u, currentHp: Math.max(0, u.currentHp - result.damage) } : u) };
+        s = checkConcentration(s, targetId, result.damage);
         const hit = s.units.find(u => u.id === targetId)!;
         if (hit.currentHp <= 0) {
           s = addLog(s, `${hit.name} is defeated!`, "kill");

@@ -1,3 +1,21 @@
+# Tales of Tasern D20 Hex RPG
+
+This is the **d20-stats hex exploration RPG**. It is NOT the simpler card-battle game.
+
+- **Repo**: Tales-of-Tasern
+- **Branch**: `main`
+- **Stats**: STR / DEX / CON / INT / WIS / CHA (D&D 3.5 style)
+- **Chains**: Base (primary) + Polygon
+- **Key features**: Hex map exploration, turn-based D&D combat, spells, multi-party, save system
+- **Shared data**: `src/lib/contracts.ts` has GAME_NFTS and KNOWN_LP_PAIRS (shared with card game)
+- **Game-specific stat mapping**: `STAT_TOKENS` in contracts.ts — maps LP tokens to d20 ability scores
+- **Power-ups**: `src/components/PowerUp.tsx` — ETH → LP → NFT stat boosts
+- **Deploy contracts**: Always use localhost HTML pages in `public/deploy-*.html` with embedded bytecode (never Remix/CLI)
+- **Lore**: Kardov's Gate, Vessel of Namaris, Iron Maw, High Luminar — gritty port city tone
+- **Economy**: gp/sp/cp with coin weight, money changers, trade goods
+
+The NFT card game is a **completely separate project** at `C:\Users\bigji\Documents\nft-game`. Never merge code between them.
+
 @AGENTS.md
 
 <!-- VERCEL BEST PRACTICES START -->

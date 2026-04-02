@@ -33,7 +33,7 @@ export const SPECIALIZABLE_SCHOOLS: SpellSchool[] = [
   "evocation", "illusion", "necromancy", "transmutation",
 ];
 
-export type CasterClass = "wizard" | "sorcerer" | "cleric" | "druid" | "bard" | "paladin" | "ranger";
+export type CasterClass = "wizard" | "sorcerer" | "cleric" | "druid" | "bard" | "paladin" | "ranger" | "warlock";
 
 export type SpellBattleEffect = {
   type: "damage" | "healing" | "buff" | "debuff" | "summon" | "utility" | "condition";
@@ -70,7 +70,23 @@ export type Spell = {
   sr: boolean;                // spell resistance applies?
   description: string;
   battle?: SpellBattleEffect;
+  edition?: "3.5" | "5e";        // source edition (absent = 3.5 for backward compat)
+  concentration?: boolean;        // 5e: requires concentration
+  ritual?: boolean;               // 5e: can be cast as ritual
 };
+
+/** Does this spell require concentration (5e system applied to all spells)?
+ *  5e spells already have concentration flag. 3.5 spells: buff/debuff/condition/summon
+ *  with duration > 0 are treated as concentration. */
+export function requiresConcentration(spell: Spell): boolean {
+  if (spell.concentration === true) return true;
+  if (spell.concentration === false) return false;
+  // 3.5 spells without explicit flag: ongoing buff/debuff/condition/summon = concentration
+  if (!spell.battle) return false;
+  const t = spell.battle.type;
+  if (t === "damage" || t === "healing" || t === "utility") return false;
+  return (spell.battle.durationRounds ?? 0) !== 0;
+}
 
 // ── Spell Slots Per Day ─────────────────────────────────────────────────────
 // Index = class level (1-20), value = array of slots [0th, 1st, 2nd, ...]
@@ -251,6 +267,32 @@ export const PALADIN_SLOTS: SlotRow[] = [
 
 export const RANGER_SLOTS: SlotRow[] = PALADIN_SLOTS;  // same progression
 
+// 5e Warlock: Pact Magic — few slots but all cast at highest known level
+// Simplified to standard progression for game compatibility (CHA-based, up to 5th level spells)
+export const WARLOCK_SLOTS: SlotRow[] = [
+  [],                                        // 0
+  [null, 1],                                 // 1  — 1 slot, 1st level
+  [null, 2],                                 // 2
+  [null, null, 2],                           // 3  — 2 slots, 2nd level
+  [null, null, 2],                           // 4
+  [null, null, null, 2],                     // 5  — 2 slots, 3rd level
+  [null, null, null, 2],                     // 6
+  [null, null, null, null, 2],               // 7  — 2 slots, 4th level
+  [null, null, null, null, 2],               // 8
+  [null, null, null, null, null, 3],         // 9  — 3 slots, 5th level
+  [null, null, null, null, null, 3],         // 10
+  [null, null, null, null, null, 3],         // 11 — 3 slots, 5th level (Mystic Arcanum for 6+)
+  [null, null, null, null, null, 3],         // 12
+  [null, null, null, null, null, 3],         // 13
+  [null, null, null, null, null, 3],         // 14
+  [null, null, null, null, null, 3],         // 15
+  [null, null, null, null, null, 3],         // 16
+  [null, null, null, null, null, 4],         // 17 — 4 slots, 5th level
+  [null, null, null, null, null, 4],         // 18
+  [null, null, null, null, null, 4],         // 19
+  [null, null, null, null, null, 4],         // 20
+];
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 /** Get spell slots for a caster class at a given level */
@@ -258,6 +300,7 @@ export function getSpellSlots(casterClass: CasterClass, classLevel: number): Slo
   const table: Record<CasterClass, SlotRow[]> = {
     wizard: WIZARD_SLOTS, sorcerer: SORCERER_SLOTS, cleric: CLERIC_SLOTS,
     druid: DRUID_SLOTS, bard: BARD_SLOTS, paladin: PALADIN_SLOTS, ranger: RANGER_SLOTS,
+    warlock: WARLOCK_SLOTS,
   };
   return table[casterClass][Math.min(classLevel, 20)] ?? [];
 }
@@ -284,8 +327,10 @@ export function bonusSpells(abilityScore: number): number[] {
 
 /** Get all spells available to a class at a given spell level */
 export function getClassSpells(casterClass: CasterClass, spellLevel: number): Spell[] {
-  return SPELLS.filter(s => s.levels[casterClass] === spellLevel);
+  return SPELL_MAP_READY().filter(s => s.levels[casterClass] === spellLevel);
 }
+// SPELL_MAP and ALL_SPELLS are defined after the SPELLS array — use lazy ref
+function SPELL_MAP_READY() { return ALL_SPELLS; }
 
 /** Get a spell by ID */
 export function getSpell(id: string): Spell | undefined {
@@ -1990,14 +2035,21 @@ export const SPELLS: Spell[] = [
     description: "As limited wish, but with fewer limits. The mightiest spell a wizard can cast." },
 ];
 
+// ── 5e SRD Spells ─────────────────────────────────────────────────────────
+
+import { SPELLS_5E } from "./spells5e";
+
+/** All spells from both editions, 3.5 first then 5e */
+export const ALL_SPELLS: Spell[] = [...SPELLS, ...SPELLS_5E];
+
 // ── Quick Lookup Map ────────────────────────────────────────────────────────
 
-export const SPELL_MAP = new Map<string, Spell>(SPELLS.map(s => [s.id, s]));
+export const SPELL_MAP = new Map<string, Spell>(ALL_SPELLS.map(s => [s.id, s]));
 
 /** Count of spells by school for UI display */
 export function spellCountBySchool(): Record<SpellSchool, number> {
   const counts: Record<string, number> = {};
-  for (const s of SPELLS) {
+  for (const s of ALL_SPELLS) {
     counts[s.school] = (counts[s.school] ?? 0) + 1;
   }
   return counts as Record<SpellSchool, number>;

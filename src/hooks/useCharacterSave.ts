@@ -111,9 +111,10 @@ export function useCharacterSave() {
       school_specialization?: string | null;
       prohibited_schools?: string[];
     },
+    factionName?: string,
   ) => {
     if (!address) return false;
-    const newSave = defaultSave(address, nftAddress, classId, skillRanks ?? {}, feats ?? []);
+    const newSave = defaultSave(address, nftAddress, classId, skillRanks ?? {}, feats ?? [], factionName);
     if (spellConfig) {
       if (spellConfig.known_spells) newSave.known_spells = spellConfig.known_spells;
       if (spellConfig.prepared_spells) newSave.prepared_spells = spellConfig.prepared_spells;

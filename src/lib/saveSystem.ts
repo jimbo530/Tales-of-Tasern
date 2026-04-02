@@ -119,6 +119,7 @@ export type CharacterSave = {
   prohibited_schools: string[];            // wizard prohibited schools (2 for specialist, 0 for generalist)
   quest_flags: Record<string, boolean>;
   quest_cooldowns: Record<string, string>;  // ISO timestamps
+  faction_name: string;                      // player-chosen faction/guild name
   faction_rep: Record<string, number>;      // faction id → rep (-100 to 100, 0 = neutral)
   inventory: InventoryItem[];
   equipment: Equipment;
@@ -301,6 +302,7 @@ export function defaultSave(
   classId: string,
   skillRanks: Record<string, number> = {},
   feats: string[] = [],
+  factionName: string = "Unnamed Company",
 ): Omit<CharacterSave, "created_at" | "updated_at"> {
   return {
     wallet: wallet.toLowerCase(),
@@ -319,6 +321,7 @@ export function defaultSave(
     prohibited_schools: [],
     quest_flags: {},
     quest_cooldowns: {},
+    faction_name: factionName,
     faction_rep: {},
     inventory: [],
     equipment: {},

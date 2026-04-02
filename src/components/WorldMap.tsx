@@ -248,6 +248,8 @@ export function rollWorldLuck(
   fame?: number,                  // performer renown (for Perform skill)
   exhaustionPoints?: number,      // each point = -1 to all stats
   feats?: string[],               // feat IDs for skill bonuses (e.g. "skill-focus:diplomacy")
+  playerName?: string,            // hero/NFT name for NPC dialogue
+  factionName?: string,           // player's faction name for NPC dialogue
 ): WorldLuckResult {
   // ── Two rolls: world (hidden) + skill check (shown to player) ──
   const worldRoll = Math.floor(Math.random() * 20) + 1;
@@ -286,6 +288,8 @@ export function rollWorldLuck(
 
   // ── Helpers used by multiple branches ──
   const sid = fieldSkillId ?? "search";
+  const pn = playerName ?? "traveler";  // hero name for NPC dialogue
+  const fn = factionName ?? "your company"; // faction name for NPC dialogue
   const r = (o: Omit<WorldLuckResult, "worldRoll" | "skillRoll" | "rawD20" | "skillMod" | "skillUsed" | "interaction">): WorldLuckResult =>
     ({ worldRoll, skillRoll, rawD20, skillMod, skillUsed: skillName, interaction, ...o });
 
@@ -304,10 +308,10 @@ export function rollWorldLuck(
         skillDC: dc, outcome: "avoided_danger",
         description: pick([
           sid === "diplomacy"
-            ? "A gang of thugs blocks your path, but your calm words convince them you're not worth the trouble."
-            : "You lock eyes with the lead thug and growl. They back off, muttering curses.",
-          "Street toughs size you up, but think better of it when you stand your ground.",
-          "\"Hand over your coin!\" demands a rough voice — but your " + (sid === "diplomacy" ? "silver tongue" : "menacing glare") + " sends them slinking away.",
+            ? `A gang of thugs blocks your path, but ${pn}'s calm words convince them ${fn} isn't worth the trouble.`
+            : `${pn} locks eyes with the lead thug and growls. They back off, muttering curses.`,
+          `Street toughs size up ${pn}, but think better of it when ${fn} stands their ground.`,
+          `"Hand over your coin!" demands a rough voice — but ${pn}'s ${sid === "diplomacy" ? "silver tongue" : "menacing glare"} sends them slinking away.`,
         ]),
         hpChange: 0, goldChange: 0, foodChange: 0, xpChange: 10,
       });
@@ -319,9 +323,9 @@ export function rollWorldLuck(
       skillDC: dc, outcome: "thug_fight",
       enemyCount: thugCount,
       description: pick([
-        `${thugCount} street thugs step out from a dark alley. "Your money or your life!"`,
-        `A gang of ${thugCount} armed ruffians corners you near the docks. "Empty your pockets, traveler."`,
-        `${thugCount} thugs with clubs and knives block the street. "Nice gear. Hand it over."`,
+        `${thugCount} street thugs step out from a dark alley. "Your money or your life, ${pn}!"`,
+        `A gang of ${thugCount} armed ruffians corners ${fn} near the docks. "Empty your pockets."`,
+        `${thugCount} thugs with clubs and knives block the street. "Nice gear, ${pn}. Hand it over."`,
       ]),
       hpChange: 0, goldChange: 0, foodChange: 0, xpChange: 0,
     });
@@ -2397,8 +2401,8 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
       const isNight = ((save.hour ?? 0) % 24) >= 16;
       const doRest = aa.type === "rest" || isNight;
       const result = doRest
-        ? rollWorldLuck(currentHex, "rest", charStats, skillRanks, distFromCity, undefined, heroCount, save.fame ?? 0, exhPts, save.feats)
-        : rollWorldLuck(currentHex, "skill", charStats, skillRanks, distFromCity, (aa.skill ?? "search") as FieldSkillId, heroCount, save.fame ?? 0, exhPts, save.feats);
+        ? rollWorldLuck(currentHex, "rest", charStats, skillRanks, distFromCity, undefined, heroCount, save.fame ?? 0, exhPts, save.feats, character?.name, save.faction_name)
+        : rollWorldLuck(currentHex, "skill", charStats, skillRanks, distFromCity, (aa.skill ?? "search") as FieldSkillId, heroCount, save.fame ?? 0, exhPts, save.feats, character?.name, save.faction_name);
 
       // Interrupting outcomes — cancel auto
       const INTERRUPTS = new Set(["fight", "thug_fight", "find_quest", "find_dungeon", "hazard"]);
@@ -2569,7 +2573,7 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
     const effectiveHexes = travelCost(dist, selectedHex);
     const result = travel(effectiveHexes, save, con);
     const destDist = hexDistance(selectedHex, CITY_CENTER);
-    const encounter = rollWorldLuck(selectedHex, "travel", charStats, skillRanks, destDist, undefined, heroCount, save.fame ?? 0, exhPts, save.feats);
+    const encounter = rollWorldLuck(selectedHex, "travel", charStats, skillRanks, destDist, undefined, heroCount, save.fame ?? 0, exhPts, save.feats, character?.name, save.faction_name);
     onTravel({ q: selectedHex.q, r: selectedHex.r }, result, selectedHex, encounter);
     // If travel encounter is a fight, set lastAction so fightBlocking activates and fight UI shows
     if (encounter.outcome === "fight" || encounter.outcome === "thug_fight") {
@@ -2996,6 +3000,13 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
               const roleEmoji: Record<string, string> = { melee: "\u2694\uFE0F", ranged: "\u{1F3F9}", specialist: "\u{1F9EA}", labor: "\u{1F4E6}", pet: "\u{1F43E}", faction: "\u{1F6E1}\uFE0F" };
               return (
                 <div className="p-2 flex flex-col gap-3" style={{ fontSize: "0.55rem", color: "rgba(232,213,176,0.7)" }}>
+                  {/* Faction banner */}
+                  {save.faction_name && (
+                    <div className="text-center px-2 py-1.5 rounded" style={{ background: "rgba(201,168,76,0.06)", border: "1px solid rgba(201,168,76,0.15)" }}>
+                      <div className="font-bold uppercase tracking-widest" style={{ fontSize: "0.4rem", color: "rgba(201,168,76,0.4)" }}>Faction</div>
+                      <div className="font-bold" style={{ fontSize: "0.65rem", color: "rgba(251,191,36,0.9)" }}>{save.faction_name}</div>
+                    </div>
+                  )}
                   {save.party.heroes.map((hero, hIdx) => {
                     const hProg = hero.progression;
                     const hLevel = hProg?.total_level ?? save.level;
@@ -3427,7 +3438,7 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
                       {!fightBlocking && <div className="flex gap-1">
                         {(
                           <button onClick={() => {
-                              const result = rollWorldLuck(currentHex, "skill", charStats, skillRanks, distFromCity, selectedSkill, heroCount, save.fame ?? 0, exhPts, save.feats);
+                              const result = rollWorldLuck(currentHex, "skill", charStats, skillRanks, distFromCity, selectedSkill, heroCount, save.fame ?? 0, exhPts, save.feats, character?.name, save.faction_name);
                               setLastAction(result); onAction(result);
                             }}
                             className="flex-1 px-2 py-1 rounded text-xs font-bold uppercase tracking-widest"
@@ -3436,7 +3447,7 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
                           </button>
                         )}
                         <button onClick={() => {
-                            const result = rollWorldLuck(currentHex, "rest", charStats, skillRanks, distFromCity, undefined, heroCount, save.fame ?? 0, exhPts, save.feats);
+                            const result = rollWorldLuck(currentHex, "rest", charStats, skillRanks, distFromCity, undefined, heroCount, save.fame ?? 0, exhPts, save.feats, character?.name, save.faction_name);
                             setLastAction(result); onAction(result);
                           }}
                           disabled={save.food === 0 && save.current_hp >= save.max_hp}
@@ -3618,7 +3629,7 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
                               const result: WorldLuckResult = {
                                 worldRoll: 0, skillRoll: 0, skillDC: 0,
                                 interaction: "rest", outcome: "nothing",
-                                description: `The priests restore your body. Full HP restored.`,
+                                description: `The priests tend to ${character?.name ?? "the leader"}'s wounds. Full HP restored.`,
                                 hpChange: healAmt, goldChange: -blessingCost, foodChange: 0, xpChange: 0,
                               };
                               setLastAction(result); onAction(result);
@@ -3681,7 +3692,7 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
                                     worldRoll: 0, skillRoll: total, skillDC: dc,
                                     skillMod: chaMod + dipRanks, skillUsed: "Diplomacy",
                                     interaction: "rest", outcome: "nothing",
-                                    description: `Diplomacy ${total} vs DC ${dc} — Success! ${follower.name} the ${tmpl.name} agrees to join your cause.`,
+                                    description: `Diplomacy ${total} vs DC ${dc} — Success! ${follower.name} the ${tmpl.name} agrees to join ${save.faction_name ?? "your cause"}.`,
                                     hpChange: 0, goldChange: 0, foodChange: 0, xpChange: 25,
                                     newFollower: follower,
                                     factionRepChange: { factionId, amount: 1 },
@@ -3692,7 +3703,7 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
                                     worldRoll: 0, skillRoll: total, skillDC: dc,
                                     skillMod: chaMod + dipRanks, skillUsed: "Diplomacy",
                                     interaction: "rest", outcome: "nothing",
-                                    description: `Diplomacy ${total} vs DC ${dc} — No one is willing to join you right now. Try improving your standing with the temple.`,
+                                    description: `Diplomacy ${total} vs DC ${dc} — No one at the temple is willing to join ${save.faction_name ?? "your company"} right now. Try improving your standing.`,
                                     hpChange: 0, goldChange: 0, foodChange: 0, xpChange: 10,
                                   };
                                   setLastAction(result); onAction(result);
@@ -4112,7 +4123,7 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
                     <div className="flex gap-1 mt-1">
                       {(
                         <button onClick={() => {
-                            const result = rollWorldLuck(currentHex, "skill", charStats, skillRanks, distFromCity, selectedSkill, heroCount, save.fame ?? 0, exhPts, save.feats);
+                            const result = rollWorldLuck(currentHex, "skill", charStats, skillRanks, distFromCity, selectedSkill, heroCount, save.fame ?? 0, exhPts, save.feats, character?.name, save.faction_name);
                             setLastAction(result); onAction(result);
                           }}
                           className="flex-1 px-2 py-1 rounded text-xs font-bold"
@@ -4121,7 +4132,7 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
                         </button>
                       )}
                       <button onClick={() => {
-                          const result = rollWorldLuck(currentHex, "rest", charStats, skillRanks, distFromCity, undefined, heroCount, save.fame ?? 0, exhPts, save.feats);
+                          const result = rollWorldLuck(currentHex, "rest", charStats, skillRanks, distFromCity, undefined, heroCount, save.fame ?? 0, exhPts, save.feats, character?.name, save.faction_name);
                           setLastAction(result); onAction(result);
                         }}
                         disabled={save.food === 0 && save.current_hp >= save.max_hp}
@@ -4195,7 +4206,7 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
                   {(
                     <button
                       onClick={() => {
-                        const result = rollWorldLuck(currentHex, "skill", charStats, skillRanks, distFromCity, selectedSkill, heroCount, save.fame ?? 0, exhPts, save.feats);
+                        const result = rollWorldLuck(currentHex, "skill", charStats, skillRanks, distFromCity, selectedSkill, heroCount, save.fame ?? 0, exhPts, save.feats, character?.name, save.faction_name);
                         setLastAction(result);
                         onAction(result);
                       }}
@@ -4210,7 +4221,7 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
                   )}
                   <button
                     onClick={() => {
-                      const result = rollWorldLuck(currentHex, "rest", charStats, skillRanks, distFromCity, undefined, heroCount, save.fame ?? 0, exhPts, save.feats);
+                      const result = rollWorldLuck(currentHex, "rest", charStats, skillRanks, distFromCity, undefined, heroCount, save.fame ?? 0, exhPts, save.feats, character?.name, save.faction_name);
                       setLastAction(result);
                       onAction(result);
                     }}

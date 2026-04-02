@@ -690,15 +690,16 @@ function LevelUpFlow({ save, character, fromLevel, toLevel, entry, onComplete }:
 
 function NewGameFlow({ ownedChars, onStart }: {
   ownedChars: NftCharacter[];
-  onStart: (nft: NftCharacter, classId: string, skillRanks: Record<string, number>, feats: string[], spellConfig?: SpellConfig) => void;
+  onStart: (nft: NftCharacter, classId: string, skillRanks: Record<string, number>, feats: string[], spellConfig?: SpellConfig, factionName?: string) => void;
 }) {
-  const [step, setStep] = useState<"nft" | "class" | "spells" | "abilities" | "skills" | "confirm">("nft");
+  const [step, setStep] = useState<"nft" | "class" | "spells" | "abilities" | "skills" | "confirm" | "faction">("nft");
   const [pickedNft, setPickedNft] = useState<NftCharacter | null>(null);
   const [pickedClass, setPickedClass] = useState<CharacterClass | null>(null);
   const [expandedClass, setExpandedClass] = useState<string | null>(null);
   const [pickedFeats, setPickedFeats] = useState<string[]>([]);
   const [skillRanks, setSkillRanks] = useState<Record<string, number>>({});
   const [featFilter, setFeatFilter] = useState<"all" | "combat" | "general" | "magic" | "skill">("all");
+  const [factionName, setFactionName] = useState("");
   // ── Spell creation state ──
   const [pickedDomains, setPickedDomains] = useState<string[]>([]);
   const [pickedSpecialization, setPickedSpecialization] = useState<SpellSchool | null>(null);
@@ -1418,7 +1419,7 @@ function NewGameFlow({ ownedChars, onStart }: {
   }
 
   // ── Step 5: Confirm ──
-  return (
+  if (step !== "faction") return (
     <div className="w-full flex flex-col items-center gap-4 max-w-lg mx-auto">
       <span className="text-sm font-black tracking-widest uppercase" style={{ color: "rgba(34,197,94,0.8)" }}>
         Confirm Your Character
@@ -1496,27 +1497,79 @@ function NewGameFlow({ ownedChars, onStart }: {
           style={{ color: "rgba(201,168,76,0.5)", border: "1px solid rgba(201,168,76,0.15)" }}>
           Back
         </button>
-        <button onClick={() => {
-            if (!pickedNft || !pickedClass) return;
-            const sc = pickedClass.spellcasting;
-            const spellConfig: SpellConfig | undefined = sc ? {
-              known_spells: pickedKnownSpells.length > 0 ? pickedKnownSpells : undefined,
-              spellbook: sc.casterClass === "wizard"
-                ? [...getClassSpells("wizard", 0).map(s => s.id), ...pickedKnownSpells.filter(id => getClassSpells("wizard", 1).some(s => s.id === id))]
-                : undefined,
-              domains: pickedDomains.length === 2 ? [pickedDomains[0], pickedDomains[1]] as [string, string] : null,
-              school_specialization: pickedSpecialization ?? null,
-              prohibited_schools: pickedProhibited,
-            } : undefined;
-            onStart(pickedNft, pickedClass.id, skillRanks, pickedFeats, spellConfig);
-          }}
+        <button onClick={() => setStep("faction")}
           className="px-6 py-2 rounded text-sm font-black uppercase tracking-widest"
           style={{ background: "rgba(34,197,94,0.2)", color: "rgba(34,197,94,0.95)", border: "1px solid rgba(34,197,94,0.5)" }}>
-          Begin Adventure
+          Next
         </button>
       </div>
     </div>
   );
+
+  // ── Step 6: Name Your Faction ──
+  if (step === "faction") {
+    return (
+      <div className="w-full flex flex-col items-center gap-4 max-w-lg mx-auto">
+        <span className="text-sm font-black tracking-widest uppercase" style={{ color: "rgba(34,197,94,0.8)" }}>
+          Name Your Faction
+        </span>
+        <div className="w-full rounded-xl p-4 flex flex-col gap-3"
+          style={{ background: "rgba(0,0,0,0.3)", border: "1px solid rgba(201,168,76,0.2)" }}>
+          <div style={{ fontSize: "0.5rem", color: "rgba(232,213,176,0.5)", lineHeight: 1.5 }}>
+            Your faction is your name on the island. All parties you send into the world carry this banner.
+            Temples, guilds, and townsfolk will know you by it. Choose wisely — reputation follows the name.
+          </div>
+          <input
+            type="text"
+            value={factionName}
+            onChange={e => setFactionName(e.target.value.slice(0, 40))}
+            placeholder="e.g. The Iron Wolves, Stormwatch Company, Order of the Silver Flame"
+            className="w-full px-3 py-2 rounded text-sm"
+            style={{
+              background: "rgba(0,0,0,0.4)", color: "rgba(232,213,176,0.9)",
+              border: "1px solid rgba(201,168,76,0.3)", outline: "none",
+              fontSize: "0.65rem",
+            }}
+            autoFocus
+          />
+          <div style={{ fontSize: "0.4rem", color: "rgba(201,168,76,0.3)", textAlign: "right" }}>
+            {factionName.length}/40
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={() => setStep("skills")} className="px-3 py-1.5 rounded text-xs"
+            style={{ color: "rgba(201,168,76,0.5)", border: "1px solid rgba(201,168,76,0.15)" }}>
+            Back
+          </button>
+          <button onClick={() => {
+              if (!pickedNft || !pickedClass) return;
+              const sc = pickedClass.spellcasting;
+              const spellConfig: SpellConfig | undefined = sc ? {
+                known_spells: pickedKnownSpells.length > 0 ? pickedKnownSpells : undefined,
+                spellbook: sc.casterClass === "wizard"
+                  ? [...getClassSpells("wizard", 0).map(s => s.id), ...pickedKnownSpells.filter(id => getClassSpells("wizard", 1).some(s => s.id === id))]
+                  : undefined,
+                domains: pickedDomains.length === 2 ? [pickedDomains[0], pickedDomains[1]] as [string, string] : null,
+                school_specialization: pickedSpecialization ?? null,
+                prohibited_schools: pickedProhibited,
+              } : undefined;
+              onStart(pickedNft, pickedClass.id, skillRanks, pickedFeats, spellConfig, factionName.trim() || undefined);
+            }}
+            disabled={factionName.trim().length === 0}
+            className="px-6 py-2 rounded text-sm font-black uppercase tracking-widest"
+            style={{
+              background: "rgba(34,197,94,0.2)", color: "rgba(34,197,94,0.95)",
+              border: "1px solid rgba(34,197,94,0.5)",
+              opacity: factionName.trim().length === 0 ? 0.4 : 1,
+            }}>
+            Begin Adventure
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return null;
 }
 
 export default function Home() {
@@ -1935,8 +1988,8 @@ export default function Home() {
         ) : (
           <NewGameFlow
             ownedChars={ownedChars}
-            onStart={async (nft, classId, skillRanks, feats, spellConfig) => {
-              await createCharacter(nft.contractAddress, classId, skillRanks, feats, spellConfig);
+            onStart={async (nft, classId, skillRanks, feats, spellConfig, factionName) => {
+              await createCharacter(nft.contractAddress, classId, skillRanks, feats, spellConfig, factionName);
               cycleView("worldMap");
             }}
           />
