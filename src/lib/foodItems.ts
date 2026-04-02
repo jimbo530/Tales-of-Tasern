@@ -164,3 +164,55 @@ export function rollBanditDrop(): FoodItem[] {
   }
   return items;
 }
+
+// ── Fresh / Hunted Food (spoils, better than rations for morale) ────────────
+
+export type FreshFoodItem = FoodItem & {
+  spoilDays: number;  // days until spoiled (1 = berries, 2 = meat/fish)
+  tier: "forage" | "small_game" | "large_game";
+  terrain: string[];  // which hex types this can be found in
+  preservedId?: string; // id of the salted/preserved version
+};
+
+const pick = <T>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)];
+
+export const FRESH_FOOD: FreshFoodItem[] = [
+  // ── Forage (low skill) — spoils in 1 day ──
+  { id: "fresh_berries",     name: "Fresh Berries",       priceCp: 5,   weight: 0.5, foodValue: 1, category: "produce", desc: "Wild berries. Eat today or they'll rot.",         spoilDays: 1, tier: "forage", terrain: ["forest", "plains", "jungle", "swamp"] },
+  { id: "fresh_tubers",      name: "Wild Tubers",         priceCp: 5,   weight: 1,   foodValue: 1, category: "produce", desc: "Starchy roots dug from the earth. Edible raw.",   spoilDays: 1, tier: "forage", terrain: ["forest", "plains", "mountain", "swamp"] },
+  { id: "fresh_mushrooms",   name: "Wild Mushrooms",      priceCp: 10,  weight: 0.5, foodValue: 1, category: "produce", desc: "Carefully identified edible fungi.",               spoilDays: 1, tier: "forage", terrain: ["forest", "swamp", "jungle"] },
+  { id: "fresh_seaweed",     name: "Edible Seaweed",      priceCp: 5,   weight: 0.5, foodValue: 1, category: "produce", desc: "Salty and nutritious. Best eaten fresh.",          spoilDays: 1, tier: "forage", terrain: ["coast"] },
+  { id: "fresh_herbs",       name: "Fresh Wild Herbs",    priceCp: 15,  weight: 0,   foodValue: 0, category: "produce", desc: "Fragrant herbs. Season a meal or sell to a cook.", spoilDays: 1, tier: "forage", terrain: ["forest", "plains", "mountain", "jungle"] },
+
+  // ── Small game (mid skill) — spoils in 2 days ──
+  { id: "fresh_rabbit",      name: "Fresh Rabbit",        priceCp: 60,  weight: 2,   foodValue: 2, category: "meat", desc: "A fat rabbit, freshly dressed.",                     spoilDays: 2, tier: "small_game", terrain: ["forest", "plains", "mountain"],        preservedId: "food_beef_jerked" },
+  { id: "fresh_squirrel",    name: "Fresh Squirrel",      priceCp: 30,  weight: 1,   foodValue: 1, category: "meat", desc: "Small but edible. Roast over a fire.",               spoilDays: 2, tier: "small_game", terrain: ["forest"],                              preservedId: "food_beef_jerked" },
+  { id: "fresh_pheasant",    name: "Fresh Pheasant",      priceCp: 80,  weight: 2,   foodValue: 2, category: "meat", desc: "A plump game bird with colorful plumage.",           spoilDays: 2, tier: "small_game", terrain: ["forest", "plains"],                    preservedId: "food_beef_jerked" },
+  { id: "fresh_duck",        name: "Fresh Duck",          priceCp: 70,  weight: 2,   foodValue: 2, category: "meat", desc: "A wild duck, brought down cleanly.",                 spoilDays: 2, tier: "small_game", terrain: ["swamp", "coast", "plains"],            preservedId: "food_beef_jerked" },
+  { id: "fresh_fish_small",  name: "Fresh Fish",          priceCp: 40,  weight: 1,   foodValue: 1, category: "meat", desc: "A mess of small fish from a stream.",                spoilDays: 2, tier: "small_game", terrain: ["coast", "swamp", "forest"],            preservedId: "food_herring_pickled" },
+  { id: "fresh_crab",        name: "Fresh Crab",          priceCp: 60,  weight: 1,   foodValue: 1, category: "meat", desc: "A large crab, still snapping.",                      spoilDays: 1, tier: "small_game", terrain: ["coast"] },
+  { id: "fresh_snake",       name: "Fresh Snake",         priceCp: 20,  weight: 1,   foodValue: 1, category: "meat", desc: "Skinned and gutted. Tastes like chicken.",            spoilDays: 2, tier: "small_game", terrain: ["desert", "jungle", "swamp"],           preservedId: "food_beef_jerked" },
+  { id: "fresh_lizard",      name: "Desert Lizard",       priceCp: 30,  weight: 1,   foodValue: 1, category: "meat", desc: "A fat desert lizard. Roast it whole.",               spoilDays: 2, tier: "small_game", terrain: ["desert"],                              preservedId: "food_beef_jerked" },
+
+  // ── Large game (high skill) — spoils in 2 days ──
+  { id: "fresh_venison",     name: "Fresh Venison",       priceCp: 200, weight: 8,  foodValue: 5, category: "meat", desc: "A dressed deer haunch. Feeds the whole party.",        spoilDays: 2, tier: "large_game", terrain: ["forest", "plains", "mountain"],        preservedId: "food_beef_dried" },
+  { id: "fresh_boar",        name: "Fresh Boar",          priceCp: 180, weight: 10, foodValue: 5, category: "meat", desc: "A wild boar, tusks and all. Tough but plentiful.",     spoilDays: 2, tier: "large_game", terrain: ["forest", "jungle"],                    preservedId: "food_pork_salted" },
+  { id: "fresh_goat",        name: "Fresh Mountain Goat", priceCp: 150, weight: 6,  foodValue: 4, category: "meat", desc: "A lean mountain goat. Gamey but filling.",             spoilDays: 2, tier: "large_game", terrain: ["mountain"],                            preservedId: "food_beef_dried" },
+  { id: "fresh_fish_large",  name: "Fresh Large Fish",    priceCp: 150, weight: 5,  foodValue: 4, category: "meat", desc: "A massive catch — salmon, pike, or sturgeon.",         spoilDays: 2, tier: "large_game", terrain: ["coast", "swamp"],                      preservedId: "food_cod_salted" },
+  { id: "fresh_gator",       name: "Fresh Gator Tail",    priceCp: 120, weight: 6,  foodValue: 4, category: "meat", desc: "Thick reptile tail meat. Rich and oily.",              spoilDays: 2, tier: "large_game", terrain: ["swamp", "jungle"],                     preservedId: "food_beef_dried" },
+  { id: "fresh_antelope",    name: "Fresh Antelope",      priceCp: 180, weight: 7,  foodValue: 5, category: "meat", desc: "A fleet plains antelope, skillfully taken.",            spoilDays: 2, tier: "large_game", terrain: ["plains", "desert"],                    preservedId: "food_beef_dried" },
+];
+
+/** Roll terrain-appropriate fresh food based on survival skill tier */
+export function rollHuntedFood(
+  hexType: string,
+  tier: "forage" | "small_game" | "large_game",
+): FreshFoodItem {
+  const candidates = FRESH_FOOD.filter(f => f.tier === tier && f.terrain.includes(hexType));
+  if (candidates.length === 0) {
+    // Fallback: pick any item of this tier
+    const fallback = FRESH_FOOD.filter(f => f.tier === tier);
+    return pick(fallback);
+  }
+  return pick(candidates);
+}

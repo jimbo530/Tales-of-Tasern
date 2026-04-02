@@ -8,7 +8,7 @@ import { ERC1155_ABI, GAME_NFTS } from "@/lib/contracts";
 const TOKEN_ID = BigInt(1);
 const MAX_TOKEN_ID = 200;
 const STATS_CACHE_KEY = "tot-stats-cache-v2"; // v2: D20 ability scores
-const STATS_CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
+const STATS_CACHE_TTL = 48 * 60 * 60 * 1000; // 48 hours — markets are slow, reduce API calls
 
 const OWNERSHIP_CACHE_KEY = "tot-ownership-cache";
 
@@ -148,9 +148,37 @@ export function useNftStats() {
           console.log("[ToT] Fetched fresh stats from API:", data.characters?.length, "NFTs");
         }
 
+        // Zero-protection: if new data has more zeros than cached, keep cached
+        const prevCached = getCachedStats();
+        if (prevCached && prevCached.data?.characters?.length > 0 && data?.characters?.length > 0) {
+          const oldBacking = (prevCached.data.characters as any[]).reduce((s: number, c: any) => s + (c.usdBacking ?? 0), 0);
+          const newBacking = (data.characters as any[]).reduce((s: number, c: any) => s + (c.usdBacking ?? 0), 0);
+          // If new data lost >50% of total backing, it's a bad fetch — keep old
+          if (newBacking < oldBacking * 0.5 && oldBacking > 0) {
+            console.warn("[ToT] New data has", Math.round((1 - newBacking / oldBacking) * 100) + "% less backing — keeping cached data");
+            data = prevCached.data;
+          } else {
+            // Per-NFT zero protection: if an NFT had stats but now has all-1s, keep old stats
+            const oldMap = new Map((prevCached.data.characters as any[]).map((c: any) => [c.contractAddress?.toLowerCase(), c]));
+            for (const c of data.characters) {
+              const old = oldMap.get(c.contractAddress?.toLowerCase());
+              if (!old) continue;
+              const oldTotal = old.stats.str + old.stats.dex + old.stats.con + old.stats.int + old.stats.wis + old.stats.cha;
+              const newTotal = c.stats.str + c.stats.dex + c.stats.con + c.stats.int + c.stats.wis + c.stats.cha;
+              // If old had real stats (>6 = all 1s) but new is all 1s, keep old
+              if (oldTotal > 6 && newTotal <= 6) {
+                c.stats = old.stats;
+                c.usdBacking = old.usdBacking;
+                c.tokenAmounts = old.tokenAmounts;
+                c.subtypes = old.subtypes;
+              }
+            }
+          }
+        }
+
         setCachedStats(data);
 
-        // Check ownership — cached for 24h per wallet
+        // Check ownership — cached for 48h per wallet
         let ownershipMap = new Map<string, number>();
 
         if (isConnected && address) {

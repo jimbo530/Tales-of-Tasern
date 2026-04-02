@@ -57,9 +57,9 @@ export function getSkillById(id: string): Skill | undefined {
   return SKILLS.find(s => s.id === id);
 }
 
-/** D20 ability modifier: floor((score - 10) / 2) */
+/** Ability modifier: half the game stat (game stats = D&D - 10, so this equals D&D mod) */
 export function abilityMod(score: number): number {
-  return Math.floor((score - 10) / 2);
+  return Math.floor(score / 2);
 }
 
 /** Skill check: d20 + ability mod + ranks */

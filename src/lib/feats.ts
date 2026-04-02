@@ -1061,6 +1061,20 @@ export function getFighterBonusFeatCount(classId: string, level: number): number
 }
 
 /**
+ * Count feat slots gained from leveling up (fromLevel → toLevel).
+ * Standard feats: every 3rd level (3, 6, 9, 12, 15, 18).
+ * Fighter bonus: every even level (2, 4, 6, 8, ...).
+ */
+export function featsForLevelUp(fromLevel: number, toLevel: number, classId: string): { standard: number; fighterBonus: number } {
+  let standard = 0, fighterBonus = 0;
+  for (let l = fromLevel + 1; l <= toLevel; l++) {
+    if (l % 3 === 0) standard++;
+    if (classId === "fighter" && l % 2 === 0) fighterBonus++;
+  }
+  return { standard, fighterBonus };
+}
+
+/**
  * Filter feats by category — useful for the fighter's bonus feat selection
  * which must be combat feats.
  */
@@ -1098,6 +1112,9 @@ const PASSIVE_BONUS_MAP: Record<string, Partial<FeatBonuses>> = {
   "improved-natural-armor":       { ac: 1 },           // +1 natural armor
   "blind-fight":                  { atkBonus: 1 },     // re-roll concealment miss → +1 atk
   // point-blank-shot: REMOVED from passive — applied conditionally in resolveAttack (within 6 hexes / 30ft)
+  "rapid-shot":                   { atkBonus: -2, damage: 3 },   // extra arrow at -2 all attacks → simplified
+  "manyshot":                     { damage: 2 },                  // fire multiple arrows → simplified +2 dmg
+  "shot-on-the-run":              { ac: 1 },                      // move + shoot + move → simplified +1 AC
   // ── General feats ──
   "toughness":                    { hp: 3 },           // +3 HP
   "endurance":                    { hp: 2 },           // +4 CON checks → simplified +2 HP
@@ -1122,6 +1139,33 @@ export function getFeatBonuses(featIds: string[]): FeatBonuses {
     }
   }
   return result;
+}
+
+/**
+ * Get Skill Focus bonus for a specific skill from feat IDs.
+ * Skill Focus feats are stored as "skill-focus:skillId" (e.g. "skill-focus:diplomacy").
+ * Returns +3 if the character has Skill Focus for that skill, 0 otherwise.
+ */
+export function getSkillFocusBonus(featIds: string[], skillId: string): number {
+  return featIds.some(f => f === `skill-focus:${skillId}`) ? 3 : 0;
+}
+
+/**
+ * Check if a feat ID requires a sub-selection (e.g., which skill for Skill Focus).
+ */
+export function featNeedsChoice(featId: string): "skill" | null {
+  if (featId === "skill-focus") return "skill";
+  return null;
+}
+
+/**
+ * Extract display info from a compound feat ID like "skill-focus:diplomacy".
+ * Returns { baseFeatId, choiceLabel } or null if not compound.
+ */
+export function parseFeatChoice(featId: string): { baseFeatId: string; choiceId: string } | null {
+  const m = featId.match(/^(skill-focus):(.+)$/);
+  if (m) return { baseFeatId: m[1], choiceId: m[2] };
+  return null;
 }
 
 /** Combat flags — checked during attack resolution and battle flow */

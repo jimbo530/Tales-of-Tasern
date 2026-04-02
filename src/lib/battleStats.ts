@@ -21,23 +21,26 @@ export type ComputedStats = {
   fireDmg: number;       // bonus fire damage
 };
 
-// ── PHB 3.5 Carry Capacity (base 1 instead of standard base 10) ─────────────
-// PHB Table 9-1 values ÷ 10.  STR 10 carries 10 lbs heavy (not 100).
-// Makes weight management meaningful — every pound counts.
+// ── PHB 3.5 Carry Capacity ───────────────────────────────────────────────────
+// Full PHB Table 9-1 values.  Our stats are D&D stats -10 (min 1), so
+// our STR 1 → D&D STR 10 → 100 lbs heavy load (PHB p.162).
+// Mapping: effective D&D STR = our_STR + 9.
 //
 // Light load: no penalty. Medium: -3 check, ×3 run. Heavy: -6 check, ×3 run, max DEX +1.
 
-/** PHB heavy load for STR 11-20 (÷10, floored). Index 1 = STR 11, index 10 = STR 20. */
-const HEAVY_ABOVE_10 = [0, 11, 13, 15, 17, 20, 23, 26, 30, 35, 40];
+/** PHB heavy load values for D&D STR 11-20.  Index 1 = STR 11, index 10 = STR 20. */
+const PHB_HEAVY = [0, 115, 130, 150, 175, 200, 230, 260, 300, 350, 400];
 
-/** Max heavy load in lbs for a given STR score (PHB table, base 1) */
+/** Max heavy load in lbs for our game STR score (PHB table, our 1 = D&D 10) */
 export function getHeavyLoad(str: number): number {
   if (str <= 0) return 0;
-  if (str <= 10) return str;                       // STR 1 = 1 lb … STR 10 = 10 lb
-  // Above 10: decade pattern, ×4 per 10 points
-  const decade = Math.floor((str - 11) / 10);      // 0 for 11-20, 1 for 21-30, …
-  const ones = ((str - 11) % 10) + 1;              // 1-10 index into table
-  return Math.floor(HEAVY_ABOVE_10[ones] * Math.pow(4, decade));
+  // Convert to effective D&D STR: our 1 = D&D 10
+  const dndStr = str + 9;
+  if (dndStr <= 10) return dndStr * 10;  // D&D 1-10: heavy = STR × 10
+  // D&D 11-20: PHB table values; 21+: ×4 per 10 points above 20
+  const decade = Math.floor((dndStr - 11) / 10);   // 0 for 11-20, 1 for 21-30, …
+  const ones = ((dndStr - 11) % 10) + 1;           // 1-10 index into table
+  return Math.floor(PHB_HEAVY[ones] * Math.pow(4, decade));
 }
 
 export type CarryThresholds = {

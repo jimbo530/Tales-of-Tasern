@@ -68,14 +68,45 @@ async function main() {
         }
       } catch (e) { console.log("Image merge skipped:", e.message); }
 
-      // Save regardless — better to have some data than none
-      fs.writeFileSync(STATS_FILE, JSON.stringify(data, null, 2));
-      fs.writeFileSync(META_FILE, JSON.stringify({
-        timestamp: Date.now(),
-        characters: chars.length,
-        totalBacking,
-        zerosRemaining: zeros.length,
-      }, null, 2));
+      // Zero-protection: don't overwrite good data with worse data
+      let shouldSave = true;
+      if (fs.existsSync(STATS_FILE)) {
+        try {
+          const existing = JSON.parse(fs.readFileSync(STATS_FILE, "utf-8"));
+          const oldChars = existing.characters ?? [];
+          const oldBacking = oldChars.reduce((s, c) => s + (c.usdBacking ?? 0), 0);
+          const newBacking = chars.reduce((s, c) => s + (c.usdBacking ?? 0), 0);
+          // If new data lost >50% of backing, keep old file
+          if (newBacking < oldBacking * 0.5 && oldBacking > 10) {
+            console.log(`  WARNING: New backing $${newBacking.toFixed(2)} is <50% of old $${oldBacking.toFixed(2)} — keeping existing file`);
+            shouldSave = false;
+          }
+          // Per-NFT: carry forward stats for NFTs that went to zero
+          if (shouldSave && oldChars.length > 0) {
+            const oldMap = new Map(oldChars.map(c => [c.contractAddress?.toLowerCase(), c]));
+            for (const c of chars) {
+              const old = oldMap.get(c.contractAddress?.toLowerCase());
+              if (!old) continue;
+              if (old.usdBacking > 0 && c.usdBacking === 0) {
+                c.stats = old.stats;
+                c.usdBacking = old.usdBacking;
+                c.tokenAmounts = old.tokenAmounts;
+                c.subtypes = old.subtypes;
+              }
+            }
+          }
+        } catch {}
+      }
+
+      if (shouldSave) {
+        fs.writeFileSync(STATS_FILE, JSON.stringify(data, null, 2));
+        fs.writeFileSync(META_FILE, JSON.stringify({
+          timestamp: Date.now(),
+          characters: chars.length,
+          totalBacking,
+          zerosRemaining: zeros.length,
+        }, null, 2));
+      }
 
       if (zeros.length === 0) {
         const elapsed = ((Date.now() - start) / 1000).toFixed(1);

@@ -197,6 +197,8 @@ export const GAME_NFTS: GameNft[] = [
   { name: "Mason Ironhorn",          contractAddress: "0x412495cde08733715C2478c6EE00876ABF5e6CE8", chain: "base" },
   { name: "Wolves",                 contractAddress: "0xaF92bc25a44bf43eC4100cAd6eA3620523C7DAce", chain: "base" },
   { name: "Goblins",                contractAddress: "0x99b772412C0D6E0fB31f227eCFf4E92B98379Fa8", chain: "base" },
+  { name: "Rats",                   contractAddress: "0xA8a51d236a7af87D82fE2B29249B0aD70BA91d1A", chain: "base" },
+  { name: "Mandala Light Codes",   contractAddress: "0x537ee25Af1f6cDc1De66562dd0BE88Ea2046338f", chain: "polygon" },
 ];
 
 // ─── Known LP Pairs (add more as the game expands) ────────────────────────────

@@ -1,19 +1,20 @@
 "use client";
 
 import { useState, useMemo, useRef, useEffect, useCallback } from "react";
-import { type CharacterSave, type Coins, type Equipment, travel, HOURS_PER_ACTION, formatCoins, totalCp, canAfford, cpToCoins, coinWeight, isQuestOnCooldown, isQuestOnDayCooldown, dayCooldownRemaining, xpToNextLevel, getExhaustionPoints, exhaustedStat, lowestExhaustedStat } from "@/lib/saveSystem";
+import { type CharacterSave, type Coins, type Equipment, travel, HOURS_PER_ACTION, formatCoins, totalCp, canAfford, cpToCoins, coinWeight, exchangeUp, isQuestOnCooldown, isQuestOnDayCooldown, dayCooldownRemaining, xpToNextLevel, getExhaustionPoints, exhaustedStat, lowestExhaustedStat } from "@/lib/saveSystem";
 import type { NftCharacter } from "@/hooks/useNftStats";
 import { getZone, getLevelRange, generateFightEncounter, generateLootDrop, type EncounterData, type LootDrop } from "@/lib/encounters";
 import { getShopsForLocation, getAvailableItems, type Shop, type ShopItem } from "@/lib/shops";
 import { SKILLS, abilityMod as calcAbilityMod } from "@/lib/skills";
+import { hireFollower, FACTION_TEMPLATES, maxFollowers, type Follower } from "@/lib/party";
 import { rollFieldTreasure, rollTreasure, d, nd } from "@/lib/treasure";
 import { MONSTERS } from "@/lib/monsters";
 import { createMonsterSpec, type EnemySpec } from "@/lib/hexCombat";
-import { FEATS } from "@/lib/feats";
+import { FEATS, getSkillFocusBonus } from "@/lib/feats";
 import { getClassById } from "@/lib/classes";
 import { getCarryThresholds, getEncumbrance } from "@/lib/battleStats";
 import { getItemInfo, getItemWeight } from "@/lib/itemRegistry";
-import { rollFarmDrop, rollWildernessFoodDrop, type FoodItem } from "@/lib/foodItems";
+import { rollFarmDrop, rollWildernessFoodDrop, rollHuntedFood, type FoodItem, type FreshFoodItem } from "@/lib/foodItems";
 import type { QuestEncounter } from "@/components/HexBattle";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -41,7 +42,7 @@ type MapHex = {
 export type EncounterResult = {
   roll: number;
   type: "safe" | "fight" | "lost_time" | "find";
-  difficulty?: "easy" | "medium" | "hard";
+  difficulty?: "easy" | "medium" | "hard" | "deadly";
   description: string;
   hpChange?: number;
   goldChange?: number;
@@ -106,13 +107,15 @@ export type FieldSkillId = keyof typeof FIELD_SKILLS;
 export type WorldLuckResult = {
   worldRoll: number;          // d20 world luck — HIDDEN from player (DM knowledge)
   skillRoll: number;          // d20 + ability mod + ranks — SHOWN to player
+  rawD20?: number;            // the raw d20 roll (shown to player)
+  skillMod?: number;          // total modifier (ranks + ability mod + feats)
   skillUsed?: string;         // which skill was used (shown to player)
   skillDC: number;            // difficulty to beat (internal)
   interaction: HexInteraction;
   outcome: "nothing" | "fight" | "thug_fight" | "hazard" | "avoided_danger"
     | "find_food" | "find_coins" | "find_valuable" | "find_rare"
     | "find_quest" | "find_dungeon";
-  difficulty?: "easy" | "medium" | "hard";
+  difficulty?: "easy" | "medium" | "hard" | "deadly";
   description: string;
   hpChange: number;
   goldChange: number;           // flat copper change (costs negative, tips positive)
@@ -126,6 +129,8 @@ export type WorldLuckResult = {
   loot?: LootDrop;           // populated on valuable/rare finds
   treasureDesc?: string;     // detailed treasure breakdown text
   foodDrop?: FoodItem[];     // specific food items found (farms, foraging)
+  huntedFood?: FreshFoodItem[];  // fresh hunted/foraged food (spoils, terrain-specific)
+  newFollower?: Follower;        // recruited follower to add to party
 };
 
 const DANGER_DESC: Record<HexType, string[]> = {
@@ -242,6 +247,7 @@ export function rollWorldLuck(
   partySize?: number,             // number of heroes in party (for thug encounters)
   fame?: number,                  // performer renown (for Perform skill)
   exhaustionPoints?: number,      // each point = -1 to all stats
+  feats?: string[],               // feat IDs for skill bonuses (e.g. "skill-focus:diplomacy")
 ): WorldLuckResult {
   // ── Two rolls: world (hidden) + skill check (shown to player) ──
   const worldRoll = Math.floor(Math.random() * 20) + 1;
@@ -249,21 +255,26 @@ export function rollWorldLuck(
   const exh = exhaustionPoints ?? 0;
   const exhStat = (v: number) => Math.max(1, Math.floor(v) - exh);
 
-  // Compute skill check: d20 + ability mod (exhaustion-reduced) + ranks
+  // Compute skill check: d20 + ability mod (exhaustion-reduced) + ranks + feat bonuses
   let skillRoll: number;
   let skillName: string | undefined;
+  let skillMod = 0;
   if (interaction === "skill" && fieldSkillId) {
     const fs = FIELD_SKILLS[fieldSkillId];
     const abilScore = exhStat(stats[fs.ability] ?? 10);
     const ranks = skillRanks[fs.id] ?? 0;
-    skillRoll = rawD20 + calcAbilityMod(abilScore) + ranks;
+    const focusBonus = feats ? getSkillFocusBonus(feats, fs.id) : 0;
+    skillMod = calcAbilityMod(abilScore) + ranks + focusBonus;
+    skillRoll = rawD20 + skillMod;
     skillName = fs.name;
   } else if (interaction === "rest") {
     // Rest uses WIS with a penalty
-    skillRoll = rawD20 + calcAbilityMod(exhStat(stats.wis ?? 10)) - 2;
+    skillMod = calcAbilityMod(exhStat(stats.wis ?? 10)) - 2;
+    skillRoll = rawD20 + skillMod;
   } else {
     // Travel uses WIS
-    skillRoll = rawD20 + calcAbilityMod(exhStat(stats.wis ?? 10));
+    skillMod = calcAbilityMod(exhStat(stats.wis ?? 10));
+    skillRoll = rawD20 + skillMod;
   }
 
   const isFarm = hex.tags?.includes("farm");
@@ -275,8 +286,8 @@ export function rollWorldLuck(
 
   // ── Helpers used by multiple branches ──
   const sid = fieldSkillId ?? "search";
-  const r = (o: Omit<WorldLuckResult, "worldRoll" | "skillRoll" | "skillUsed" | "interaction">): WorldLuckResult =>
-    ({ worldRoll, skillRoll, skillUsed: skillName, interaction, ...o });
+  const r = (o: Omit<WorldLuckResult, "worldRoll" | "skillRoll" | "rawD20" | "skillMod" | "skillUsed" | "interaction">): WorldLuckResult =>
+    ({ worldRoll, skillRoll, rawD20, skillMod, skillUsed: skillName, interaction, ...o });
 
   // ── World roll determines DANGER (hidden from player) ──
   // Towns are mostly safe — but thugs lurk in alleys
@@ -328,13 +339,22 @@ export function rollWorldLuck(
         hpChange: 0, goldChange: 0, foodChange: 0, xpChange: 5,
       };
     }
-    let difficulty: "easy" | "medium" | "hard";
-    if (isFarm) difficulty = "easy";
-    else if (distFromCity <= 6) difficulty = "easy";
-    else if (distFromCity <= 15) difficulty = "medium";
-    else difficulty = "hard";
-    if (["swamp", "mountain", "jungle"].includes(hex.type) && difficulty !== "hard") {
-      difficulty = difficulty === "easy" ? "medium" : "hard";
+    // World roll drives encounter difficulty:
+    // 1 = deadly (CR+1, class levels), 2 = hard, 3-4 = easy (treasure with extra steps)
+    let difficulty: "easy" | "medium" | "hard" | "deadly";
+    if (worldRoll === 1) {
+      difficulty = "deadly";
+    } else if (worldRoll === 2) {
+      difficulty = "hard";
+    } else {
+      // worldRoll 3+ in danger range = easy pickings
+      difficulty = "easy";
+    }
+    // Terrain and distance can bump medium→hard but never override deadly
+    if (difficulty !== "deadly" && difficulty !== "easy") {
+      if (["swamp", "mountain", "jungle"].includes(hex.type)) {
+        difficulty = "hard";
+      }
     }
     const encounter = generateFightEncounter(hex.type, levelRange, difficulty);
     return {
@@ -671,6 +691,19 @@ export function rollWorldLuck(
   if (skillRoll >= 35) {
     const cr = Math.max(1, Math.floor((levelRange[0] + levelRange[1]) / 2));
     if (isWild) {
+      // Survival in wilderness: large game hunt (fresh, spoils in 2 days, lots of food)
+      if (sid === "survival" && !isTown && !isFarm) {
+        const hunted = rollHuntedFood(hex.type, "large_game");
+        const isAquatic = ["coast", "swamp"].includes(hex.type);
+        const t = rollFieldTreasure(cr);
+        return r({ skillDC: 35, outcome: "find_valuable",
+          description: pick(isAquatic
+            ? ["You land a massive catch — enough to feed everyone.", "A huge fish breaks the surface and you bring it in."]
+            : ["You track a large animal to its den and make a clean kill — meat for days.", "A successful stalk ends with a big kill. Fresh meat for the whole party."]
+          ) + ` Caught: ${hunted.name}.`,
+          hpChange: 0, goldChange: t.totalCp - (t.coins.gp * 100 + t.coins.sp * 10 + t.coins.cp), coinReward: t.coins,
+          foodChange: hunted.foodValue, xpChange: 10, huntedFood: [hunted], treasureDesc: t.description });
+      }
       const food = Math.floor(Math.random() * 4) + 3;
       const t = rollFieldTreasure(cr);
       return r({ skillDC: 35, outcome: "find_valuable",
@@ -708,6 +741,17 @@ export function rollWorldLuck(
   // ── 30-34: Coins / solid finds ──
   if (skillRoll >= 30) {
     if (isWild) {
+      // Survival in wilderness: small game hunt (fresh, spoils in 2 days)
+      if (sid === "survival" && !isTown && !isFarm) {
+        const hunted = rollHuntedFood(hex.type, "small_game");
+        const isAquatic = ["coast", "swamp"].includes(hex.type);
+        return r({ skillDC: 30, outcome: "find_food",
+          description: pick(isAquatic
+            ? ["You set a line and land a good catch.", "You spot fish in the shallows and spear them.", "You wade in and pull out a fine catch."]
+            : ["You track small game and bring it down.", "You set a snare and catch something.", "Fresh tracks lead you to a successful hunt."]
+          ) + ` Caught: ${hunted.name}.`,
+          hpChange: 0, goldChange: 0, foodChange: hunted.foodValue, xpChange: 5, huntedFood: [hunted] });
+      }
       const food = isFarm ? Math.floor(Math.random() * 3) + 2 : Math.floor(Math.random() * 2) + 2;
       const drops = isFarm ? rollFarmDrop() : rollWildernessFoodDrop();
       return r({ skillDC: 30, outcome: "find_food",
@@ -749,6 +793,13 @@ export function rollWorldLuck(
   // ── 25-29: Food / crafting materials ──
   if (skillRoll >= 25) {
     if (isWild) {
+      // Survival in wilderness: forage berries/tubers (fresh, spoils in 1 day)
+      if (sid === "survival" && !isTown && !isFarm) {
+        const hunted = rollHuntedFood(hex.type, "forage");
+        return r({ skillDC: 25, outcome: "find_food",
+          description: pick(["You forage edible roots and berries.", "You identify safe mushrooms and wild herbs.", "You find edible plants growing nearby.", "You dig up tubers from the forest floor."]) + ` Found: ${hunted.name}.`,
+          hpChange: 0, goldChange: 0, foodChange: hunted.foodValue, xpChange: 2, huntedFood: [hunted] });
+      }
       const food = isFarm ? Math.floor(Math.random() * 3) + 2 : Math.floor(Math.random() * 2) + 1;
       const drops = isFarm ? rollFarmDrop() : rollWildernessFoodDrop();
       return r({ skillDC: 25, outcome: "find_food",
@@ -832,19 +883,26 @@ export function rollEncounter(hex: MapHex, distFromCity: number): EncounterResul
   const fightThreshold = isFarm ? 1 : 2;
 
   if (roll <= fightThreshold) {
-    let difficulty: "easy" | "medium" | "hard";
+    // World roll drives difficulty: 1 = deadly, 2 = hard, 3-4 = easy
+    let difficulty: "easy" | "medium" | "hard" | "deadly";
     if (isFarm) {
       difficulty = "easy"; // farmland fights are always easy — bandits, wolves, crop pests
-    } else if (distFromCity <= 6) difficulty = "easy";
-    else if (distFromCity <= 15) difficulty = "medium";
-    else difficulty = "hard";
-    // Dangerous terrain bumps difficulty
-    if (["swamp", "mountain", "jungle"].includes(hex.type) && difficulty !== "hard") {
-      difficulty = difficulty === "easy" ? "medium" : "hard";
+    } else if (roll === 1) {
+      difficulty = "deadly";
+    } else {
+      difficulty = "easy";
+    }
+    // Dangerous terrain can bump non-deadly, non-easy fights
+    if (difficulty !== "deadly" && difficulty !== "easy") {
+      if (["swamp", "mountain", "jungle"].includes(hex.type)) {
+        difficulty = "hard";
+      }
     }
     const desc = isFarm
       ? `Bandits ambush you on the farm road! (${difficulty})`
-      : `Hostile creatures attack! (${difficulty})`;
+      : difficulty === "deadly"
+        ? `Something terrible stirs nearby... (deadly)`
+        : `Hostile creatures attack! (${difficulty})`;
     return { roll, type: "fight", difficulty, description: desc };
   }
 
@@ -1012,10 +1070,10 @@ const POIS: Record<string, Omit<MapHex, "q" | "r">> = {
   "37,32": { type: "town", name: "Kardov's Gate", description: "The sprawling city on the lakeshore." },
   "36,31": { type: "mountain", name: "Shoreline Peaks", description: "Rugged coastal mountains.", tags: [] },
   "36,30": { type: "town", name: "Kardov's Gate", description: "The sprawling city on the lakeshore." },
-  "34,32": { type: "town", name: "Kardov's Gate", description: "The sprawling city on the lakeshore." },
-  "33,31": { type: "town", name: "Kardov's Gate", description: "The sprawling city on the lakeshore." },
-  "33,32": { type: "town", name: "Kardov's Gate", description: "The sprawling city on the lakeshore." },
-  "32,32": { type: "town", name: "Kardov's Gate", description: "The sprawling city on the lakeshore." },
+  "34,32": { type: "town", description: "A quiet city district with modest homes and small workshops." },
+  "33,31": { type: "town", description: "Narrow streets wind between old stone buildings." },
+  "33,32": { type: "town", description: "A residential quarter with clotheslines and small gardens." },
+  "32,32": { type: "town", description: "A worn district on the city outskirts. Stray dogs roam the alleys." },
   "30,31": { type: "water", name: "Magic Lake", description: "An enchanted lake shimmering with arcane energy.", tags: ["magic_lake"] },
   "29,31": { type: "town", name: "Kardov's Gate", description: "The sprawling city on the lakeshore." },
   "28,31": { type: "town", name: "Kardov's Gate", description: "The sprawling city on the lakeshore." },
@@ -2007,12 +2065,18 @@ type Props = {
   onTravel: (hex: { q: number; r: number }, result: ReturnType<typeof travel>, destHex: MapHex, encounter: WorldLuckResult) => void;
   onAction: (result: WorldLuckResult) => void;
   onBuyItem: (item: ShopItem) => void;
-  onBattle: (difficulty: "easy" | "medium" | "hard") => void;
+  onBattle: (difficulty: "easy" | "medium" | "hard" | "deadly") => void;
   onQuestBattle: (encounter: QuestEncounter) => void;
   onExhaustionCollapse: (isSafe: boolean) => void;  // collapse from exhaustion; isSafe = town/farm (infirmary)
   onInventory: () => void;
+  onEquip?: (itemId: string, slot: keyof Equipment) => void;
+  onUnequip?: (slot: keyof Equipment) => void;
   onSwitchParty?: (newIndex: number) => void;  // switch active party
+  onCreateParty?: (nftAddress: string) => void; // create new party led by this NFT
+  onExchange?: (parties: Props["save"]["parties"], coins: { gp: number; sp: number; cp: number }, food: number) => void;
+  onSetAutoAction?: (partyIndex: number, action: { type: "rest" | "skill"; skill?: string } | null) => void;
   onBack: () => void;
+  onPowerUp?: () => void;
 };
 
 // ── Travel speed by terrain ─────────────────────────────────────────────
@@ -2031,22 +2095,51 @@ const TERRAIN_SPEED: Record<HexType, number> = {
 };
 
 const MAX_TRAVEL = 9; // ~same physical distance as old 5-hex limit on denser grid
-const MIN_ZOOM = 1;
 const MAX_ZOOM = 3.5;
 
-export function WorldMap({ save, character, characters, onTravel, onAction, onBuyItem, onBattle, onQuestBattle, onExhaustionCollapse, onInventory, onSwitchParty, onBack }: Props) {
+/** Determine which equipment slot an item can go in, or null if not equippable */
+function getEquipSlot(itemId: string, info: { category: string; name: string } | undefined): keyof Equipment | null {
+  if (!info) return null;
+  const id = itemId.toLowerCase();
+  const name = info.name.toLowerCase();
+  // Shields → shield slot
+  if (name.includes("shield") || id.includes("shield") || id.includes("buckler") || name.includes("buckler")) return "shield";
+  // Weapons
+  if (info.category === "weapon") return "weapon";
+  // Armor (non-shield armor items)
+  if (info.category === "armor") return "armor";
+  // Accessories: amulets, rings, cloaks, bracers
+  if (name.includes("amulet") || name.includes("ring") || name.includes("cloak") || name.includes("bracer") || name.includes("necklace") || name.includes("pendant")) return "accessory";
+  return null;
+}
+
+export function WorldMap({ save, character, characters, onTravel, onAction, onBuyItem, onBattle, onQuestBattle, onExhaustionCollapse, onInventory, onEquip, onUnequip, onSwitchParty, onCreateParty, onExchange, onSetAutoAction, onBack, onPowerUp }: Props) {
   const [selectedHex, setSelectedHex] = useState<MapHex | null>(null);
-  const [zoom, setZoom] = useState(2);
+  const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [mappingMode, setMappingMode] = useState(false);
   const [markedHexes, setMarkedHexes] = useState<Set<string>>(new Set());
   const [lastAction, setLastAction] = useState<WorldLuckResult | null>(null);
   const [pendingQuest, setPendingQuest] = useState<QuestEncounter | null>(null);
+  const [escapeResult, setEscapeResult] = useState<{ roll: number; dc: number; success: boolean } | null>(null);
   const [cityDistrict, setCityDistrict] = useState<string | null>(null); // "market" | "temple" | "high" | "low"
   const [cityShop, setCityShop] = useState<string | null>(null);         // shop or temple id
-  const [leftPanel, setLeftPanel] = useState<"sheet" | "inventory">("sheet");
+  const [leftPanel, setLeftPanel] = useState<"sheet" | "inventory" | "party">("sheet");
+  const [selectedFollowerId, setSelectedFollowerId] = useState<string | null>(null);
   const [gameLog, setGameLog] = useState<WorldLuckResult[]>([]);
+  const [showNewPartyPicker, setShowNewPartyPicker] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // Block all actions when a fight is pending — must fight or escape first
+  const fightBlocking = !!(pendingQuest && lastAction && (lastAction.outcome === "fight" || lastAction.outcome === "thug_fight"));
+
+  /** Minimum zoom so the map always fills the container (no empty edges) */
+  const getMinZoom = useCallback(() => {
+    const el = containerRef.current;
+    if (!el) return 1;
+    const rect = el.getBoundingClientRect();
+    return Math.max(rect.width / VB, rect.height / VB, 1);
+  }, []);
 
   // Multi-party: active party position (falls back to save.map_hex for saves without parties)
   const activeParty = save.parties?.[save.active_party_index ?? 0];
@@ -2056,7 +2149,10 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
 
   // Append to game log when a new action happens
   useEffect(() => {
-    if (lastAction) setGameLog(prev => [lastAction, ...prev].slice(0, 50));
+    if (lastAction) {
+      setGameLog(prev => [lastAction, ...prev].slice(0, 50));
+      setEscapeResult(null);
+    }
   }, [lastAction]);
 
   // Generate quest/encounter data when lastAction changes (stable, doesn't re-roll on re-render)
@@ -2070,8 +2166,11 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
       const heroCount = Math.max(1, save.party.heroes.length);
       let ratCount = 0;
       for (let i = 0; i < heroCount * save.level; i++) ratCount += Math.floor(Math.random() * 6) + 1;
-      const rats: EnemySpec[] = Array.from({ length: ratCount }, () =>
-        createMonsterSpec(direRat, "\uD83D\uDC00")); // 🐀
+      const ratNft = characters?.find(c => c.name === "Rats");
+      const rats: EnemySpec[] = Array.from({ length: ratCount }, () => ({
+        ...createMonsterSpec(direRat, "\uD83D\uDC00"), // 🐀
+        imageUrl: ratNft?.imageUrl || "/enemy-rat.jpg",
+      }));
       setPendingQuest({
         questId: "rats_in_cellar",
         questName: "Rats in the Cellar",
@@ -2232,8 +2331,33 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
       return;
     }
 
+    // Random encounter fight — build enemies from encounter data
+    if (lastAction.outcome === "fight" && lastAction.encounter) {
+      const enemies: EnemySpec[] = [];
+      const terrainEmoji: Record<string, string> = {
+        forest: "\u{1F43B}", desert: "\u{1F982}", jungle: "\u{1F40D}", swamp: "\u{1F40A}",
+        mountain: "\u{1F9CC}", plains: "\u{1F43A}", coast: "\u{1F419}", town: "\u{1F5E1}\u{FE0F}",
+      };
+      const hex = ALL_HEXES.find(h => h.q === activeMapHex.q && h.r === activeMapHex.r);
+      const emoji = terrainEmoji[hex?.type ?? "plains"] ?? "\u{1F47E}";
+      for (const group of lastAction.encounter.monsters) {
+        for (let i = 0; i < group.count; i++) {
+          enemies.push(createMonsterSpec(group.monster, emoji));
+        }
+      }
+      if (enemies.length > 0) {
+        setPendingQuest({
+          questId: "random_encounter",
+          questName: "Encounter",
+          enemies,
+          difficulty: lastAction.difficulty ?? "easy",
+        });
+        return;
+      }
+    }
+
     setPendingQuest(null);
-  }, [lastAction, save.party.heroes.length, save.level]);
+  }, [lastAction, save.party.heroes.length, save.level, activeMapHex.q, activeMapHex.r]);
 
   const [selectedSkill, setSelectedSkill] = useState<FieldSkillId>("search");
   const currentHex = ALL_HEXES.find(h => h.q === activeMapHex.q && h.r === activeMapHex.r);
@@ -2248,6 +2372,63 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
   // For existing saves without last_rest_hour/last_ate_hour, treat as fresh
   const exhaustion = getExhaustionPoints(save.hour ?? 0, save.last_rest_hour ?? (save.hour ?? 0), save.last_ate_hour ?? (save.hour ?? 0));
   const exhPts = exhaustion.points;  // -1 to all stats per point
+
+  // ── Auto-repeat: fire the party's saved action when it becomes active ──
+  // Serialize auto_action to a string so React can compare deps reliably (objects fail Object.is)
+  const autoKey = activeParty?.auto_action ? `${activeParty.auto_action.type}:${activeParty.auto_action.skill ?? ""}` : "";
+  useEffect(() => {
+    if (!autoKey || !activeParty?.auto_action || activeParty.has_acted) return;
+    if (fightBlocking) return; // must resolve fight before auto continues
+    if (!currentHex) return;
+    // Safety: stop auto if out of food, can't afford followers, or critically low HP
+    const totalCp = save.coins.gp * 100 + save.coins.sp * 10 + save.coins.cp;
+    const dailyFollowerCost = save.party.heroes.reduce((sum, h) =>
+      sum + h.followers.filter(f => f.alive).reduce((s, f) => s + f.dailyCost, 0), 0);
+    const dailyFollowerFood = save.party.heroes.reduce((sum, h) =>
+      sum + h.followers.filter(f => f.alive).reduce((s, f) => s + f.foodCost, 0), 0);
+    const cantAfford = totalCp < dailyFollowerCost || save.food < 1 + dailyFollowerFood;
+    if (save.food <= 0 || save.current_hp <= 1 || cantAfford) {
+      onSetAutoAction?.(save.active_party_index ?? 0, null);
+      return;
+    }
+    const timer = setTimeout(() => {
+      const aa = activeParty.auto_action!;
+      // Rest at night (hour 16-23 each day) instead of using skill
+      const isNight = ((save.hour ?? 0) % 24) >= 16;
+      const doRest = aa.type === "rest" || isNight;
+      const result = doRest
+        ? rollWorldLuck(currentHex, "rest", charStats, skillRanks, distFromCity, undefined, heroCount, save.fame ?? 0, exhPts, save.feats)
+        : rollWorldLuck(currentHex, "skill", charStats, skillRanks, distFromCity, (aa.skill ?? "search") as FieldSkillId, heroCount, save.fame ?? 0, exhPts, save.feats);
+
+      // Interrupting outcomes — cancel auto
+      const INTERRUPTS = new Set(["fight", "thug_fight", "find_quest", "find_dungeon", "hazard"]);
+      if (INTERRUPTS.has(result.outcome)) {
+        onSetAutoAction?.(save.active_party_index ?? 0, null);
+      }
+      setLastAction(result);
+      onAction(result);
+    }, 1000);
+    return () => clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [save.hour, save.active_party_index, autoKey, fightBlocking]);
+
+  // Encumbrance check — blocks travel when overloaded
+  // Followers with carry_bonus abilities increase party capacity
+  const playerStr = character ? Math.max(1, character.stats.str) : 10;
+  const followerCarryBonus = save.party.heroes.reduce((sum, h) =>
+    h.followers.filter(f => f.alive).reduce((s, f) => {
+      if (f.abilities.includes("carry_bonus_50")) return s + 0.5;
+      if (f.abilities.includes("carry_bonus_30")) return s + 0.3;
+      return s;
+    }, sum), 0);
+  const effectiveStr = Math.round(playerStr * (1 + followerCarryBonus));
+  const playerInvWeight = save.inventory.reduce((s, it) => s + (it.itemWeight ?? getItemWeight(it.id)) * it.qty, 0);
+  const playerEqWeight = (["weapon", "armor", "shield", "accessory"] as (keyof Equipment)[]).reduce((s, sl) => {
+    const id = save.equipment[sl as keyof Equipment]; return id ? s + getItemWeight(id) : s;
+  }, 0);
+  const playerCoinWeight = coinWeight(save.coins);
+  const playerTotalWeight = playerInvWeight + playerEqWeight + playerCoinWeight;
+  const playerEncumbrance = getEncumbrance(effectiveStr, playerTotalWeight);
 
   // Auto-collapse when any stat hits 1 from exhaustion (only on change, not mount)
   const prevExhPts = useRef(exhPts);
@@ -2279,21 +2460,30 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
     const el = containerRef.current;
     if (!el) return;
     const rect = el.getBoundingClientRect();
-    // Convert player viewBox coords to fraction of map, then offset so player is centered
-    const px = -(playerPx.x / VB) * VB * zoom + rect.width / 2;
-    const py = -(playerPx.y / VB) * VB * zoom + rect.height / 2;
-    setPan({ x: px, y: py });
+    const ms = VB * zoom;
+    // Convert player viewBox coords to pixel offset, then center in viewport
+    const px = -playerPx.x * zoom + rect.width / 2;
+    const py = -playerPx.y * zoom + rect.height / 2;
+    setPan({
+      x: Math.min(0, Math.max(rect.width - ms, px)),
+      y: Math.min(0, Math.max(rect.height - ms, py)),
+    });
   }, [zoom, playerPx.x, playerPx.y]);
 
   // Auto-center on mount and when player moves
   useEffect(() => {
     if (!didCenter.current) {
-      // Small delay to ensure container is rendered
-      requestAnimationFrame(() => { centerOnPlayer(); didCenter.current = true; });
+      // Small delay to ensure container is rendered and we can measure it
+      requestAnimationFrame(() => {
+        const minZ = getMinZoom();
+        if (zoom < minZ) setZoom(minZ);
+        centerOnPlayer();
+        didCenter.current = true;
+      });
     } else {
       centerOnPlayer();
     }
-  }, [centerOnPlayer]);
+  }, [centerOnPlayer, getMinZoom]);
 
   // Mouse wheel → zoom (centered on cursor)
   useEffect(() => {
@@ -2307,20 +2497,22 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
 
       const oldZoom = zoom;
       const delta = e.deltaY > 0 ? -0.2 : 0.2;
-      const newZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, +(oldZoom + delta).toFixed(1)));
+      const newZoom = Math.min(MAX_ZOOM, Math.max(getMinZoom(), +(oldZoom + delta).toFixed(1)));
       if (newZoom === oldZoom) return;
 
       // Zoom toward cursor: adjust pan so the point under cursor stays fixed
       const scale = newZoom / oldZoom;
-      setPan(p => ({
-        x: mx - scale * (mx - p.x),
-        y: my - scale * (my - p.y),
-      }));
+      const newMapSize = VB * newZoom;
+      const newP = { x: mx - scale * (mx - pan.x), y: my - scale * (my - pan.y) };
+      // Clamp inline since mapSize changes with new zoom
+      newP.x = Math.min(0, Math.max(rect.width - newMapSize, newP.x));
+      newP.y = Math.min(0, Math.max(rect.height - newMapSize, newP.y));
+      setPan(newP);
       setZoom(newZoom);
     }
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
-  }, [zoom]);
+  }, [zoom, pan, getMinZoom]);
 
   // Click+drag to pan (suppress hex click if dragged > 5px)
   const wasDrag = useRef(false);
@@ -2335,7 +2527,7 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
     const dx = e.clientX - dragRef.current.startX;
     const dy = e.clientY - dragRef.current.startY;
     if (Math.abs(dx) > 5 || Math.abs(dy) > 5) wasDrag.current = true;
-    setPan({ x: dragRef.current.panX - dx, y: dragRef.current.panY - dy });
+    setPan(clampPan({ x: dragRef.current.panX + dx, y: dragRef.current.panY + dy }));
   }
   function onPointerUp() {
     dragRef.current = null;
@@ -2370,13 +2562,19 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
 
   function handleTravel() {
     if (!selectedHex) return;
+    if (fightBlocking) return; // must resolve fight first
+    if (playerEncumbrance === "over") return; // overloaded — cannot travel
     const dist = hexDistance(activeMapHex, selectedHex);
     if (dist === 0 || dist > MAX_TRAVEL) return;
     const effectiveHexes = travelCost(dist, selectedHex);
     const result = travel(effectiveHexes, save, con);
     const destDist = hexDistance(selectedHex, CITY_CENTER);
-    const encounter = rollWorldLuck(selectedHex, "travel", charStats, skillRanks, destDist, undefined, heroCount, save.fame ?? 0, exhPts);
+    const encounter = rollWorldLuck(selectedHex, "travel", charStats, skillRanks, destDist, undefined, heroCount, save.fame ?? 0, exhPts, save.feats);
     onTravel({ q: selectedHex.q, r: selectedHex.r }, result, selectedHex, encounter);
+    // If travel encounter is a fight, set lastAction so fightBlocking activates and fight UI shows
+    if (encounter.outcome === "fight" || encounter.outcome === "thug_fight") {
+      setLastAction(encounter);
+    }
     setSelectedHex(null);
   }
 
@@ -2386,16 +2584,32 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
     const rect = el.getBoundingClientRect();
     const cx = rect.width / 2, cy = rect.height / 2;
     const oldZoom = zoom;
-    const newZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, +(oldZoom + delta).toFixed(1)));
+    const newZoom = Math.min(MAX_ZOOM, Math.max(getMinZoom(), +(oldZoom + delta).toFixed(1)));
     const scale = newZoom / oldZoom;
-    setPan(p => ({ x: cx - scale * (cx - p.x), y: cy - scale * (cy - p.y) }));
+    const newMapSize = VB * newZoom;
+    setPan(p => {
+      const nx = cx - scale * (cx - p.x);
+      const ny = cy - scale * (cy - p.y);
+      return { x: Math.min(0, Math.max(rect.width - newMapSize, nx)), y: Math.min(0, Math.max(rect.height - newMapSize, ny)) };
+    });
     setZoom(newZoom);
   }
 
   const mapSize = VB * zoom;
 
+  /** Clamp pan so the map always covers the visible container (no empty edges) */
+  const clampPan = useCallback((p: { x: number; y: number }) => {
+    const el = containerRef.current;
+    if (!el) return p;
+    const rect = el.getBoundingClientRect();
+    return {
+      x: Math.min(0, Math.max(rect.width - mapSize, p.x)),
+      y: Math.min(0, Math.max(rect.height - mapSize, p.y)),
+    };
+  }, [mapSize]);
+
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-2" style={{ height: "calc(100vh - 120px)", minHeight: 400, overflow: "hidden" }}>
       {/* Header bar */}
       <div className="flex items-center justify-between px-3 py-2 rounded-lg flex-wrap gap-2"
         style={{ background: "rgba(0,0,0,0.3)", border: "1px solid rgba(201,168,76,0.15)" }}>
@@ -2408,6 +2622,7 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
           Kardov&apos;s Gate
         </span>
         <div className="flex gap-3 text-xs" style={{ color: "rgba(232,213,176,0.6)" }}>
+          {activeParty && <span style={{ color: "rgba(96,165,250,0.8)" }}>{activeParty.name}</span>}
           <span>Lv{save.level}</span>
           <span>Day {Math.floor((save.hour ?? 0) / 24) + 1} — {(() => {
             const h = (save.hour ?? 0) % 24;
@@ -2426,9 +2641,9 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
         </button>
       </div>
 
-      {/* Party selector bar — only shows when multiple parties exist */}
-      {save.parties && save.parties.length > 1 && (
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg overflow-x-auto"
+      {/* Party selector bar — always visible */}
+      {save.parties && (
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg overflow-x-auto relative"
           style={{ background: "rgba(0,0,0,0.25)", border: "1px solid rgba(201,168,76,0.1)" }}>
           <span className="text-xs font-bold uppercase tracking-widest shrink-0" style={{ color: "rgba(201,168,76,0.4)", fontSize: "0.5rem" }}>
             Parties
@@ -2453,17 +2668,58 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
                 <span className="text-xs" style={{ color: isActive ? "rgba(96,165,250,0.9)" : "rgba(232,213,176,0.6)", fontSize: "0.55rem" }}>
                   {p.name}
                 </span>
+                {p.auto_action && <span style={{ fontSize: "0.45rem", color: "rgba(251,146,60,0.7)" }}>{"\u27F3"}</span>}
                 {p.has_acted && <span style={{ fontSize: "0.5rem", color: "rgba(74,222,128,0.6)" }}>{"\u2713"}</span>}
               </button>
             );
           })}
+          {/* New party button */}
+          <button onClick={() => setShowNewPartyPicker(v => !v)}
+            className="flex items-center justify-center shrink-0 rounded"
+            style={{ width: 24, height: 24, background: "rgba(74,222,128,0.1)", border: "1px solid rgba(74,222,128,0.3)", color: "rgba(74,222,128,0.8)", fontSize: "0.8rem", fontWeight: "bold" }}>
+            +
+          </button>
         </div>
       )}
+      {/* NFT picker — inline below party bar so it isn't clipped by overflow:hidden */}
+      {showNewPartyPicker && (() => {
+        const usedAddresses = new Set(save.parties?.map(p => p.heroes[0]?.nft_address) ?? []);
+        const available = characters?.filter(c => c.owned && !usedAddresses.has(c.contractAddress.toLowerCase())) ?? [];
+        return (
+          <div className="rounded-lg p-2 flex flex-wrap gap-1 items-center"
+            style={{ background: "rgba(15,10,5,0.95)", border: "1px solid rgba(201,168,76,0.3)" }}>
+            <span className="text-xs font-bold uppercase tracking-widest px-1 shrink-0" style={{ color: "rgba(201,168,76,0.5)", fontSize: "0.5rem" }}>
+              Choose NFT Leader
+            </span>
+            {available.length === 0 && (
+              <span className="text-xs px-1" style={{ color: "rgba(232,213,176,0.4)" }}>No available owned NFTs</span>
+            )}
+            {available.map(nft => (
+              <button key={nft.contractAddress} className="flex items-center gap-1.5 px-2 py-1 rounded shrink-0"
+                style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(201,168,76,0.1)" }}
+                onClick={() => { onCreateParty?.(nft.contractAddress.toLowerCase()); setShowNewPartyPicker(false); }}>
+                {nft.imageUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={nft.imageUrl} alt="" className="rounded-full" style={{ width: 20, height: 20, objectFit: "cover" }} />
+                ) : (
+                  <span style={{ fontSize: "0.7rem" }}>{"\u{1F6E1}\uFE0F"}</span>
+                )}
+                <span className="text-xs" style={{ color: "rgba(232,213,176,0.8)", fontSize: "0.55rem" }}>{nft.name || "Hero"}</span>
+              </button>
+            ))}
+            <button onClick={() => setShowNewPartyPicker(false)}
+              className="text-xs px-2 py-1 rounded shrink-0"
+              style={{ background: "rgba(255,255,255,0.03)", color: "rgba(232,213,176,0.4)", fontSize: "0.55rem" }}>
+              Cancel
+            </button>
+          </div>
+        );
+      })()}
 
       {/* Main layout: left panel + map + side panel */}
-      <div className="flex gap-2 flex-col lg:flex-row">
+      <div className="flex gap-2 flex-col lg:flex-row flex-1 min-h-0 overflow-hidden">
         {/* ── Left panel: Character Sheet / Inventory ── */}
-        <div className="hidden lg:flex flex-col gap-1" style={{ width: 240, minWidth: 240 }}>
+        <div className="hidden lg:flex flex-col gap-1" style={{ width: 640, minWidth: 640 }}>
           <div className="flex gap-1">
             <button onClick={() => setLeftPanel("sheet")}
               className="flex-1 px-2 py-1 rounded text-xs font-bold uppercase tracking-widest"
@@ -2475,11 +2731,21 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
               style={{ background: leftPanel === "inventory" ? "rgba(201,168,76,0.15)" : "rgba(255,255,255,0.03)", color: leftPanel === "inventory" ? "rgba(201,168,76,0.9)" : "rgba(201,168,76,0.4)", border: `1px solid ${leftPanel === "inventory" ? "rgba(201,168,76,0.4)" : "rgba(201,168,76,0.1)"}` }}>
               Inventory
             </button>
+            <button onClick={() => setLeftPanel("party")}
+              className="flex-1 px-2 py-1 rounded text-xs font-bold uppercase tracking-widest"
+              style={{ background: leftPanel === "party" ? "rgba(201,168,76,0.15)" : "rgba(255,255,255,0.03)", color: leftPanel === "party" ? "rgba(201,168,76,0.9)" : "rgba(201,168,76,0.4)", border: `1px solid ${leftPanel === "party" ? "rgba(201,168,76,0.4)" : "rgba(201,168,76,0.1)"}` }}>
+              Party
+            </button>
           </div>
           <div className="flex-1 overflow-y-auto rounded-lg" style={{ background: "rgba(0,0,0,0.2)", border: "1px solid rgba(201,168,76,0.1)" }}>
             {leftPanel === "sheet" && character && (() => {
-              const cls = getClassById(save.class_id);
-              const xpInfo = xpToNextLevel(save.level, save.xp);
+              const leaderHero = save.party.heroes.find(h => h.isLeader) ?? save.party.heroes[0];
+              const prog = leaderHero?.progression;
+              const cls = prog ? getClassById(prog.class_levels[0]?.class_id ?? save.class_id) : getClassById(save.class_id);
+              const classLabel = prog && prog.class_levels.length > 1
+                ? prog.class_levels.map(cl => { const c = getClassById(cl.class_id); return `${c?.name ?? cl.class_id} ${cl.levels}`; }).join(" / ")
+                : `${cls?.name ?? save.class_id}`;
+              const xpInfo = xpToNextLevel(prog?.total_level ?? save.level, prog?.xp ?? save.xp);
               const fameBonus = Math.floor((save.fame ?? 0) / 25);
               const fameTier = (save.fame ?? 0) >= 75 ? "Legendary" : (save.fame ?? 0) >= 50 ? "Famous" : (save.fame ?? 0) >= 25 ? "Well-known" : (save.fame ?? 0) >= 10 ? "Local" : "Unknown";
               const stats = character.stats;
@@ -2492,7 +2758,7 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
                   {/* Name + Class */}
                   <div>
                     <div className="text-sm font-bold" style={{ color: "rgba(232,213,176,0.9)" }}>{character.name}</div>
-                    <div style={{ color: "rgba(201,168,76,0.6)" }}>Level {save.level} {cls?.name ?? save.class_id}</div>
+                    <div style={{ color: "rgba(201,168,76,0.6)" }}>Level {prog?.total_level ?? save.level} {classLabel}</div>
                   </div>
                   {/* HP + XP bar */}
                   <div className="flex flex-col gap-1">
@@ -2533,6 +2799,25 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
                       <span>Speed</span><span className="font-bold">{stats.speed} ft</span>
                     </div>
                   </div>
+                  {/* Carry Weight */}
+                  {(() => {
+                    const thresh = getCarryThresholds(effectiveStr);
+                    const encCol = playerEncumbrance === "over" ? "rgba(220,38,38,0.8)" : playerEncumbrance === "heavy" ? "rgba(251,191,36,0.8)" : playerEncumbrance === "medium" ? "rgba(251,191,36,0.6)" : "rgba(74,222,128,0.6)";
+                    return (
+                      <div>
+                        <div className="flex justify-between mb-1">
+                          <span className="font-bold uppercase tracking-widest" style={{ fontSize: "0.45rem", color: "rgba(201,168,76,0.5)" }}>Carry Weight</span>
+                          <span className="font-bold" style={{ color: encCol }}>{playerTotalWeight.toFixed(1)}/{thresh.heavy} lbs</span>
+                        </div>
+                        <div style={{ height: 4, background: "rgba(255,255,255,0.05)", borderRadius: 2 }}>
+                          <div style={{ width: `${Math.min(100, (playerTotalWeight / Math.max(1, thresh.heavy)) * 100)}%`, height: "100%", background: encCol, borderRadius: 2 }} />
+                        </div>
+                        {playerEncumbrance === "over" && <div style={{ fontSize: "0.4rem", color: "rgba(220,38,38,0.9)", marginTop: 2 }}>OVERLOADED — cannot travel!</div>}
+                        {playerEncumbrance === "heavy" && <div style={{ fontSize: "0.4rem", color: "rgba(251,191,36,0.7)", marginTop: 2 }}>Heavy load — movement slowed</div>}
+                        {followerCarryBonus > 0 && <div style={{ fontSize: "0.4rem", color: "rgba(96,165,250,0.6)", marginTop: 1 }}>+{Math.round(followerCarryBonus * 100)}% from followers</div>}
+                      </div>
+                    );
+                  })()}
                   {/* Supplies */}
                   <div>
                     <div className="font-bold uppercase tracking-widest mb-1" style={{ fontSize: "0.45rem", color: "rgba(201,168,76,0.5)" }}>Supplies</div>
@@ -2616,28 +2901,21 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
               );
             })()}
             {leftPanel === "inventory" && (() => {
-              const str = character ? Math.max(1, character.stats.str) : 10;
-              const thresholds = getCarryThresholds(str);
-              const invWeight = save.inventory.reduce((sum, item) => sum + getItemWeight(item.id) * item.qty, 0);
-              const eqWeight = (["weapon", "armor", "shield", "accessory"] as (keyof Equipment)[]).reduce((sum, slot) => {
-                const id = save.equipment[slot];
-                return id ? sum + getItemWeight(id) : sum;
-              }, 0);
-              const cWeight = coinWeight(save.coins);
-              const totalWeight = invWeight + eqWeight + cWeight;
-              const enc = getEncumbrance(str, totalWeight);
-              const encColor = enc === "over" ? "rgba(220,38,38,0.8)" : enc === "heavy" ? "rgba(251,191,36,0.8)" : enc === "medium" ? "rgba(251,191,36,0.6)" : "rgba(74,222,128,0.6)";
+              const thresholds = getCarryThresholds(effectiveStr);
+              const encColor = playerEncumbrance === "over" ? "rgba(220,38,38,0.8)" : playerEncumbrance === "heavy" ? "rgba(251,191,36,0.8)" : playerEncumbrance === "medium" ? "rgba(251,191,36,0.6)" : "rgba(74,222,128,0.6)";
+              const cWeight = playerCoinWeight;
               return (
                 <div className="p-2 flex flex-col gap-2" style={{ fontSize: "0.55rem", color: "rgba(232,213,176,0.7)" }}>
                   {/* Carry weight bar */}
                   <div>
                     <div className="flex justify-between mb-1">
                       <span className="font-bold uppercase tracking-widest" style={{ fontSize: "0.45rem", color: "rgba(201,168,76,0.5)" }}>Carry Weight</span>
-                      <span className="font-bold" style={{ color: encColor }}>{totalWeight.toFixed(1)} / {thresholds.heavy} lbs ({enc})</span>
+                      <span className="font-bold" style={{ color: encColor }}>{playerTotalWeight.toFixed(1)} / {thresholds.heavy} lbs ({playerEncumbrance})</span>
                     </div>
                     <div style={{ height: 6, background: "rgba(255,255,255,0.05)", borderRadius: 3 }}>
-                      <div style={{ width: `${Math.min(100, (totalWeight / thresholds.heavy) * 100)}%`, height: "100%", background: encColor, borderRadius: 3 }} />
+                      <div style={{ width: `${Math.min(100, (playerTotalWeight / Math.max(1, thresholds.heavy)) * 100)}%`, height: "100%", background: encColor, borderRadius: 3 }} />
                     </div>
+                    {followerCarryBonus > 0 && <div style={{ fontSize: "0.4rem", color: "rgba(96,165,250,0.6)", marginTop: 2 }}>+{Math.round(followerCarryBonus * 100)}% capacity from followers</div>}
                   </div>
                   {/* Coin purse */}
                   <div>
@@ -2654,9 +2932,18 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
                       const itemId = save.equipment[slot];
                       const info = itemId ? getItemInfo(itemId) : null;
                       return (
-                        <div key={slot} className="flex justify-between">
+                        <div key={slot} className="flex items-center justify-between gap-1">
                           <span className="capitalize" style={{ color: "rgba(232,213,176,0.4)" }}>{slot}</span>
-                          <span>{info?.name ?? (itemId || "—")}{info ? ` (${getItemWeight(itemId!)}lb)` : ""}</span>
+                          <div className="flex items-center gap-1">
+                            <span>{info?.name ?? (itemId || "—")}{info ? ` (${getItemWeight(itemId!)}lb)` : ""}</span>
+                            {itemId && onUnequip && (
+                              <button onClick={() => onUnequip(slot)}
+                                className="px-1 rounded text-[0.45rem] font-bold"
+                                style={{ background: "rgba(239,68,68,0.15)", color: "rgba(239,68,68,0.8)", border: "1px solid rgba(239,68,68,0.3)" }}>
+                                X
+                              </button>
+                            )}
+                          </div>
                         </div>
                       );
                     })}
@@ -2675,11 +2962,21 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
                       <div className="flex flex-col gap-0.5">
                         {save.inventory.map(item => {
                           const info = getItemInfo(item.id);
-                          const w = getItemWeight(item.id);
+                          const w = item.itemWeight ?? getItemWeight(item.id);
+                          const slot = getEquipSlot(item.id, info);
                           return (
-                            <div key={item.id} className="flex justify-between">
-                              <span>{info?.name ?? item.id}{item.qty > 1 ? ` x${item.qty}` : ""}</span>
-                              <span style={{ color: "rgba(232,213,176,0.4)" }}>{(w * item.qty).toFixed(1)}lb</span>
+                            <div key={item.id} className="flex items-center justify-between gap-1">
+                              <span className="truncate">{info?.name ?? item.id}{item.qty > 1 ? ` x${item.qty}` : ""}</span>
+                              <div className="flex items-center gap-1 shrink-0">
+                                {slot && onEquip && (
+                                  <button onClick={() => onEquip(item.id, slot)}
+                                    className="px-1 rounded text-[0.45rem] font-bold"
+                                    style={{ background: "rgba(74,222,128,0.15)", color: "rgba(74,222,128,0.8)", border: "1px solid rgba(74,222,128,0.3)" }}>
+                                    Equip
+                                  </button>
+                                )}
+                                <span style={{ color: "rgba(232,213,176,0.4)" }}>{(w * item.qty).toFixed(1)}lb</span>
+                              </div>
                             </div>
                           );
                         })}
@@ -2695,13 +2992,167 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
                 </div>
               );
             })()}
+            {leftPanel === "party" && (() => {
+              const roleEmoji: Record<string, string> = { melee: "\u2694\uFE0F", ranged: "\u{1F3F9}", specialist: "\u{1F9EA}", labor: "\u{1F4E6}", pet: "\u{1F43E}", faction: "\u{1F6E1}\uFE0F" };
+              return (
+                <div className="p-2 flex flex-col gap-3" style={{ fontSize: "0.55rem", color: "rgba(232,213,176,0.7)" }}>
+                  {save.party.heroes.map((hero, hIdx) => {
+                    const hProg = hero.progression;
+                    const hLevel = hProg?.total_level ?? save.level;
+                    const hXp = hProg?.xp ?? save.xp;
+                    const hXpInfo = xpToNextLevel(hLevel, hXp);
+                    const hClassLabel = hProg && hProg.class_levels.length > 0
+                      ? hProg.class_levels.map(cl => { const c = getClassById(cl.class_id); return `${c?.name ?? cl.class_id} ${cl.levels}`; }).join(" / ")
+                      : (getClassById(save.class_id)?.name ?? save.class_id);
+                    const charForHero = characters?.find(c => c.contractAddress === hero.nft_address);
+                    const aliveFollowers = hero.followers.filter(f => f.alive);
+                    return (
+                      <div key={hero.nft_address}>
+                        {/* Hero header */}
+                        <div className="flex items-center gap-2 px-2 py-1.5 rounded-t" style={{ background: hero.isLeader ? "rgba(251,191,36,0.08)" : "rgba(255,255,255,0.03)", border: `1px solid ${hero.isLeader ? "rgba(251,191,36,0.2)" : "rgba(201,168,76,0.1)"}` }}>
+                          <div className="flex-1">
+                            <div className="font-bold" style={{ color: hero.isLeader ? "rgba(251,191,36,0.9)" : "rgba(232,213,176,0.9)", fontSize: "0.65rem" }}>
+                              {hero.isLeader ? "\u{1F451} " : ""}{charForHero?.name ?? hero.nft_address.slice(0, 8)}
+                            </div>
+                            <div style={{ color: "rgba(201,168,76,0.6)" }}>Lv{hLevel} {hClassLabel}</div>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              <span style={{ color: "rgba(74,222,128,0.7)" }}>XP {hXp}/{hXpInfo.needed}</span>
+                              {hProg && <span style={{ color: "rgba(96,165,250,0.6)" }}>HP {hProg.current_hp}/{hProg.max_hp}</span>}
+                            </div>
+                          </div>
+                        </div>
+                        {/* Followers */}
+                        {aliveFollowers.length > 0 ? (
+                          <div className="flex flex-col" style={{ borderLeft: "2px solid rgba(201,168,76,0.1)", marginLeft: 8 }}>
+                            {aliveFollowers.map(f => {
+                              const fLevel = f.progression?.total_level ?? f.level;
+                              const fXp = f.progression?.xp ?? f.xp ?? 0;
+                              const fXpInfo = xpToNextLevel(fLevel, fXp);
+                              const fClassLabel = f.progression && f.progression.class_levels.length > 0
+                                ? f.progression.class_levels.map(cl => { const c = getClassById(cl.class_id); return `${c?.name ?? cl.class_id} ${cl.levels}`; }).join("/")
+                                : (getClassById(f.class_id)?.name ?? f.class_id ?? "Warrior");
+                              const loyaltyColor = (f.loyalty ?? 0) >= 80 ? "rgba(74,222,128,0.7)" : (f.loyalty ?? 0) >= 50 ? "rgba(251,191,36,0.7)" : "rgba(220,38,38,0.7)";
+                              const isSelected = selectedFollowerId === f.id;
+                              return (
+                                <div key={f.id}>
+                                  <div
+                                    className="flex items-start gap-1.5 px-2 py-1 cursor-pointer"
+                                    style={{ borderBottom: "1px solid rgba(201,168,76,0.05)", background: isSelected ? "rgba(201,168,76,0.08)" : "transparent" }}
+                                    onClick={() => setSelectedFollowerId(isSelected ? null : f.id)}
+                                  >
+                                    <span style={{ fontSize: "0.7rem" }}>{roleEmoji[f.role] ?? "\u2694\uFE0F"}</span>
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-1">
+                                        <span className="font-bold truncate" style={{ color: "rgba(232,213,176,0.8)" }}>{f.name}</span>
+                                        <span style={{ color: "rgba(201,168,76,0.4)", fontSize: "0.45rem" }}>{f.role}</span>
+                                        <span style={{ color: "rgba(201,168,76,0.3)", fontSize: "0.45rem", marginLeft: "auto" }}>{isSelected ? "\u25B2" : "\u25BC"}</span>
+                                      </div>
+                                      <div className="flex flex-wrap gap-x-2 gap-y-0">
+                                        <span>Lv{fLevel} {fClassLabel}</span>
+                                        <span style={{ color: "rgba(74,222,128,0.6)" }}>HP {f.hp}/{f.maxHp}</span>
+                                        <span style={{ color: "rgba(96,165,250,0.6)" }}>XP {fXp}/{fXpInfo.needed}</span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                  {/* Expanded detail panel */}
+                                  {isSelected && (
+                                    <div className="px-3 py-2 flex flex-col gap-1.5" style={{ background: "rgba(0,0,0,0.2)", borderBottom: "1px solid rgba(201,168,76,0.1)", marginLeft: 8 }}>
+                                      {/* Equipment */}
+                                      <div>
+                                        <div className="font-bold uppercase tracking-widest mb-0.5" style={{ fontSize: "0.4rem", color: "rgba(201,168,76,0.4)" }}>Equipment</div>
+                                        <div className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5">
+                                          <span style={{ color: "rgba(201,168,76,0.5)" }}>Weapon</span>
+                                          <span style={{ color: "rgba(232,213,176,0.8)" }}>{f.weapon ?? "Unarmed"}</span>
+                                          <span style={{ color: "rgba(201,168,76,0.5)" }}>Armor</span>
+                                          <span style={{ color: "rgba(232,213,176,0.8)" }}>{f.armor && f.armor !== "None" ? f.armor : "Unarmored"}</span>
+                                        </div>
+                                      </div>
+                                      {/* Combat Stats */}
+                                      <div>
+                                        <div className="font-bold uppercase tracking-widest mb-0.5" style={{ fontSize: "0.4rem", color: "rgba(201,168,76,0.4)" }}>Combat</div>
+                                        <div className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5">
+                                          <span style={{ color: "rgba(201,168,76,0.5)" }}>AC</span>
+                                          <span style={{ color: "rgba(232,213,176,0.8)" }}>{f.progression?.equipment ? "from gear" : f.ac}</span>
+                                          <span style={{ color: "rgba(201,168,76,0.5)" }}>Attack</span>
+                                          <span style={{ color: "rgba(232,213,176,0.8)" }}>+{f.progression ? (() => { let bab = 0; for (const cl of f.progression!.class_levels) { const cd = getClassById(cl.class_id); if (cd) { const rate = cd.bab === "good" ? 1 : cd.bab === "average" ? 0.75 : 0.5; bab += Math.floor(cl.levels * rate); } } return bab; })() : f.attack}</span>
+                                          <span style={{ color: "rgba(201,168,76,0.5)" }}>HP</span>
+                                          <span style={{ color: f.hp > f.maxHp * 0.5 ? "rgba(74,222,128,0.8)" : f.hp > 0 ? "rgba(251,191,36,0.8)" : "rgba(220,38,38,0.8)" }}>{f.hp} / {f.maxHp}</span>
+                                        </div>
+                                      </div>
+                                      {/* Status */}
+                                      <div>
+                                        <div className="font-bold uppercase tracking-widest mb-0.5" style={{ fontSize: "0.4rem", color: "rgba(201,168,76,0.4)" }}>Status</div>
+                                        <div className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5">
+                                          <span style={{ color: "rgba(201,168,76,0.5)" }}>Morale</span>
+                                          <span style={{ color: f.morale >= 50 ? "rgba(74,222,128,0.8)" : "rgba(220,38,38,0.8)" }}>{f.morale}/100</span>
+                                          <span style={{ color: "rgba(201,168,76,0.5)" }}>Loyalty</span>
+                                          <span style={{ color: loyaltyColor }}>{f.loyalty ?? 0}/100{(f.loyalty ?? 0) >= 80 ? " (Loyal)" : ""}</span>
+                                          <span style={{ color: "rgba(201,168,76,0.5)" }}>XP</span>
+                                          <span style={{ color: "rgba(96,165,250,0.8)" }}>{fXp} / {fXpInfo.needed}</span>
+                                          <span style={{ color: "rgba(201,168,76,0.5)" }}>Pay</span>
+                                          <span style={{ color: "rgba(232,213,176,0.8)" }}>{f.dailyCost > 0 ? formatCoins(cpToCoins(f.dailyCost)) + "/day" : "Free"}</span>
+                                          <span style={{ color: "rgba(201,168,76,0.5)" }}>Food</span>
+                                          <span style={{ color: "rgba(232,213,176,0.8)" }}>{f.foodCost}/day</span>
+                                        </div>
+                                      </div>
+                                      {/* Abilities */}
+                                      {f.abilities.length > 0 && (
+                                        <div>
+                                          <div className="font-bold uppercase tracking-widest mb-0.5" style={{ fontSize: "0.4rem", color: "rgba(201,168,76,0.4)" }}>Abilities</div>
+                                          <div className="flex flex-wrap gap-1">
+                                            {f.abilities.map((a, i) => (
+                                              <span key={i} className="px-1 py-0.5 rounded" style={{ background: "rgba(201,168,76,0.08)", border: "1px solid rgba(201,168,76,0.15)", color: "rgba(232,213,176,0.7)", fontSize: "0.45rem" }}>
+                                                {a.replace(/_/g, " ")}
+                                              </span>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      )}
+                                      {/* Skills/Feats (if progression exists) */}
+                                      {f.progression && f.progression.feats.length > 0 && (
+                                        <div>
+                                          <div className="font-bold uppercase tracking-widest mb-0.5" style={{ fontSize: "0.4rem", color: "rgba(201,168,76,0.4)" }}>Feats</div>
+                                          <div className="flex flex-wrap gap-1">
+                                            {f.progression.feats.map((ft, i) => (
+                                              <span key={i} className="px-1 py-0.5 rounded" style={{ background: "rgba(96,165,250,0.08)", border: "1px solid rgba(96,165,250,0.15)", color: "rgba(96,165,250,0.7)", fontSize: "0.45rem" }}>
+                                                {ft.replace(/_/g, " ")}
+                                              </span>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <div className="px-2 py-1 ml-2" style={{ color: "rgba(232,213,176,0.3)", fontSize: "0.45rem" }}>No followers</div>
+                        )}
+                      </div>
+                    );
+                  })}
+                  {/* Party summary */}
+                  <div className="px-2 py-1.5 rounded" style={{ background: "rgba(0,0,0,0.15)", border: "1px solid rgba(201,168,76,0.08)" }}>
+                    <div className="font-bold uppercase tracking-widest mb-1" style={{ fontSize: "0.4rem", color: "rgba(201,168,76,0.4)" }}>Party Summary</div>
+                    <div className="grid grid-cols-2 gap-x-2 gap-y-0.5">
+                      <span>Heroes</span><span className="font-bold">{save.party.heroes.length}</span>
+                      <span>Followers</span><span className="font-bold">{save.party.heroes.reduce((s, h) => s + h.followers.filter(f => f.alive).length, 0)}</span>
+                      <span>Daily Cost</span><span className="font-bold">{formatCoins(cpToCoins(save.party.heroes.reduce((s, h) => s + h.followers.filter(f => f.alive).reduce((a, f) => a + f.dailyCost, 0), 0)))}</span>
+                      <span>Daily Food</span><span className="font-bold">{1 + save.party.heroes.reduce((s, h) => s + h.followers.filter(f => f.alive).reduce((a, f) => a + f.foodCost, 0), 0)}/day</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         </div>
 
         {/* Zoomable map container */}
-        <div className="flex-1 flex flex-col gap-1">
-          <div ref={containerRef} className="overflow-hidden rounded-lg select-none"
-            style={{ height: "min(70vh, 560px)", background: "rgba(0,0,0,0.15)", border: "1px solid rgba(201,168,76,0.1)", cursor: dragRef.current ? "grabbing" : "grab", touchAction: "none" }}
+        <div className="flex-1 flex flex-col gap-1 min-h-0">
+          <div ref={containerRef} className="overflow-hidden rounded-lg select-none flex-1"
+            style={{ minHeight: 200, background: "rgba(0,0,0,0.15)", border: "1px solid rgba(201,168,76,0.1)", cursor: dragRef.current ? "grabbing" : "grab", touchAction: "none" }}
             onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}>
             <div className="relative" style={{ width: mapSize, height: mapSize, transform: `translate(${pan.x}px, ${pan.y}px)`, transformOrigin: "0 0" }}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -2791,6 +3242,19 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
                   );
                 })}
               </svg>
+              {/* Night dimming overlay */}
+              {(() => {
+                const h = (save.hour ?? 0) % 24;
+                // Gradual transitions: dusk 18-21, full night 21-5, dawn 5-7
+                let opacity = 0;
+                if (h >= 21 || h < 5) opacity = 0.45;        // deep night
+                else if (h >= 18) opacity = 0.15 * (h - 18); // dusk: 0→0.45
+                else if (h < 7) opacity = 0.45 - 0.225 * (h - 5); // dawn: 0.45→0
+                if (opacity > 0) return (
+                  <div className="absolute inset-0 pointer-events-none" style={{ background: `rgba(10,10,40,${opacity})`, mixBlendMode: "multiply" }} />
+                );
+                return null;
+              })()}
             </div>
           </div>
 
@@ -2813,7 +3277,7 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
         </div>
 
         {/* Side panel */}
-        <div className="w-full lg:w-64 flex flex-col gap-2">
+        <div className="w-full lg:w-[640px] flex flex-col gap-2">
           {/* Mapping mode */}
           <div className="px-3 py-2 rounded-lg" style={{ background: mappingMode ? "rgba(255,0,255,0.1)" : "rgba(0,0,0,0.2)", border: `1px solid ${mappingMode ? "rgba(255,0,255,0.4)" : "rgba(201,168,76,0.1)"}` }}>
             <button onClick={() => setMappingMode(m => !m)}
@@ -2955,10 +3419,15 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
                           ))}
                         </div>
                       )}
-                      <div className="flex gap-1">
+                      {fightBlocking && (
+                        <div className="px-2 py-1 rounded text-center" style={{ background: "rgba(220,38,38,0.08)", border: "1px solid rgba(220,38,38,0.2)", fontSize: "0.4rem", color: "rgba(220,38,38,0.7)" }}>
+                          Resolve the encounter first!
+                        </div>
+                      )}
+                      {!fightBlocking && <div className="flex gap-1">
                         {(
                           <button onClick={() => {
-                              const result = rollWorldLuck(currentHex, "skill", charStats, skillRanks, distFromCity, selectedSkill, heroCount, save.fame ?? 0, exhPts);
+                              const result = rollWorldLuck(currentHex, "skill", charStats, skillRanks, distFromCity, selectedSkill, heroCount, save.fame ?? 0, exhPts, save.feats);
                               setLastAction(result); onAction(result);
                             }}
                             className="flex-1 px-2 py-1 rounded text-xs font-bold uppercase tracking-widest"
@@ -2967,7 +3436,7 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
                           </button>
                         )}
                         <button onClick={() => {
-                            const result = rollWorldLuck(currentHex, "rest", charStats, skillRanks, distFromCity, undefined, heroCount, save.fame ?? 0, exhPts);
+                            const result = rollWorldLuck(currentHex, "rest", charStats, skillRanks, distFromCity, undefined, heroCount, save.fame ?? 0, exhPts, save.feats);
                             setLastAction(result); onAction(result);
                           }}
                           disabled={save.food === 0 && save.current_hp >= save.max_hp}
@@ -2975,7 +3444,19 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
                           style={{ background: "rgba(255,255,255,0.03)", color: "rgba(232,213,176,0.4)", border: "1px solid rgba(201,168,76,0.08)", fontSize: "0.45rem", opacity: save.food === 0 && save.current_hp >= save.max_hp ? 0.3 : 1 }}>
                           Rest (8h)
                         </button>
-                      </div>
+                        {save.parties && save.parties.length >= 1 && (() => {
+                          const isAuto = !!activeParty?.auto_action;
+                          return (
+                            <button onClick={() => {
+                                onSetAutoAction?.(save.active_party_index ?? 0, isAuto ? null : { type: "skill", skill: selectedSkill });
+                              }}
+                              className="px-2 py-1 rounded text-xs"
+                              style={{ background: isAuto ? "rgba(251,146,60,0.25)" : "rgba(139,92,246,0.1)", color: isAuto ? "rgba(251,146,60,0.9)" : "rgba(139,92,246,0.8)", border: `1px solid ${isAuto ? "rgba(251,146,60,0.4)" : "rgba(139,92,246,0.2)"}`, fontSize: "0.45rem" }}>
+                              {isAuto ? "Stop" : "Auto"}
+                            </button>
+                          );
+                        })()}
+                      </div>}
                     </div>
                   </div>
                 );
@@ -3052,6 +3533,29 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
                         );
                       })}
                     </div>
+                    {/* Money Changer — merchants take 5% */}
+                    <button onClick={() => {
+                        const total = totalCp(save.coins);
+                        if (total <= 0) return;
+                        const newCoins = exchangeUp(save.coins, 0.05);
+                        const fee = total - totalCp(newCoins);
+                        const result: WorldLuckResult = {
+                          worldRoll: 0, skillRoll: 0, skillDC: 0,
+                          interaction: "rest", outcome: "nothing",
+                          description: `The jeweler exchanges your coin. ${formatCoins(save.coins)} → ${formatCoins(newCoins)} (5% fee).`,
+                          hpChange: 0, goldChange: -fee, foodChange: 0, xpChange: 0,
+                        };
+                        setLastAction(result); onAction(result);
+                      }}
+                      disabled={save.coins.sp + save.coins.cp <= 0}
+                      className="px-2 py-1.5 rounded text-xs font-bold mt-1"
+                      style={{
+                        background: "rgba(251,191,36,0.08)", color: "rgba(251,191,36,0.7)",
+                        border: "1px solid rgba(251,191,36,0.2)", fontSize: "0.5rem",
+                        opacity: save.coins.sp + save.coins.cp <= 0 ? 0.4 : 1,
+                      }}>
+                      {"\u{1F48E}"} Jeweler&apos;s Exchange (5% fee — consolidate coin)
+                    </button>
                   </div>
                 );
               }
@@ -3088,6 +3592,8 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
                 const isElemental = ["earth", "air", "water", "sun"].includes(temple.id);
                 const isPower = ["base", "pol"].includes(temple.id);
                 const blessingCost = { earth: 500, air: 500, water: 1000, sun: 1500 }[temple.id] ?? 500;
+                const templeFactionId: Record<string, string> = { earth: "temple_earthmother", air: "temple_windcaller", water: "temple_tidewarden", sun: "temple_dawnfire" };
+                const factionId = templeFactionId[temple.id];
                 return (
                   <div className="mt-2 flex flex-col gap-1">
                     <div className="flex gap-1">
@@ -3127,9 +3633,82 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
                           }}>
                           Healing Prayer ({formatCoins(cpToCoins(blessingCost))}) — Full HP
                         </button>
-                        <div style={{ fontSize: "0.35rem", color: "rgba(232,213,176,0.3)" }}>
-                          More blessings coming soon...
-                        </div>
+                        {/* Money Changer — temples take 10% but grant favor */}
+                        <button onClick={() => {
+                            const total = totalCp(save.coins);
+                            if (total <= 0) return;
+                            const newCoins = exchangeUp(save.coins, 0.10);
+                            const fee = total - totalCp(newCoins);
+                            const result: WorldLuckResult = {
+                              worldRoll: 0, skillRoll: 0, skillDC: 0,
+                              interaction: "rest", outcome: "nothing",
+                              description: `The temple changes your coin. ${formatCoins(save.coins)} → ${formatCoins(newCoins)} (10% tithe).`,
+                              hpChange: 0, goldChange: -fee, foodChange: 0, xpChange: 0,
+                              factionRepChange: factionId ? { factionId, amount: Math.max(1, Math.floor(fee / 100)) } : undefined,
+                            };
+                            setLastAction(result); onAction(result);
+                          }}
+                          disabled={save.coins.sp + save.coins.cp <= 0}
+                          className="px-2 py-1.5 rounded text-xs font-bold"
+                          style={{
+                            background: "rgba(251,191,36,0.08)", color: "rgba(251,191,36,0.7)",
+                            border: "1px solid rgba(251,191,36,0.2)", fontSize: "0.5rem",
+                            opacity: save.coins.sp + save.coins.cp <= 0 ? 0.4 : 1,
+                          }}>
+                          Money Changer (10% tithe — earns temple favor)
+                        </button>
+                        {/* Recruit Help — diplomacy check to find a temple follower */}
+                        {factionId && (() => {
+                          const rep = (save.faction_rep ?? {})[factionId] ?? 0;
+                          const templates = FACTION_TEMPLATES.filter(t => t.factionId === factionId);
+                          const chaScore = character?.stats.cha ?? 10;
+                          const leaderHero = save.party.heroes.find(h => h.isLeader) ?? save.party.heroes[0];
+                          const currentFollowers = leaderHero?.followers.filter(f => f.alive).length ?? 0;
+                          const maxF = maxFollowers(chaScore);
+                          const partyFull = currentFollowers >= maxF;
+                          const dipRanks = save.skill_ranks?.diplomacy ?? 0;
+                          const dc = rep >= 25 ? 15 : 20; // easier if Friendly+
+                          return (
+                            <button onClick={() => {
+                                const roll = Math.floor(Math.random() * 20) + 1;
+                                const chaMod = calcAbilityMod(chaScore);
+                                const total = roll + chaMod + dipRanks;
+                                if (total >= dc) {
+                                  // Pick a random template from this temple
+                                  const tmpl = templates[Math.floor(Math.random() * templates.length)];
+                                  const follower = hireFollower(tmpl, undefined, rep);
+                                  const result: WorldLuckResult = {
+                                    worldRoll: 0, skillRoll: total, skillDC: dc,
+                                    skillMod: chaMod + dipRanks, skillUsed: "Diplomacy",
+                                    interaction: "rest", outcome: "nothing",
+                                    description: `Diplomacy ${total} vs DC ${dc} — Success! ${follower.name} the ${tmpl.name} agrees to join your cause.`,
+                                    hpChange: 0, goldChange: 0, foodChange: 0, xpChange: 25,
+                                    newFollower: follower,
+                                    factionRepChange: { factionId, amount: 1 },
+                                  };
+                                  setLastAction(result); onAction(result);
+                                } else {
+                                  const result: WorldLuckResult = {
+                                    worldRoll: 0, skillRoll: total, skillDC: dc,
+                                    skillMod: chaMod + dipRanks, skillUsed: "Diplomacy",
+                                    interaction: "rest", outcome: "nothing",
+                                    description: `Diplomacy ${total} vs DC ${dc} — No one is willing to join you right now. Try improving your standing with the temple.`,
+                                    hpChange: 0, goldChange: 0, foodChange: 0, xpChange: 10,
+                                  };
+                                  setLastAction(result); onAction(result);
+                                }
+                              }}
+                              disabled={partyFull || templates.length === 0}
+                              className="px-2 py-1.5 rounded text-xs font-bold"
+                              style={{
+                                background: "rgba(96,165,250,0.1)", color: "rgba(96,165,250,0.8)",
+                                border: "1px solid rgba(96,165,250,0.2)", fontSize: "0.5rem",
+                                opacity: partyFull || templates.length === 0 ? 0.4 : 1,
+                              }}>
+                              Recruit Help (Diplomacy DC {dc}){partyFull ? " — Party Full" : ""}
+                            </button>
+                          );
+                        })()}
                       </div>
                     )}
                     {isPower && (
@@ -3142,7 +3721,7 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
                           <div style={{ fontSize: "0.4rem", color: "rgba(232,213,176,0.35)", marginTop: 4 }}>
                             Enhance your NFT hero with on-chain power. Requires wallet connection.
                           </div>
-                          <button onClick={() => onBack()}
+                          <button onClick={() => onPowerUp?.()}
                             className="mt-2 px-3 py-1 rounded text-xs font-bold uppercase"
                             style={{
                               background: temple.id === "base" ? "rgba(59,130,246,0.15)" : "rgba(139,92,246,0.15)",
@@ -3295,7 +3874,10 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
                         const diploRanks = skillRanks["diplomacy"] ?? 0;
                         const sRoll = Math.floor(Math.random() * 20) + 1 + calcAbilityMod(charStats.cha ?? 10) + diploRanks;
                         const combined = wRoll + sRoll + Math.floor((save.fame ?? 0) / 25);
-                        const isBard = save.class_id === "bard";
+                        const leaderH = save.party.heroes.find(h => h.isLeader) ?? save.party.heroes[0];
+                        const isBard = leaderH?.progression
+                          ? leaderH.progression.class_levels.some(cl => cl.class_id === "bard")
+                          : save.class_id === "bard";
                         const isKardovHere = currentHex.name?.includes("Kardov");
                         const qFlags = save.quest_flags ?? {};
                         const qCooldowns = save.quest_cooldowns ?? {};
@@ -3441,7 +4023,7 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
                       }}
                       className="w-full px-2 py-1.5 rounded text-xs font-bold uppercase tracking-widest"
                       style={{ background: "rgba(251,191,36,0.08)", color: "rgba(251,191,36,0.8)", border: "1px solid rgba(251,191,36,0.2)" }}>
-                      Look for Work (8h){save.class_id === "bard" ? " — Bard may get a gig!" : ""}
+                      Look for Work (8h){((save.party.heroes.find(h => h.isLeader) ?? save.party.heroes[0])?.progression?.class_levels.some(cl => cl.class_id === "bard") ?? save.class_id === "bard") ? " — Bard may get a gig!" : ""}
                     </button>
 
                     {/* Artisan Workshops */}
@@ -3530,7 +4112,7 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
                     <div className="flex gap-1 mt-1">
                       {(
                         <button onClick={() => {
-                            const result = rollWorldLuck(currentHex, "skill", charStats, skillRanks, distFromCity, selectedSkill, heroCount, save.fame ?? 0, exhPts);
+                            const result = rollWorldLuck(currentHex, "skill", charStats, skillRanks, distFromCity, selectedSkill, heroCount, save.fame ?? 0, exhPts, save.feats);
                             setLastAction(result); onAction(result);
                           }}
                           className="flex-1 px-2 py-1 rounded text-xs font-bold"
@@ -3539,7 +4121,7 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
                         </button>
                       )}
                       <button onClick={() => {
-                          const result = rollWorldLuck(currentHex, "rest", charStats, skillRanks, distFromCity, undefined, heroCount, save.fame ?? 0, exhPts);
+                          const result = rollWorldLuck(currentHex, "rest", charStats, skillRanks, distFromCity, undefined, heroCount, save.fame ?? 0, exhPts, save.feats);
                           setLastAction(result); onAction(result);
                         }}
                         disabled={save.food === 0 && save.current_hp >= save.max_hp}
@@ -3604,11 +4186,16 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
                     {FIELD_SKILLS[selectedSkill].desc}
                   </div>
                 )}
-                <div className="flex gap-1">
+                {fightBlocking && (
+                  <div className="px-2 py-1.5 rounded text-center" style={{ background: "rgba(220,38,38,0.08)", border: "1px solid rgba(220,38,38,0.2)", fontSize: "0.45rem", color: "rgba(220,38,38,0.7)" }}>
+                    Resolve the encounter first!
+                  </div>
+                )}
+                {!fightBlocking && <div className="flex gap-1">
                   {(
                     <button
                       onClick={() => {
-                        const result = rollWorldLuck(currentHex, "skill", charStats, skillRanks, distFromCity, selectedSkill, heroCount, save.fame ?? 0, exhPts);
+                        const result = rollWorldLuck(currentHex, "skill", charStats, skillRanks, distFromCity, selectedSkill, heroCount, save.fame ?? 0, exhPts, save.feats);
                         setLastAction(result);
                         onAction(result);
                       }}
@@ -3623,7 +4210,7 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
                   )}
                   <button
                     onClick={() => {
-                      const result = rollWorldLuck(currentHex, "rest", charStats, skillRanks, distFromCity, undefined, heroCount, save.fame ?? 0, exhPts);
+                      const result = rollWorldLuck(currentHex, "rest", charStats, skillRanks, distFromCity, undefined, heroCount, save.fame ?? 0, exhPts, save.feats);
                       setLastAction(result);
                       onAction(result);
                     }}
@@ -3632,7 +4219,20 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
                     style={{ background: "rgba(96,165,250,0.15)", color: "rgba(96,165,250,0.9)", border: "1px solid rgba(96,165,250,0.3)", opacity: currentHex.type === "water" || (save.food === 0 && save.current_hp >= save.max_hp) ? 0.4 : 1 }}>
                     Rest (8h)
                   </button>
-                </div>
+                  {save.parties && save.parties.length >= 1 && (() => {
+                    const isAuto = !!activeParty?.auto_action;
+                    return (
+                      <button
+                        onClick={() => {
+                          onSetAutoAction?.(save.active_party_index ?? 0, isAuto ? null : { type: "skill", skill: selectedSkill });
+                        }}
+                        className="px-2 py-1.5 rounded text-xs font-bold uppercase tracking-widest"
+                        style={{ background: isAuto ? "rgba(251,146,60,0.2)" : "rgba(139,92,246,0.15)", color: isAuto ? "rgba(251,146,60,0.9)" : "rgba(139,92,246,0.9)", border: `1px solid ${isAuto ? "rgba(251,146,60,0.4)" : "rgba(139,92,246,0.3)"}` }}>
+                        {isAuto ? "Stop" : "Auto"}
+                      </button>
+                    );
+                  })()}
+                </div>}
                 {currentHex.type === "water" && (
                   <div style={{ fontSize: "0.45rem", color: "rgba(220,38,38,0.6)" }}>
                     Can&apos;t rest on water without a boat
@@ -3686,6 +4286,215 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
 
           </div>
 
+          {/* ── Party Exchange — when 2+ parties share a hex ── */}
+          {(() => {
+            if (!save.parties || save.parties.length < 2) return null;
+            const activeIdx = save.active_party_index ?? 0;
+            const active = save.parties[activeIdx];
+            const collocated = save.parties
+              .map((p, i) => ({ party: p, index: i }))
+              .filter(({ party: p, index: i }) => i !== activeIdx && p.map_hex.q === active.map_hex.q && p.map_hex.r === active.map_hex.r);
+            if (collocated.length === 0) return null;
+
+            return collocated.map(({ party: other, index: otherIdx }) => {
+              const otherNft = characters?.find(c => c.contractAddress.toLowerCase() === other.heroes[0]?.nft_address);
+              const activeFollowers = active.heroes.flatMap(h => h.followers.filter(f => f.alive));
+              const otherFollowers = other.heroes.flatMap(h => h.followers.filter(f => f.alive));
+              const otherCoins = other.coins ?? { gp: 0, sp: 0, cp: 0 };
+              const otherFood = other.food ?? 0;
+
+              function doTransfer(type: "coin" | "food" | "follower", amount: number, followerId?: string) {
+                if (!save.parties || !onExchange) return;
+                const parties = [...save.parties];
+                let coins = { ...save.coins };
+                let food = save.food;
+
+                if (type === "coin") {
+                  // amount > 0 = give TO other, < 0 = take FROM other
+                  const oc = parties[otherIdx].coins ?? { gp: 0, sp: 0, cp: 0 };
+                  if (amount > 0) {
+                    const total = coins.gp * 100 + coins.sp * 10 + coins.cp;
+                    if (total < amount) return;
+                    // Subtract from active (smallest first)
+                    let rem = amount;
+                    let cp = coins.cp; let sp = coins.sp; let gp = coins.gp;
+                    const fromCp = Math.min(cp, rem); cp -= fromCp; rem -= fromCp;
+                    const fromSp10 = Math.min(sp * 10, rem); sp -= Math.ceil(fromSp10 / 10); rem -= fromSp10;
+                    if (rem > 0) { gp -= Math.ceil(rem / 100); }
+                    coins = { gp: Math.max(0, gp), sp: Math.max(0, sp), cp: Math.max(0, cp) };
+                    // Add to other as mixed denominations
+                    const addGp = Math.floor(amount / 100);
+                    const addSp = Math.floor((amount % 100) / 10);
+                    const addCp = amount % 10;
+                    parties[otherIdx] = { ...parties[otherIdx], coins: { gp: oc.gp + addGp, sp: oc.sp + addSp, cp: oc.cp + addCp } };
+                  } else {
+                    const take = -amount;
+                    const otherTotal = oc.gp * 100 + oc.sp * 10 + oc.cp;
+                    if (otherTotal < take) return;
+                    let rem = take;
+                    let cp = oc.cp; let sp = oc.sp; let gp = oc.gp;
+                    const fromCp = Math.min(cp, rem); cp -= fromCp; rem -= fromCp;
+                    const fromSp10 = Math.min(sp * 10, rem); sp -= Math.ceil(fromSp10 / 10); rem -= fromSp10;
+                    if (rem > 0) { gp -= Math.ceil(rem / 100); }
+                    parties[otherIdx] = { ...parties[otherIdx], coins: { gp: Math.max(0, gp), sp: Math.max(0, sp), cp: Math.max(0, cp) } };
+                    const addGp = Math.floor(take / 100);
+                    const addSp = Math.floor((take % 100) / 10);
+                    const addCp = take % 10;
+                    coins = { gp: coins.gp + addGp, sp: coins.sp + addSp, cp: coins.cp + addCp };
+                  }
+                } else if (type === "food") {
+                  const of = parties[otherIdx].food ?? 0;
+                  if (amount > 0) {
+                    if (food < amount) return;
+                    food -= amount;
+                    parties[otherIdx] = { ...parties[otherIdx], food: of + amount };
+                  } else {
+                    const take = -amount;
+                    if (of < take) return;
+                    parties[otherIdx] = { ...parties[otherIdx], food: of - take };
+                    food += take;
+                  }
+                } else if (type === "follower" && followerId) {
+                  // Move follower from active → other (amount > 0) or other → active (amount < 0)
+                  if (amount > 0) {
+                    let found: typeof activeFollowers[0] | null = null;
+                    const newActiveHeroes = active.heroes.map(h => ({
+                      ...h,
+                      followers: h.followers.filter(f => {
+                        if (!found && f.id === followerId) { found = f; return false; }
+                        return true;
+                      }),
+                    }));
+                    if (!found) return;
+                    const newOtherHeroes = other.heroes.map((h, i) =>
+                      i === 0 ? { ...h, followers: [...h.followers, found!] } : h
+                    );
+                    parties[activeIdx] = { ...parties[activeIdx], heroes: newActiveHeroes };
+                    parties[otherIdx] = { ...parties[otherIdx], heroes: newOtherHeroes };
+                  } else {
+                    let found: typeof otherFollowers[0] | null = null;
+                    const newOtherHeroes = other.heroes.map(h => ({
+                      ...h,
+                      followers: h.followers.filter(f => {
+                        if (!found && f.id === followerId) { found = f; return false; }
+                        return true;
+                      }),
+                    }));
+                    if (!found) return;
+                    const newActiveHeroes = active.heroes.map((h, i) =>
+                      i === 0 ? { ...h, followers: [...h.followers, found!] } : h
+                    );
+                    parties[activeIdx] = { ...parties[activeIdx], heroes: newActiveHeroes };
+                    parties[otherIdx] = { ...parties[otherIdx], heroes: newOtherHeroes };
+                  }
+                }
+                // Also stash active party's updated coins/food back
+                parties[activeIdx] = { ...parties[activeIdx], coins, food };
+                onExchange(parties, coins, food);
+              }
+
+              return (
+                <div key={other.id} className="px-3 py-2 rounded-lg flex flex-col gap-2"
+                  style={{ background: "rgba(74,222,128,0.05)", border: "1px solid rgba(74,222,128,0.25)" }}>
+                  <div className="flex items-center gap-2">
+                    <span style={{ fontSize: "0.55rem", color: "rgba(74,222,128,0.9)" }} className="font-black uppercase tracking-widest">
+                      Exchange with {other.name}
+                    </span>
+                    {otherNft?.imageUrl && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={otherNft.imageUrl} alt="" className="rounded-full" style={{ width: 18, height: 18, objectFit: "cover" }} />
+                    )}
+                  </div>
+
+                  {/* Coins */}
+                  <div className="flex items-center justify-between gap-1" style={{ fontSize: "0.55rem" }}>
+                    <span style={{ color: "rgba(201,168,76,0.7)" }}>{"\u{1FA99}"} You: {formatCoins(save.coins)}</span>
+                    <div className="flex gap-1">
+                      <button onClick={() => doTransfer("coin", 10)} className="px-1.5 py-0.5 rounded"
+                        style={{ background: "rgba(220,38,38,0.1)", color: "rgba(220,38,38,0.8)", border: "1px solid rgba(220,38,38,0.2)", fontSize: "0.45rem" }}>
+                        Give 1s
+                      </button>
+                      <button onClick={() => doTransfer("coin", 100)} className="px-1.5 py-0.5 rounded"
+                        style={{ background: "rgba(220,38,38,0.1)", color: "rgba(220,38,38,0.8)", border: "1px solid rgba(220,38,38,0.2)", fontSize: "0.45rem" }}>
+                        Give 1g
+                      </button>
+                      <button onClick={() => doTransfer("coin", -10)} className="px-1.5 py-0.5 rounded"
+                        style={{ background: "rgba(74,222,128,0.1)", color: "rgba(74,222,128,0.8)", border: "1px solid rgba(74,222,128,0.2)", fontSize: "0.45rem" }}>
+                        Take 1s
+                      </button>
+                      <button onClick={() => doTransfer("coin", -100)} className="px-1.5 py-0.5 rounded"
+                        style={{ background: "rgba(74,222,128,0.1)", color: "rgba(74,222,128,0.8)", border: "1px solid rgba(74,222,128,0.2)", fontSize: "0.45rem" }}>
+                        Take 1g
+                      </button>
+                    </div>
+                    <span style={{ color: "rgba(201,168,76,0.5)" }}>Them: {formatCoins(otherCoins)}</span>
+                  </div>
+
+                  {/* Food */}
+                  <div className="flex items-center justify-between gap-1" style={{ fontSize: "0.55rem" }}>
+                    <span style={{ color: "rgba(232,213,176,0.7)" }}>{"\u{1F356}"} You: {save.food}</span>
+                    <div className="flex gap-1">
+                      <button onClick={() => doTransfer("food", 1)} className="px-1.5 py-0.5 rounded"
+                        style={{ background: "rgba(220,38,38,0.1)", color: "rgba(220,38,38,0.8)", border: "1px solid rgba(220,38,38,0.2)", fontSize: "0.45rem" }}>
+                        Give 1
+                      </button>
+                      <button onClick={() => doTransfer("food", 3)} className="px-1.5 py-0.5 rounded"
+                        style={{ background: "rgba(220,38,38,0.1)", color: "rgba(220,38,38,0.8)", border: "1px solid rgba(220,38,38,0.2)", fontSize: "0.45rem" }}>
+                        Give 3
+                      </button>
+                      <button onClick={() => doTransfer("food", -1)} className="px-1.5 py-0.5 rounded"
+                        style={{ background: "rgba(74,222,128,0.1)", color: "rgba(74,222,128,0.8)", border: "1px solid rgba(74,222,128,0.2)", fontSize: "0.45rem" }}>
+                        Take 1
+                      </button>
+                      <button onClick={() => doTransfer("food", -3)} className="px-1.5 py-0.5 rounded"
+                        style={{ background: "rgba(74,222,128,0.1)", color: "rgba(74,222,128,0.8)", border: "1px solid rgba(74,222,128,0.2)", fontSize: "0.45rem" }}>
+                        Take 3
+                      </button>
+                    </div>
+                    <span style={{ color: "rgba(232,213,176,0.5)" }}>Them: {otherFood}</span>
+                  </div>
+
+                  {/* Guards / Followers */}
+                  {(activeFollowers.length > 0 || otherFollowers.length > 0) && (
+                    <div style={{ fontSize: "0.55rem" }}>
+                      <span className="font-bold uppercase tracking-widest" style={{ color: "rgba(201,168,76,0.6)", fontSize: "0.45rem" }}>Guards</span>
+                      {activeFollowers.length > 0 && (
+                        <div className="flex flex-col gap-0.5 mt-1">
+                          <span style={{ color: "rgba(96,165,250,0.5)", fontSize: "0.4rem" }}>YOUR PARTY</span>
+                          {activeFollowers.map(f => (
+                            <div key={f.id} className="flex items-center justify-between px-1 py-0.5 rounded"
+                              style={{ background: "rgba(96,165,250,0.05)", border: "1px solid rgba(96,165,250,0.1)" }}>
+                              <span style={{ color: "rgba(232,213,176,0.8)" }}>{f.name} (Lv{f.level})</span>
+                              <button onClick={() => doTransfer("follower", 1, f.id)} className="px-1.5 py-0.5 rounded"
+                                style={{ background: "rgba(220,38,38,0.1)", color: "rgba(220,38,38,0.8)", border: "1px solid rgba(220,38,38,0.2)", fontSize: "0.4rem" }}>
+                                Send {"\u2192"}
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {otherFollowers.length > 0 && (
+                        <div className="flex flex-col gap-0.5 mt-1">
+                          <span style={{ color: "rgba(74,222,128,0.5)", fontSize: "0.4rem" }}>THEIR PARTY</span>
+                          {otherFollowers.map(f => (
+                            <div key={f.id} className="flex items-center justify-between px-1 py-0.5 rounded"
+                              style={{ background: "rgba(74,222,128,0.05)", border: "1px solid rgba(74,222,128,0.1)" }}>
+                              <span style={{ color: "rgba(232,213,176,0.8)" }}>{f.name} (Lv{f.level})</span>
+                              <button onClick={() => doTransfer("follower", -1, f.id)} className="px-1.5 py-0.5 rounded"
+                                style={{ background: "rgba(74,222,128,0.1)", color: "rgba(74,222,128,0.8)", border: "1px solid rgba(74,222,128,0.2)", fontSize: "0.4rem" }}>
+                                {"\u2190"} Take
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            });
+          })()}
+
           {/* Selected hex info */}
           {selectedHex && !(selectedHex.q === activeMapHex.q && selectedHex.r === activeMapHex.r) && (
             <div className="px-3 py-2 rounded-lg" style={{ background: "rgba(0,0,0,0.3)", border: "1px solid rgba(251,191,36,0.2)" }}>
@@ -3725,7 +4534,12 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
                       <span>Travel time:</span><span className="font-bold">{timeStr} ({speedLabel})</span>
                       <span>Food cost:</span><span className="font-bold">{hexCost} {"\u{1F356}"}{preview.starving ? " (!)" : ""}</span>
                     </div>
-                    {dist <= MAX_TRAVEL && (
+                    {playerEncumbrance === "over" && (
+                      <div className="mt-1 text-center px-2 py-1 rounded" style={{ fontSize: "0.5rem", color: "rgba(220,38,38,0.9)", background: "rgba(220,38,38,0.1)", border: "1px solid rgba(220,38,38,0.3)" }}>
+                        Overloaded! Drop items or give to followers before traveling.
+                      </div>
+                    )}
+                    {dist <= MAX_TRAVEL && playerEncumbrance !== "over" && (
                       <button onClick={handleTravel}
                         className="mt-1 w-full px-3 py-1.5 rounded text-xs font-bold uppercase tracking-widest"
                         style={{
@@ -3736,7 +4550,7 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
                         {"\u{1F6B6}"} Travel ({timeStr})
                       </button>
                     )}
-                    {dist > MAX_TRAVEL && (
+                    {dist > MAX_TRAVEL && playerEncumbrance !== "over" && (
                       <div className="mt-1 text-center" style={{ fontSize: "0.5rem", color: "rgba(201,168,76,0.4)" }}>
                         Too far — max {MAX_TRAVEL} hexes per move
                       </div>
@@ -3751,7 +4565,7 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
       </div>
 
       {/* ── Game Log Footer ── */}
-      <div className="rounded-lg overflow-hidden" style={{ background: "rgba(0,0,0,0.3)", border: "1px solid rgba(201,168,76,0.15)", minHeight: 80, maxHeight: 180 }}>
+      <div className="rounded-lg overflow-hidden shrink-0" style={{ background: "rgba(0,0,0,0.3)", border: "1px solid rgba(201,168,76,0.15)", minHeight: 80, maxHeight: 160 }}>
         <div className="flex items-center justify-between px-3 py-1" style={{ background: "rgba(0,0,0,0.2)", borderBottom: "1px solid rgba(201,168,76,0.1)" }}>
           <span className="text-xs font-bold uppercase tracking-widest" style={{ color: "rgba(201,168,76,0.5)", fontSize: "0.5rem" }}>Game Log</span>
           {gameLog.length > 0 && (
@@ -3789,6 +4603,11 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
                 </div>
                 <div className="flex-1">
                   <span>{entry.description}</span>
+                  {entry.rawD20 != null && (
+                    <span className="ml-1" style={{ color: "rgba(168,85,247,0.7)", fontSize: "0.45rem", fontFamily: "monospace" }}>
+                      [d20({entry.rawD20}){entry.skillMod != null ? `${entry.skillMod >= 0 ? "+" : ""}${entry.skillMod}` : ""}={entry.skillRoll}]
+                    </span>
+                  )}
                   <span className="ml-2" style={{ color: "rgba(232,213,176,0.4)", fontSize: "0.45rem" }}>
                     {entry.hpChange !== 0 && <>{entry.hpChange > 0 ? "+" : ""}{entry.hpChange}HP </>}
                     {entry.coinReward && (entry.coinReward.gp > 0 || entry.coinReward.sp > 0 || entry.coinReward.cp > 0) && <>+{formatCoins(entry.coinReward)} </>}
@@ -3804,6 +4623,77 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
                     style={{ background: "rgba(220,38,38,0.15)", color: "rgba(220,38,38,0.9)", border: "1px solid rgba(220,38,38,0.4)", fontSize: "0.45rem" }}>
                     Fight!
                   </button>
+                )}
+                {idx === 0 && entry.outcome === "fight" && pendingQuest && !escapeResult && (() => {
+                  // Determine which skills can avoid this encounter based on monster type
+                  const monsterType = entry.encounter?.monsters?.[0]?.monster?.type ?? "beast";
+                  const escapeSkills: { skill: string; ability: string; label: string }[] = [
+                    { skill: "hide", ability: "dex", label: "Hide" }, // always available — sneak away
+                  ];
+                  if (monsterType === "humanoid") {
+                    escapeSkills.push({ skill: "diplomacy", ability: "cha", label: "Diplomacy" });
+                    escapeSkills.push({ skill: "intimidate", ability: "cha", label: "Intimidate" });
+                    escapeSkills.push({ skill: "bluff", ability: "cha", label: "Bluff" });
+                  }
+                  if (monsterType === "beast" || monsterType === "magical_beast") {
+                    escapeSkills.push({ skill: "handle_animal", ability: "cha", label: "Handle Animal" });
+                    escapeSkills.push({ skill: "climb", ability: "str", label: "Climb" });
+                  }
+                  if (monsterType === "undead" || monsterType === "aberration") {
+                    escapeSkills.push({ skill: "knowledge_religion", ability: "int", label: "Kn: Religion" });
+                  }
+                  if (monsterType === "fey" || monsterType === "plant") {
+                    escapeSkills.push({ skill: "knowledge_nature", ability: "wis", label: "Kn: Nature" });
+                  }
+                  if (monsterType === "vermin" || monsterType === "swarm") {
+                    escapeSkills.push({ skill: "survival", ability: "wis", label: "Survival" });
+                  }
+                  const dc = entry.skillDC ?? 12;
+                  return (
+                    <div className="shrink-0 flex flex-col gap-1">
+                      <button onClick={() => onQuestBattle(pendingQuest)}
+                        className="px-2 py-1 rounded text-xs font-bold uppercase"
+                        style={{ background: "rgba(220,38,38,0.15)", color: "rgba(220,38,38,0.9)", border: "1px solid rgba(220,38,38,0.4)", fontSize: "0.45rem" }}>
+                        Fight!
+                      </button>
+                      <div className="flex flex-wrap gap-0.5">
+                        {escapeSkills.map(es => {
+                          const abilityKey = es.ability as keyof typeof charStats;
+                          const abilityScore = charStats[abilityKey] ?? 10;
+                          const ranks = (skillRanks as Record<string, number>)[es.skill] ?? 0;
+                          const mod = calcAbilityMod(abilityScore) + ranks;
+                          return (
+                            <button key={es.skill} onClick={() => {
+                              const roll = Math.floor(Math.random() * 20) + 1;
+                              const total = roll + mod;
+                              if (total >= dc) {
+                                setEscapeResult({ roll: total, dc, success: true });
+                                setPendingQuest(null);
+                                setGameLog(prev => [{ ...prev[0], outcome: "avoided_danger" as const, description: `${es.label} succeeds! (${total} vs DC ${dc}) You avoid the encounter.` }, ...prev.slice(1)]);
+                              } else {
+                                setEscapeResult({ roll: total, dc, success: false });
+                              }
+                            }}
+                              className="px-1.5 py-0.5 rounded text-xs"
+                              style={{ background: "rgba(96,165,250,0.1)", color: "rgba(96,165,250,0.8)", border: "1px solid rgba(96,165,250,0.3)", fontSize: "0.38rem" }}>
+                              {es.label} {mod >= 0 ? "+" : ""}{mod}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <span style={{ fontSize: "0.35rem", color: "rgba(232,213,176,0.3)" }}>DC {dc} — one attempt</span>
+                    </div>
+                  );
+                })()}
+                {idx === 0 && entry.outcome === "fight" && escapeResult && !escapeResult.success && pendingQuest && (
+                  <div className="shrink-0 flex flex-col gap-1 items-center">
+                    <span style={{ fontSize: "0.4rem", color: "rgba(220,38,38,0.8)" }}>Escape failed! ({escapeResult.roll} vs DC {escapeResult.dc})</span>
+                    <button onClick={() => { setEscapeResult(null); onQuestBattle(pendingQuest); }}
+                      className="px-2 py-1 rounded text-xs font-bold uppercase"
+                      style={{ background: "rgba(220,38,38,0.15)", color: "rgba(220,38,38,0.9)", border: "1px solid rgba(220,38,38,0.4)", fontSize: "0.45rem" }}>
+                      Fight!
+                    </button>
+                  </div>
                 )}
               </div>
             );

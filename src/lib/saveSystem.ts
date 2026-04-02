@@ -1,5 +1,6 @@
 import { supabase } from "./supabase";
 import { type Party, type AdventureParty, defaultParty, createAdventureParty } from "./party";
+import { type LootItem, pickLoot } from "./loot";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -7,6 +8,8 @@ export type InventoryItem = {
   id: string;
   name: string;
   qty: number;
+  spoilHour?: number;  // game hour when this item spoils (fresh food only)
+  itemWeight?: number; // per-unit weight override (for spoiled_meat / loam whose weight depends on source)
 };
 
 export type Equipment = {
@@ -144,12 +147,11 @@ export type CharacterSave = {
 };
 
 // ── XP & Leveling ────────────────────────────────────────────────────────────
-// XP curve: each level costs more. Level 1→2 = 100 XP, doubles every 5 levels.
+// D&D 3.5 PHB Table 3-2: XP needed from level N to N+1 = N × 1,000.
+// Total XP at level N = N*(N-1)/2 * 1000.
 
 export function xpForLevel(level: number): number {
-  const bracket = Math.floor((level - 1) / 5);
-  const base = 100 * Math.pow(2, bracket);
-  return base;
+  return level * 1000;
 }
 
 export function xpToNextLevel(currentLevel: number, currentXp: number): { needed: number; progress: number } {
@@ -258,14 +260,36 @@ export function travel(
 
 // ── Battle Rewards ───────────────────────────────────────────────────────────
 
-export function battleRewards(difficulty: "easy" | "medium" | "hard", playerLevel: number): { xp: number; goldCp: number } {
-  const base = { easy: 25, medium: 60, hard: 120 };
-  const goldBase = { easy: 500, medium: 1500, hard: 3000 }; // in copper
-  // Scale slightly with level so grinding stays worthwhile
-  const scale = 1 + (playerLevel - 1) * 0.1;
+// D&D 3.5 DMG Table 2-6 (simplified): CR = level → 300 XP per character.
+// Easy ≈ CR below level, Medium ≈ CR equal, Hard ≈ CR above.
+export function battleRewards(difficulty: "easy" | "medium" | "hard" | "deadly", playerLevel: number, participantCount: number = 1): { xp: number; xpPerEntity: number; goldCp: number; loot: LootItem[] } {
+  const base = { easy: 150, medium: 300, hard: 600, deadly: 1200 };
+  // Scale with level so higher-level fights stay rewarding
+  const scale = 1 + (playerLevel - 1) * 0.15;
+
+  // Loot drops instead of flat gold — roll random items based on difficulty
+  const loot: LootItem[] = [];
+  const tierByDiff = { easy: "junk", medium: "common", hard: "uncommon", deadly: "rare" } as const;
+  const baseTier = tierByDiff[difficulty];
+  // Number of drops scales with difficulty
+  const dropCount = { easy: 1, medium: 2, hard: 2, deadly: 3 }[difficulty];
+  for (let i = 0; i < dropCount; i++) {
+    // Chance to bump tier up on higher levels
+    const bump = Math.random() < 0.15 * (playerLevel - 1);
+    const tier = bump
+      ? (baseTier === "junk" ? "common" : baseTier === "common" ? "uncommon" : baseTier === "uncommon" ? "rare" : "rare")
+      : baseTier;
+    loot.push(pickLoot(tier));
+  }
+  // Small loose coin drop (pocket change, not the main reward)
+  const looseCp = Math.round((Math.floor(Math.random() * 30) + 5) * scale);
+
+  const totalXp = Math.round(base[difficulty] * scale);
   return {
-    xp: Math.round(base[difficulty] * scale),
-    goldCp: Math.round(goldBase[difficulty] * scale),
+    xp: totalXp,
+    xpPerEntity: Math.floor(totalXp / Math.max(1, participantCount)),
+    goldCp: looseCp,
+    loot,
   };
 }
 
@@ -315,7 +339,7 @@ export function defaultSave(
     battles_won: 0,
     battles_lost: 0,
     total_play_time: 0,
-    parties: [createAdventureParty("party-0", "Main Party", nftAddress, { q: 36, r: 32 })],
+    parties: [createAdventureParty("party-0", "Party 1", nftAddress, { q: 36, r: 32 })],
     active_party_index: 0,
   };
 }

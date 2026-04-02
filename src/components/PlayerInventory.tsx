@@ -38,7 +38,7 @@ const SLOT_ICONS: Record<keyof Equipment, string> = {
 function getInventoryWeight(inventory: InventoryItem[]): number {
   let total = 0;
   for (const item of inventory) {
-    total += getItemWeight(item.id) * item.qty;
+    total += (item.itemWeight ?? getItemWeight(item.id)) * item.qty;
   }
   return total;
 }
@@ -96,7 +96,7 @@ export function PlayerInventory({ save, str, followerCarryBonus, onEquip, onDrop
   const sorted = [...save.inventory].sort((a, b) => {
     switch (sortMode) {
       case "name": return a.name.localeCompare(b.name);
-      case "weight": return (getItemWeight(b.id) * b.qty) - (getItemWeight(a.id) * a.qty);
+      case "weight": return ((b.itemWeight ?? getItemWeight(b.id)) * b.qty) - ((a.itemWeight ?? getItemWeight(a.id)) * a.qty);
       case "value": {
         const va = getItemInfo(a.id)?.valueCp ?? 0;
         const vb = getItemInfo(b.id)?.valueCp ?? 0;
@@ -305,7 +305,7 @@ export function PlayerInventory({ save, str, followerCarryBonus, onEquip, onDrop
           <div className="flex flex-col gap-1">
             {sorted.map(item => {
               const info = getItemInfo(item.id);
-              const w = getItemWeight(item.id) * item.qty;
+              const w = (item.itemWeight ?? getItemWeight(item.id)) * item.qty;
               const vCp = (info?.valueCp ?? 0) * item.qty;
               const isEquipped = Object.values(save.equipment).includes(item.id);
 

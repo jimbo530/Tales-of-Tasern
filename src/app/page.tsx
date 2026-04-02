@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
   ConnectWallet,
   Wallet,
@@ -19,14 +19,15 @@ import { PowerUp } from "@/components/PowerUp";
 import { HexBattle, type QuestEncounter } from "@/components/HexBattle";
 import { WorldMap, type WorldLuckResult } from "@/components/WorldMap";
 import { PlayerInventory } from "@/components/PlayerInventory";
-import { CLASSES, getClassById, type CharacterClass, type SpellcastingInfo } from "@/lib/classes";
+import { CLASSES, getClassById, HIT_DIE_VALUES, type CharacterClass, type SpellcastingInfo } from "@/lib/classes";
 import { SKILLS, abilityMod, type Skill } from "@/lib/skills";
-import { FEATS, getAvailableFeats, getStartingFeatCount, type Feat } from "@/lib/feats";
-import { SPELLS, SPELL_SCHOOLS, SPECIALIZABLE_SCHOOLS, getClassSpells, getSpellsKnown, type Spell, type SpellSchool } from "@/lib/spells";
+import { FEATS, getAvailableFeats, getStartingFeatCount, featsForLevelUp, featNeedsChoice, parseFeatChoice, type Feat } from "@/lib/feats";
+import { SPELLS, SPELL_SCHOOLS, SPECIALIZABLE_SCHOOLS, getClassSpells, getSpellsKnown, getSpellSlots, type Spell, type SpellSchool } from "@/lib/spells";
 import { DOMAINS, type Domain } from "@/lib/domains";
-import { formatCoins, addCp, subtractCp, totalCp, addCoinsRaw, setQuestCooldown, setQuestCooldownDays, getExhaustionPoints, lowestExhaustedStat } from "@/lib/saveSystem";
+import { formatCoins, addCp, subtractCp, totalCp, cpToCoins, addCoinsRaw, setQuestCooldown, setQuestCooldownDays, getExhaustionPoints, lowestExhaustedStat, addXp } from "@/lib/saveSystem";
 import { changeRep } from "@/lib/factions";
-import { allPartiesActed, resetPartyRound, nextUnactedParty } from "@/lib/party";
+import { getItemInfo, getItemWeight } from "@/lib/itemRegistry";
+import { allPartiesActed, resetPartyRound, nextUnactedParty, hireFollower, GENERAL_TEMPLATES, maxFollowers, createAdventureParty, swapActiveParty, migratePartySupplies, migrateEntityProgression, processDailyUpkeep, getLeaderProgression, defaultProgression, type EntityProgression } from "@/lib/party";
 import { downloadAndCache, getCacheCount, clearImageCache } from "@/lib/imageCache";
 import { resolveImage, toHttp } from "@/lib/resolveImage";
 
@@ -101,6 +102,592 @@ type SpellConfig = {
   prohibited_schools?: string[];
 };
 
+// ── Level-Up Flow ──────────────────────────────────────────────────────────
+// Shown after battle when levelsGained > 0. Skills, feats, spells selection.
+
+function LevelUpFlow({ save, character, fromLevel, toLevel, entry, onComplete }: {
+  save: import("@/lib/saveSystem").CharacterSave;
+  character: NftCharacter | null;
+  fromLevel: number;
+  toLevel: number;
+  entry?: import("@/hooks/useCharacterSave").LevelUpEntry;
+  onComplete: (patch: Partial<import("@/lib/saveSystem").CharacterSave>) => void;
+}) {
+  // Resolve which entity's progression to use
+  const isFollower = entry?.entityType === "follower";
+  const follower = isFollower && entry?.heroIndex !== undefined && entry?.followerIndex !== undefined
+    ? save.party.heroes[entry.heroIndex]?.followers[entry.followerIndex] : null;
+  const prog = isFollower && follower?.progression
+    ? follower.progression
+    : isFollower && follower
+      ? { ...defaultProgression(follower.class_id), total_level: follower.level, xp: follower.xp ?? 0 }
+      : getLeaderProgression(save);
+  const stats = character?.stats ?? { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 };
+  const intMod = abilityMod(stats.int);
+  const conMod = abilityMod(stats.con);
+  const levelsGained = toLevel - fromLevel;
+
+  // ── Class selection for each level gained (multiclass support) ──
+  const [classChoices, setClassChoices] = useState<string[]>([]); // class_id picked for each level
+  const currentClassId = classChoices.length > 0 ? classChoices[classChoices.length - 1] : (prog.class_levels[0]?.class_id ?? save.class_id);
+  const cls = getClassById(currentClassId);
+
+  // ── HP gain (rolled by player) — uses the class chosen for each level ──
+  const getHitDieForChoice = (idx: number) => {
+    const cid = classChoices[idx] ?? currentClassId;
+    const c = getClassById(cid);
+    return c ? HIT_DIE_VALUES[c.hitDie] : 8;
+  };
+  const hitDieValue = cls ? HIT_DIE_VALUES[cls.hitDie] : 8;
+  const hitDieLabel = `d${hitDieValue}`;
+
+  // ── Skill points (based on chosen class per level) ──
+  const skillPointsPerLevel = Math.max(1, (cls?.skillPoints ?? 2) + intMod);
+  const totalSkillPoints = classChoices.reduce((sum, cid) => {
+    const c = getClassById(cid);
+    return sum + Math.max(1, (c?.skillPoints ?? 2) + intMod);
+  }, 0) || skillPointsPerLevel * levelsGained;
+  // Class skills = union of all classes (existing + newly chosen)
+  const allClassIds = new Set([...prog.class_levels.map(cl => cl.class_id), ...classChoices]);
+  const classSkillIds = new Set<string>();
+  for (const cid of allClassIds) {
+    const c = getClassById(cid);
+    if (c) for (const s of c.classSkills) classSkillIds.add(s);
+  }
+  const maxClassRank = toLevel + 3;
+  const maxCrossRank = Math.floor((toLevel + 3) / 2);
+
+  // ── Feats ──
+  const { standard: featSlots, fighterBonus } = featsForLevelUp(fromLevel, toLevel, currentClassId);
+  const totalFeatSlots = featSlots + fighterBonus;
+
+  // ── Spells (spontaneous casters) ──
+  const casterType = cls?.spellcasting?.type;
+  const casterClass = cls?.spellcasting ? currentClassId as "sorcerer" | "bard" : null;
+  const isSpontaneous = casterType === "spontaneous" && (casterClass === "sorcerer" || casterClass === "bard");
+  const isWizard = currentClassId === "wizard";
+
+  // Calculate new spells to pick for spontaneous casters
+  const newSpellSlots: { level: number; count: number }[] = [];
+  if (isSpontaneous && casterClass) {
+    const oldCasterLvl = prog.class_levels.find(cl => cl.class_id === casterClass)?.levels ?? 0;
+    const newCasterLvl = oldCasterLvl + classChoices.filter(c => c === casterClass).length;
+    if (newCasterLvl > oldCasterLvl) {
+      const oldKnown = getSpellsKnown(casterClass, oldCasterLvl);
+      const newKnown = getSpellsKnown(casterClass, newCasterLvl);
+      for (let sl = 0; sl < newKnown.length; sl++) {
+        const diff = (newKnown[sl] ?? 0) - (oldKnown[sl] ?? 0);
+        if (diff > 0) newSpellSlots.push({ level: sl, count: diff });
+      }
+    }
+  }
+  // Wizard: 2 free spells per level in wizard class
+  const wizardLevelsGained = classChoices.filter(c => c === "wizard").length;
+  const wizardNewSpells = isWizard ? 2 * (wizardLevelsGained || levelsGained) : 0;
+  const needsSpells = newSpellSlots.length > 0 || wizardNewSpells > 0;
+
+  // ── Steps ──
+  type LuStep = "class" | "summary" | "hp" | "skills" | "feats" | "spells" | "done";
+  const steps: LuStep[] = ["class", "summary", "hp", "skills"];
+  if (totalFeatSlots > 0) steps.push("feats");
+  if (needsSpells) steps.push("spells");
+  steps.push("done");
+
+  const [stepIdx, setStepIdx] = useState(0);
+  const step = steps[stepIdx];
+
+  // Skill allocation state
+  const [luSkillRanks, setLuSkillRanks] = useState<Record<string, number>>({});
+  const usedSkillPoints = Object.entries(luSkillRanks).reduce((s, [id, v]) => s + v * (classSkillIds.has(id) ? 1 : 2), 0);
+  const remainingSkillPoints = totalSkillPoints - usedSkillPoints;
+
+  // Feat selection state
+  const [luFeats, setLuFeats] = useState<string[]>([]);
+  const [luPendingFeat, setLuPendingFeat] = useState<string | null>(null);
+  const [luFeatFilter, setLuFeatFilter] = useState<"all" | "combat" | "general" | "magic" | "skill">("all");
+  const allFeats = [...prog.feats, ...luFeats];
+  const availableFeats = cls ? getAvailableFeats(toLevel, cls.id, stats as Record<string, number>, allFeats) : [];
+  const filteredFeats = luFeatFilter === "all" ? availableFeats : availableFeats.filter(f => f.category === luFeatFilter);
+
+  // HP roll state — one roll per level gained, reroll 1s allowed
+  const [hpRolls, setHpRolls] = useState<number[]>([]);  // one entry per level gained
+  const totalHpGain = hpRolls.length === levelsGained
+    ? hpRolls.reduce((s, r, i) => s + Math.max(1, r + conMod), 0)
+    : 0;
+
+  // Spell selection state
+  const [luSpells, setLuSpells] = useState<string[]>([]);
+  const totalSpellsNeeded = newSpellSlots.reduce((s, sl) => s + sl.count, 0) + wizardNewSpells;
+
+  // ── Styling helpers ──
+  const gold = "rgba(201,168,76,0.5)";
+  const parchment = "rgba(232,213,176,0.7)";
+  const greenGlow = "rgba(74,222,128,0.9)";
+  const btn = "px-4 py-2 rounded text-sm font-bold uppercase tracking-widest";
+  const btnStyle = { background: "rgba(74,222,128,0.15)", color: greenGlow, border: "1px solid rgba(74,222,128,0.4)" };
+
+  // ── Class Selection Step (multiclass) ──
+  if (step === "class") {
+    const levelsChosen = classChoices.length;
+    const allChosen = levelsChosen >= levelsGained;
+    return (
+      <div className="flex flex-col items-center gap-4 max-w-md mx-auto">
+        <div className="flex flex-col items-center gap-1 px-6 py-4 rounded-lg" style={{ background: "rgba(251,191,36,0.1)", border: "1px solid rgba(251,191,36,0.4)" }}>
+          <span className="text-2xl font-black tracking-widest uppercase" style={{ color: "rgba(251,191,36,0.9)", fontFamily: "'Cinzel Decorative', 'Cinzel', serif" }}>
+            Level Up!
+          </span>
+          <span className="text-lg font-bold" style={{ color: "rgba(251,191,36,0.8)" }}>Level {fromLevel} → {toLevel}</span>
+        </div>
+        <div className="text-center">
+          <span className="text-sm font-black tracking-widest uppercase" style={{ color: "rgba(168,85,247,0.9)" }}>Choose Class for Level {fromLevel + levelsChosen + 1}</span>
+          <div className="text-xs mt-1" style={{ color: parchment }}>{levelsChosen} / {levelsGained} levels assigned</div>
+        </div>
+        {/* Current class breakdown */}
+        {prog.class_levels.length > 0 && (
+          <div className="w-full px-3 py-2 rounded-lg" style={{ background: "rgba(0,0,0,0.2)", border: "1px solid rgba(201,168,76,0.15)", fontSize: "0.7rem", color: parchment }}>
+            <div className="text-xs font-bold mb-1" style={{ color: gold }}>Current Classes:</div>
+            {prog.class_levels.map(cl => {
+              const c = getClassById(cl.class_id);
+              return <div key={cl.class_id}>{c?.emoji ?? ""} {c?.name ?? cl.class_id} Lv{cl.levels}</div>;
+            })}
+            {classChoices.length > 0 && (
+              <>
+                <div className="text-xs font-bold mt-1 mb-1" style={{ color: "rgba(74,222,128,0.8)" }}>New Levels:</div>
+                {classChoices.map((cid, i) => {
+                  const c = getClassById(cid);
+                  return <div key={i}>{c?.emoji ?? ""} {c?.name ?? cid} (Level {fromLevel + i + 1})</div>;
+                })}
+              </>
+            )}
+          </div>
+        )}
+        {/* Class picker */}
+        {!allChosen && (
+          <div className="w-full flex flex-col gap-1 overflow-y-auto" style={{ maxHeight: "45vh" }}>
+            {CLASSES.map(c => (
+              <button key={c.id} onClick={() => setClassChoices(prev => [...prev, c.id])}
+                className="flex items-center gap-2 px-3 py-2 rounded text-left"
+                style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(201,168,76,0.1)" }}>
+                <span className="text-lg">{c.emoji}</span>
+                <div className="flex-1">
+                  <span className="text-xs font-bold" style={{ color: parchment }}>{c.name}</span>
+                  <span className="ml-2 text-xs" style={{ color: gold }}>{c.hitDie} | {c.bab} BAB</span>
+                  <div style={{ fontSize: "0.55rem", color: "rgba(201,168,76,0.4)" }}>{c.description.slice(0, 60)}...</div>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+        {/* Undo last pick */}
+        {classChoices.length > 0 && !allChosen && (
+          <button onClick={() => setClassChoices(prev => prev.slice(0, -1))}
+            className="px-3 py-1 rounded text-xs" style={{ color: "rgba(220,38,38,0.8)", border: "1px solid rgba(220,38,38,0.3)" }}>
+            Undo Last Pick
+          </button>
+        )}
+        {allChosen && (
+          <div className="flex gap-2">
+            <button onClick={() => setClassChoices(prev => prev.slice(0, -1))}
+              className="px-3 py-1 rounded text-xs" style={{ color: "rgba(220,38,38,0.8)", border: "1px solid rgba(220,38,38,0.3)" }}>
+              Undo
+            </button>
+            <button onClick={() => setStepIdx(stepIdx + 1)} className={btn} style={btnStyle}>Next</button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ── Summary Step ──
+  if (step === "summary") {
+    return (
+      <div className="flex flex-col items-center gap-4 max-w-md mx-auto">
+        <div className="flex flex-col items-center gap-1 px-6 py-4 rounded-lg" style={{ background: "rgba(251,191,36,0.1)", border: "1px solid rgba(251,191,36,0.4)" }}>
+          <span className="text-2xl font-black tracking-widest uppercase" style={{ color: "rgba(251,191,36,0.9)", fontFamily: "'Cinzel Decorative', 'Cinzel', serif" }}>
+            Level Up!
+          </span>
+          <span className="text-lg font-bold" style={{ color: "rgba(251,191,36,0.8)" }}>Level {fromLevel} → {toLevel}</span>
+        </div>
+        <div className="w-full flex flex-col gap-2 px-4 py-3 rounded-lg" style={{ background: "rgba(0,0,0,0.2)", border: "1px solid rgba(201,168,76,0.15)", fontSize: "0.8rem", color: parchment }}>
+          <div className="flex justify-between"><span>Hit Die</span><span className="font-bold" style={{ color: "rgba(74,222,128,0.9)" }}>{levelsGained}x {hitDieLabel} + {conMod} CON</span></div>
+          <div className="flex justify-between"><span>Skill Points</span><span className="font-bold" style={{ color: "rgba(96,165,250,0.9)" }}>{totalSkillPoints}</span></div>
+          {totalFeatSlots > 0 && <div className="flex justify-between"><span>Feats</span><span className="font-bold" style={{ color: "rgba(168,85,247,0.9)" }}>{totalFeatSlots}{fighterBonus > 0 ? ` (${featSlots} std + ${fighterBonus} fighter)` : ""}</span></div>}
+          {needsSpells && <div className="flex justify-between"><span>New Spells</span><span className="font-bold" style={{ color: "rgba(251,191,36,0.9)" }}>{totalSpellsNeeded}</span></div>}
+        </div>
+        <button onClick={() => setStepIdx(stepIdx + 1)} className={btn} style={btnStyle}>Allocate Points</button>
+      </div>
+    );
+  }
+
+  // ── HP Rolling Step ──
+  if (step === "hp") {
+    const currentLevelIdx = hpRolls.length; // which level we're rolling for (0-based)
+    const allRolled = hpRolls.length >= levelsGained;
+    const lastRoll = hpRolls.length > 0 ? hpRolls[hpRolls.length - 1] : null;
+    const canReroll = lastRoll === 1; // reroll 1s
+    const currentDie = getHitDieForChoice(currentLevelIdx);
+    const lastDie = hpRolls.length > 0 ? getHitDieForChoice(hpRolls.length - 1) : currentDie;
+
+    function rollHitDie() {
+      const die = getHitDieForChoice(currentLevelIdx);
+      const roll = Math.floor(Math.random() * die) + 1;
+      setHpRolls(prev => [...prev, roll]);
+    }
+
+    function rerollLast() {
+      const die = getHitDieForChoice(hpRolls.length - 1);
+      const roll = Math.floor(Math.random() * die) + 1;
+      setHpRolls(prev => [...prev.slice(0, -1), roll]);
+    }
+
+    return (
+      <div className="flex flex-col items-center gap-4 max-w-md mx-auto">
+        <div className="text-center">
+          <span className="text-sm font-black tracking-widest uppercase" style={{ color: "rgba(74,222,128,0.9)" }}>Roll for Hit Points</span>
+          <div className="text-xs mt-1" style={{ color: parchment }}>Hit die + {conMod} CON per level ({levelsGained} {levelsGained === 1 ? "level" : "levels"})</div>
+        </div>
+
+        {/* Previous rolls */}
+        {hpRolls.length > 0 && (
+          <div className="w-full flex flex-col gap-1 px-4 py-3 rounded-lg" style={{ background: "rgba(0,0,0,0.2)", border: "1px solid rgba(201,168,76,0.15)" }}>
+            {hpRolls.map((roll, i) => {
+              const die = getHitDieForChoice(i);
+              const hpForLevel = Math.max(1, roll + conMod);
+              const clsName = getClassById(classChoices[i] ?? currentClassId)?.name ?? "?";
+              return (
+                <div key={i} className="flex justify-between text-sm" style={{ color: parchment }}>
+                  <span>Lv{fromLevel + i + 1} <span style={{ fontSize: "0.6rem", color: gold }}>({clsName})</span></span>
+                  <span>
+                    <span className="font-bold" style={{ color: roll === 1 ? "rgba(239,68,68,0.9)" : roll === die ? "rgba(251,191,36,0.9)" : "rgba(74,222,128,0.9)" }}>
+                      {roll}
+                    </span>
+                    <span style={{ color: gold }}> (d{die})</span>
+                    <span> + {conMod}</span>
+                    <span> = </span>
+                    <span className="font-bold" style={{ color: "rgba(74,222,128,0.9)" }}>+{hpForLevel} HP</span>
+                  </span>
+                </div>
+              );
+            })}
+            {allRolled && (
+              <div className="flex justify-between text-sm font-bold mt-1 pt-1" style={{ borderTop: "1px solid rgba(201,168,76,0.15)", color: "rgba(74,222,128,0.9)" }}>
+                <span>Total HP Gained</span>
+                <span>+{totalHpGain}</span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Roll / Reroll buttons */}
+        <div className="flex flex-col items-center gap-2">
+          {canReroll && (
+            <button onClick={rerollLast} className={btn}
+              style={{ background: "rgba(251,191,36,0.15)", color: "rgba(251,191,36,0.9)", border: "1px solid rgba(251,191,36,0.4)" }}>
+              Reroll the 1
+            </button>
+          )}
+          {!allRolled && !canReroll && (
+            <button onClick={rollHitDie} className={btn} style={btnStyle}>
+              Roll d{currentDie} for Level {fromLevel + currentLevelIdx + 1}
+            </button>
+          )}
+          {allRolled && !canReroll && (
+            <button onClick={() => setStepIdx(stepIdx + 1)} className={btn} style={btnStyle}>Next</button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ── Skills Step ──
+  if (step === "skills") {
+    const allSkills = SKILLS;
+    return (
+      <div className="flex flex-col gap-3 max-w-md mx-auto">
+        <div className="text-center">
+          <span className="text-sm font-black tracking-widest uppercase" style={{ color: "rgba(96,165,250,0.9)" }}>Allocate Skill Points</span>
+          <div className="text-xs mt-1" style={{ color: parchment }}>{remainingSkillPoints} / {totalSkillPoints} remaining</div>
+        </div>
+        <div className="flex flex-col gap-1 overflow-y-auto" style={{ maxHeight: "50vh" }}>
+          {allSkills.map(sk => {
+            const isClass = classSkillIds.has(sk.id);
+            const currentRank = prog.skill_ranks[sk.id] ?? 0;
+            const addedRank = luSkillRanks[sk.id] ?? 0;
+            const totalRank = currentRank + addedRank;
+            const maxRank = isClass ? maxClassRank : maxCrossRank;
+            const cost = isClass ? 1 : 2;
+            const canAdd = totalRank < maxRank && remainingSkillPoints >= cost;
+            const canRemove = addedRank > 0;
+            return (
+              <div key={sk.id} className="flex items-center justify-between px-2 py-1 rounded" style={{ background: addedRank > 0 ? "rgba(96,165,250,0.08)" : "rgba(255,255,255,0.02)", border: `1px solid ${addedRank > 0 ? "rgba(96,165,250,0.2)" : "rgba(201,168,76,0.08)"}`, fontSize: "0.7rem" }}>
+                <div className="flex-1">
+                  <span style={{ color: isClass ? "rgba(96,165,250,0.9)" : parchment }}>{sk.name}</span>
+                  <span className="ml-1" style={{ fontSize: "0.55rem", color: gold }}>{isClass ? "class" : `cross (${cost}pt)`}</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <span className="font-bold w-8 text-center" style={{ color: parchment }}>{totalRank}/{maxRank}</span>
+                  <button disabled={!canRemove} onClick={() => setLuSkillRanks(prev => ({ ...prev, [sk.id]: (prev[sk.id] ?? 0) - 1 }))}
+                    className="w-6 h-6 rounded text-xs font-bold" style={{ background: canRemove ? "rgba(220,38,38,0.15)" : "rgba(255,255,255,0.03)", color: canRemove ? "rgba(220,38,38,0.9)" : "rgba(255,255,255,0.15)", border: `1px solid ${canRemove ? "rgba(220,38,38,0.3)" : "rgba(255,255,255,0.05)"}` }}>-</button>
+                  <button disabled={!canAdd} onClick={() => setLuSkillRanks(prev => ({ ...prev, [sk.id]: (prev[sk.id] ?? 0) + 1 }))}
+                    className="w-6 h-6 rounded text-xs font-bold" style={{ background: canAdd ? "rgba(74,222,128,0.15)" : "rgba(255,255,255,0.03)", color: canAdd ? "rgba(74,222,128,0.9)" : "rgba(255,255,255,0.15)", border: `1px solid ${canAdd ? "rgba(74,222,128,0.3)" : "rgba(255,255,255,0.05)"}` }}>+</button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <button onClick={() => setStepIdx(stepIdx + 1)} className={btn} style={btnStyle}>
+          {remainingSkillPoints > 0 ? `Skip (${remainingSkillPoints} unspent)` : "Next"}
+        </button>
+      </div>
+    );
+  }
+
+  // ── Feats Step ──
+  if (step === "feats") {
+    return (
+      <div className="flex flex-col gap-3 max-w-md mx-auto">
+        <div className="text-center">
+          <span className="text-sm font-black tracking-widest uppercase" style={{ color: "rgba(168,85,247,0.9)" }}>Choose Feats</span>
+          <div className="text-xs mt-1" style={{ color: parchment }}>{luFeats.length} / {totalFeatSlots} selected</div>
+        </div>
+        {/* Skill Focus sub-picker */}
+        {luPendingFeat === "skill-focus" && (
+          <div className="p-3 rounded-lg" style={{ background: "rgba(96,165,250,0.08)", border: "1px solid rgba(96,165,250,0.3)" }}>
+            <div className="text-xs font-bold mb-2" style={{ color: "rgba(96,165,250,0.9)" }}>Pick a skill for Skill Focus (+3):</div>
+            <div className="flex flex-wrap gap-1">
+              {SKILLS.filter(sk => !allFeats.includes(`skill-focus:${sk.id}`)).map(sk => (
+                <button key={sk.id} onClick={() => { setLuFeats(prev => [...prev, `skill-focus:${sk.id}`]); setLuPendingFeat(null); }}
+                  className="px-2 py-1 rounded text-xs" style={{ background: "rgba(96,165,250,0.1)", color: "rgba(96,165,250,0.9)", border: "1px solid rgba(96,165,250,0.3)" }}>
+                  {sk.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        {/* Filter */}
+        <div className="flex gap-1 justify-center flex-wrap">
+          {(["all", "combat", "general", "magic", "skill"] as const).map(cat => (
+            <button key={cat} onClick={() => setLuFeatFilter(cat)}
+              className="px-2 py-0.5 rounded text-xs uppercase" style={{ background: luFeatFilter === cat ? "rgba(168,85,247,0.15)" : "rgba(255,255,255,0.03)", color: luFeatFilter === cat ? "rgba(168,85,247,0.9)" : gold, border: `1px solid ${luFeatFilter === cat ? "rgba(168,85,247,0.4)" : "rgba(201,168,76,0.1)"}` }}>
+              {cat}
+            </button>
+          ))}
+        </div>
+        {/* Feat list */}
+        <div className="flex flex-col gap-1 overflow-y-auto" style={{ maxHeight: "45vh" }}>
+          {filteredFeats.map(feat => {
+            const picked = luFeats.includes(feat.id) || luFeats.some(f => f.startsWith(feat.id + ":"));
+            const disabled = luFeats.length >= totalFeatSlots && !picked;
+            // Fighter bonus feats must be combat (if all standard slots filled, remaining must be combat)
+            const stdFilled = luFeats.filter(f => { const base = FEATS.find(ff => ff.id === f || f.startsWith(ff.id + ":")); return base ? base.category !== "combat" || luFeats.indexOf(f) < featSlots : true; }).length;
+            return (
+              <button key={feat.id} disabled={disabled && !picked}
+                onClick={() => {
+                  if (picked) {
+                    setLuFeats(prev => prev.filter(f => f !== feat.id && !f.startsWith(feat.id + ":")));
+                  } else if (luFeats.length < totalFeatSlots) {
+                    const choice = featNeedsChoice(feat.id);
+                    if (choice === "skill") { setLuPendingFeat(feat.id); }
+                    else { setLuFeats(prev => [...prev, feat.id]); }
+                  }
+                }}
+                className="flex flex-col px-2 py-1.5 rounded text-left" style={{
+                  background: picked ? "rgba(168,85,247,0.12)" : disabled ? "rgba(255,255,255,0.01)" : "rgba(255,255,255,0.03)",
+                  border: `1px solid ${picked ? "rgba(168,85,247,0.4)" : "rgba(201,168,76,0.08)"}`,
+                  opacity: disabled && !picked ? 0.4 : 1,
+                }}>
+                <span className="text-xs font-bold" style={{ color: picked ? "rgba(168,85,247,0.9)" : parchment }}>{feat.name}</span>
+                <span style={{ fontSize: "0.55rem", color: gold }}>{feat.description.slice(0, 80)}{feat.description.length > 80 ? "..." : ""}</span>
+              </button>
+            );
+          })}
+        </div>
+        <button onClick={() => setStepIdx(stepIdx + 1)} className={btn} style={btnStyle}>
+          {luFeats.length < totalFeatSlots ? `Skip (${totalFeatSlots - luFeats.length} unselected)` : "Next"}
+        </button>
+      </div>
+    );
+  }
+
+  // ── Spells Step ──
+  if (step === "spells") {
+    const casterKey = currentClassId as "sorcerer" | "bard" | "wizard";
+    const alreadyKnown = new Set([...prog.known_spells, ...prog.spellbook, ...luSpells]);
+    return (
+      <div className="flex flex-col gap-3 max-w-md mx-auto">
+        <div className="text-center">
+          <span className="text-sm font-black tracking-widest uppercase" style={{ color: "rgba(251,191,36,0.9)" }}>Learn New Spells</span>
+          <div className="text-xs mt-1" style={{ color: parchment }}>{luSpells.length} / {totalSpellsNeeded} selected</div>
+        </div>
+        {/* Show needed spells by level */}
+        {isSpontaneous && casterClass && newSpellSlots.map(({ level: sl, count }) => {
+          const picked = luSpells.filter(sid => { const sp = SPELLS.find(s => s.id === sid); return sp && sp.levels[casterClass] === sl; }).length;
+          const spellsAtLevel = getClassSpells(casterClass, sl).filter(s => !alreadyKnown.has(s.id));
+          return (
+            <div key={sl}>
+              <div className="text-xs font-bold mb-1" style={{ color: "rgba(251,191,36,0.8)" }}>
+                {sl === 0 ? "Cantrips" : `Level ${sl} Spells`} — pick {count - picked} more
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {spellsAtLevel.map(sp => {
+                  const sel = luSpells.includes(sp.id);
+                  const full = picked >= count && !sel;
+                  return (
+                    <button key={sp.id} disabled={full && !sel}
+                      onClick={() => sel ? setLuSpells(prev => prev.filter(s => s !== sp.id)) : !full ? setLuSpells(prev => [...prev, sp.id]) : undefined}
+                      className="px-2 py-1 rounded text-xs" style={{
+                        background: sel ? "rgba(251,191,36,0.15)" : "rgba(255,255,255,0.03)",
+                        color: sel ? "rgba(251,191,36,0.9)" : full ? "rgba(255,255,255,0.2)" : parchment,
+                        border: `1px solid ${sel ? "rgba(251,191,36,0.4)" : "rgba(201,168,76,0.1)"}`,
+                      }}>
+                      {sp.name}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+        {isWizard && (() => {
+          const picked = luSpells.length;
+          // Wizard picks from any spell level they can cast
+          const slots = getSpellSlots("wizard", toLevel);
+          const maxSpellLevel = slots.length - 1;
+          const available = SPELLS.filter(s => s.levels.wizard !== undefined && s.levels.wizard <= maxSpellLevel && s.levels.wizard > 0 && !alreadyKnown.has(s.id));
+          return (
+            <div>
+              <div className="text-xs font-bold mb-1" style={{ color: "rgba(251,191,36,0.8)" }}>
+                Add to Spellbook — pick {wizardNewSpells - picked} more
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {available.map(sp => {
+                  const sel = luSpells.includes(sp.id);
+                  const full = picked >= wizardNewSpells && !sel;
+                  return (
+                    <button key={sp.id} disabled={full && !sel}
+                      onClick={() => sel ? setLuSpells(prev => prev.filter(s => s !== sp.id)) : !full ? setLuSpells(prev => [...prev, sp.id]) : undefined}
+                      className="px-2 py-1 rounded text-xs" style={{
+                        background: sel ? "rgba(251,191,36,0.15)" : "rgba(255,255,255,0.03)",
+                        color: sel ? "rgba(251,191,36,0.9)" : full ? "rgba(255,255,255,0.2)" : parchment,
+                        border: `1px solid ${sel ? "rgba(251,191,36,0.4)" : "rgba(201,168,76,0.1)"}`,
+                      }}>
+                      {sp.name} <span style={{ fontSize: "0.5rem", color: gold }}>Lv{sp.levels.wizard ?? "?"}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
+        <button onClick={() => setStepIdx(stepIdx + 1)} className={btn} style={btnStyle}>
+          {luSpells.length < totalSpellsNeeded ? `Skip (${totalSpellsNeeded - luSpells.length} unselected)` : "Confirm"}
+        </button>
+      </div>
+    );
+  }
+
+  // ── Done Step ──
+  if (step === "done") {
+    // Merge skill ranks into progression
+    const mergedRanks = { ...prog.skill_ranks };
+    for (const [id, v] of Object.entries(luSkillRanks)) {
+      mergedRanks[id] = (mergedRanks[id] ?? 0) + v;
+    }
+    const mergedFeats = [...prog.feats, ...luFeats];
+    const mergedKnown = isSpontaneous ? [...prog.known_spells, ...luSpells] : prog.known_spells;
+    const mergedSpellbook = isWizard ? [...prog.spellbook, ...luSpells] : prog.spellbook;
+    const newMaxHp = prog.max_hp + totalHpGain;
+
+    // Build updated class_levels and level_history from classChoices
+    const updatedHistory = [...prog.level_history, ...classChoices];
+    const updatedClassLevels = [...prog.class_levels];
+    for (const cid of classChoices) {
+      const existing = updatedClassLevels.find(cl => cl.class_id === cid);
+      if (existing) {
+        existing.levels += 1;
+      } else {
+        updatedClassLevels.push({ class_id: cid, levels: 1 });
+      }
+    }
+
+    // Build updated EntityProgression
+    const updatedProg: EntityProgression = {
+      ...prog,
+      class_levels: updatedClassLevels,
+      level_history: updatedHistory,
+      total_level: toLevel,
+      skill_ranks: mergedRanks,
+      feats: mergedFeats,
+      known_spells: mergedKnown,
+      spellbook: mergedSpellbook,
+      max_hp: newMaxHp,
+      current_hp: Math.min(newMaxHp, prog.current_hp + totalHpGain),
+    };
+
+    // Patch the entity's progression into the party
+    const hIdx = isFollower ? (entry?.heroIndex ?? 0) : (save.party.heroes.findIndex(h => h.isLeader) >= 0 ? save.party.heroes.findIndex(h => h.isLeader) : 0);
+    const updatedHeroes = save.party.heroes.map((h, i) => {
+      if (i !== hIdx) return h;
+      if (isFollower && entry?.followerIndex !== undefined) {
+        // Patch follower's progression
+        const updatedFollowers = h.followers.map((f, fi) =>
+          fi === entry.followerIndex ? { ...f, level: toLevel, progression: updatedProg } : f
+        );
+        return { ...h, followers: updatedFollowers };
+      }
+      // Patch hero's progression
+      return { ...h, progression: updatedProg };
+    });
+
+    return (
+      <div className="flex flex-col items-center gap-4 max-w-md mx-auto">
+        <span className="text-sm font-black tracking-widest uppercase" style={{ color: greenGlow }}>
+          {isFollower ? `${entry?.entityName ?? "Follower"} ` : ""}Level Up Complete!
+        </span>
+        <div className="w-full flex flex-col gap-1 px-4 py-3 rounded-lg" style={{ background: "rgba(0,0,0,0.2)", border: "1px solid rgba(201,168,76,0.15)", fontSize: "0.75rem", color: parchment }}>
+          <div>HP: {prog.max_hp} → {newMaxHp}</div>
+          {classChoices.length > 0 && (
+            <div>Classes: {updatedClassLevels.map(cl => {
+              const c = getClassById(cl.class_id);
+              return `${c?.name ?? cl.class_id} ${cl.levels}`;
+            }).join(" / ")}</div>
+          )}
+          {Object.entries(luSkillRanks).filter(([, v]) => v > 0).map(([id, v]) => (
+            <div key={id}>{SKILLS.find(s => s.id === id)?.name ?? id}: +{v}</div>
+          ))}
+          {luFeats.map(fid => {
+            const parsed = parseFeatChoice(fid);
+            const feat = FEATS.find(f => f.id === (parsed?.baseFeatId ?? fid));
+            return <div key={fid}>Feat: {feat?.name ?? fid}{parsed ? ` (${SKILLS.find(s => s.id === parsed.choiceId)?.name ?? parsed.choiceId})` : ""}</div>;
+          })}
+          {luSpells.map(sid => {
+            const sp = SPELLS.find(s => s.id === sid);
+            return <div key={sid}>Spell: {sp?.name ?? sid}</div>;
+          })}
+        </div>
+        <button onClick={() => onComplete({
+          // Top-level fields for backward compat (hero only)
+          ...(isFollower ? {} : {
+            level: toLevel,
+            skill_ranks: mergedRanks,
+            feats: mergedFeats,
+            known_spells: mergedKnown,
+            spellbook: mergedSpellbook,
+            max_hp: newMaxHp,
+            current_hp: Math.min(newMaxHp, prog.current_hp + totalHpGain),
+          }),
+          // Updated party with entity's new progression
+          party: { heroes: updatedHeroes },
+        })} className={btn} style={btnStyle}>
+          Continue Adventure
+        </button>
+      </div>
+    );
+  }
+
+  return null;
+}
+
 function NewGameFlow({ ownedChars, onStart }: {
   ownedChars: NftCharacter[];
   onStart: (nft: NftCharacter, classId: string, skillRanks: Record<string, number>, feats: string[], spellConfig?: SpellConfig) => void;
@@ -117,6 +704,8 @@ function NewGameFlow({ ownedChars, onStart }: {
   const [pickedSpecialization, setPickedSpecialization] = useState<SpellSchool | null>(null);
   const [pickedProhibited, setPickedProhibited] = useState<SpellSchool[]>([]);
   const [pickedKnownSpells, setPickedKnownSpells] = useState<string[]>([]);
+  // ── Feat sub-selection state (e.g., which skill for Skill Focus) ──
+  const [pendingFeat, setPendingFeat] = useState<string | null>(null);
 
   const stats = pickedNft ? pickedNft.stats : { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 };
   const intMod = abilityMod(stats.int);
@@ -567,13 +1156,17 @@ function NewGameFlow({ ownedChars, onStart }: {
         {pickedFeats.length > 0 && (
           <div className="w-full flex flex-col gap-1">
             {pickedFeats.map(fid => {
-              const feat = FEATS.find(f => f.id === fid);
+              const choice = parseFeatChoice(fid);
+              const feat = FEATS.find(f => f.id === (choice?.baseFeatId ?? fid));
               if (!feat) return null;
+              const choiceSkill = choice ? SKILLS.find(s => s.id === choice.choiceId) : null;
               return (
                 <div key={fid} className="flex items-center gap-2 px-3 py-2 rounded-lg"
                   style={{ background: "rgba(74,222,128,0.08)", border: "1px solid rgba(74,222,128,0.25)" }}>
                   <div className="flex-1">
-                    <div className="text-xs font-bold" style={{ color: "rgba(74,222,128,0.9)" }}>{feat.name}</div>
+                    <div className="text-xs font-bold" style={{ color: "rgba(74,222,128,0.9)" }}>
+                      {feat.name}{choiceSkill ? ` (${choiceSkill.name})` : ""}
+                    </div>
                     <div style={{ fontSize: "0.45rem", color: "rgba(232,213,176,0.5)" }}>{feat.benefit}</div>
                   </div>
                   <button onClick={() => setPickedFeats(prev => prev.filter(id => id !== fid))}
@@ -611,13 +1204,24 @@ function NewGameFlow({ ownedChars, onStart }: {
             </div>
           )}
           {filteredFeats.map(feat => {
-            const alreadyPicked = pickedFeats.includes(feat.id);
+            // canTakeMultiple feats (Skill Focus) are "picked" only by exact compound ID
+            const alreadyPicked = feat.canTakeMultiple
+              ? false // always available (different skill choices)
+              : pickedFeats.includes(feat.id);
             const slotsLeft = maxFeatSlots - pickedFeats.length;
             // Fighter bonus slot must be combat
             const needsCombatForBonus = pickedClass?.id === "fighter" && pickedFeats.length === 1 && feat.category !== "combat";
             const disabled = alreadyPicked || slotsLeft <= 0 || needsCombatForBonus;
             return (
-              <button key={feat.id} onClick={() => { if (!disabled) setPickedFeats(prev => [...prev, feat.id]); }}
+              <button key={feat.id} onClick={() => {
+                if (disabled) return;
+                const choice = featNeedsChoice(feat.id);
+                if (choice === "skill") {
+                  setPendingFeat(feat.id);
+                } else {
+                  setPickedFeats(prev => [...prev, feat.id]);
+                }
+              }}
                 disabled={disabled}
                 className="w-full text-left px-3 py-2 rounded-lg transition-all"
                 style={{
@@ -660,6 +1264,46 @@ function NewGameFlow({ ownedChars, onStart }: {
             Next: Skills ({pickedFeats.length}/{maxFeatSlots})
           </button>
         </div>
+
+        {/* ── Skill Focus: pick which skill ── */}
+        {pendingFeat === "skill-focus" && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center"
+            style={{ background: "rgba(0,0,0,0.7)" }}>
+            <div className="w-full max-w-sm mx-4 rounded-xl p-4 flex flex-col gap-2"
+              style={{ background: "rgba(20,20,30,0.98)", border: "1px solid rgba(201,168,76,0.3)" }}>
+              <div className="text-xs font-bold uppercase tracking-widest text-center"
+                style={{ color: "rgba(201,168,76,0.9)" }}>
+                Skill Focus — Choose a Skill
+              </div>
+              <div className="text-center" style={{ fontSize: "0.45rem", color: "rgba(232,213,176,0.5)" }}>
+                +3 bonus on all checks with the selected skill
+              </div>
+              <div className="flex flex-col gap-1 max-h-64 overflow-y-auto pr-1">
+                {SKILLS.filter(sk => {
+                  // Don't allow picking the same skill twice
+                  return !pickedFeats.some(f => f === `skill-focus:${sk.id}`);
+                }).map(sk => (
+                  <button key={sk.id} onClick={() => {
+                    setPickedFeats(prev => [...prev, `skill-focus:${sk.id}`]);
+                    setPendingFeat(null);
+                  }}
+                    className="w-full text-left px-3 py-1.5 rounded-lg"
+                    style={{ background: "rgba(0,0,0,0.2)", border: "1px solid rgba(201,168,76,0.1)" }}>
+                    <span className="text-xs font-bold" style={{ color: "rgba(232,213,176,0.8)" }}>{sk.name}</span>
+                    <span className="ml-2" style={{ fontSize: "0.4rem", color: "rgba(201,168,76,0.5)" }}>
+                      ({sk.ability.toUpperCase()})
+                    </span>
+                  </button>
+                ))}
+              </div>
+              <button onClick={() => setPendingFeat(null)}
+                className="px-3 py-1.5 rounded text-xs mt-1"
+                style={{ color: "rgba(220,38,38,0.7)", border: "1px solid rgba(220,38,38,0.2)" }}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -813,10 +1457,12 @@ function NewGameFlow({ ownedChars, onStart }: {
           <div style={{ fontSize: "0.45rem", color: "rgba(201,168,76,0.5)" }} className="font-bold uppercase mb-1">Abilities</div>
           <div className="flex flex-col gap-0.5">
             {pickedFeats.map(fid => {
-              const feat = FEATS.find(f => f.id === fid);
+              const choice = parseFeatChoice(fid);
+              const feat = FEATS.find(f => f.id === (choice?.baseFeatId ?? fid));
+              const choiceSkill = choice ? SKILLS.find(s => s.id === choice.choiceId) : null;
               return feat ? (
                 <div key={fid} style={{ fontSize: "0.5rem", color: "rgba(251,191,36,0.7)" }}>
-                  {feat.name} — <span style={{ color: "rgba(232,213,176,0.5)" }}>{feat.benefit}</span>
+                  {feat.name}{choiceSkill ? ` (${choiceSkill.name})` : ""} — <span style={{ color: "rgba(232,213,176,0.5)" }}>{feat.benefit}</span>
                 </div>
               ) : null;
             })}
@@ -884,17 +1530,127 @@ export default function Home() {
   const [search, setSearch] = useState("");
 
   // Navigation
-  const [view, setView] = useState<"menu" | "heroes" | "army" | "marketplace" | "powerUp" | "battle" | "worldMap" | "adventure" | "inventory">("menu");
-  const [lastBattleRewards, setLastBattleRewards] = useState<{ xp: number; goldCp: number; levelsGained: number } | null>(null);
+  const [view, setView] = useState<"menu" | "heroes" | "army" | "marketplace" | "powerUp" | "battle" | "worldMap" | "adventure" | "inventory" | "levelUp">("menu");
+  const [lastBattleRewards, setLastBattleRewards] = useState<{ xp: number; goldCp: number; loot: { name: string }[]; levelsGained: number } | null>(null);
+  const [levelUpQueue, setLevelUpQueue] = useState<import("@/hooks/useCharacterSave").LevelUpEntry[]>([]);
   const [questEncounter, setQuestEncounter] = useState<QuestEncounter | null>(null);
 
   // Character save system
   const { save, hasCharacter, updateSave, createCharacter, recordBattle } = useCharacterSave();
   const { data: walletClient } = useWalletClient();
-  // Find the player's selected NFT from their save
+  // Find the player's original NFT from their save
   const playerCharacter = save
     ? characters.find(c => c.contractAddress.toLowerCase() === save.nft_address.toLowerCase()) ?? null
     : null;
+  // Active party's leader NFT (changes when switching parties)
+  const activePartyLeaderAddr = save?.parties?.[save.active_party_index ?? 0]?.heroes[0]?.nft_address;
+  const activeCharacter = activePartyLeaderAddr
+    ? characters.find(c => c.contractAddress.toLowerCase() === activePartyLeaderAddr) ?? playerCharacter
+    : playerCharacter;
+
+  // Migrate old saves: give each party its own coins/food/inventory/equipment/hp
+  if (save?.parties && !save.parties.some(p => p.coins !== undefined)) {
+    const migrated = migratePartySupplies(save.parties, save.active_party_index ?? 0, {
+      coins: save.coins, food: save.food, inventory: save.inventory, equipment: save.equipment,
+      current_hp: save.current_hp, max_hp: save.max_hp,
+    });
+    updateSave({ parties: migrated });
+  }
+  // Rename legacy "Main Party" → "Party 1"
+  if (save?.parties?.[0]?.name === "Main Party") {
+    updateSave({ parties: save.parties.map((p, i) => i === 0 ? { ...p, name: "Party 1" } : p) });
+  }
+  // Migrate: move top-level progression into hero.progression + add follower xp/loyalty
+  if (save && !save.party?.heroes?.[0]?.progression) {
+    const progPatch = migrateEntityProgression(save);
+    if (progPatch) updateSave(progPatch);
+  }
+
+  // ── Daily: spoilage check + follower upkeep ──
+  const lastUpkeepDay = useRef<number>(-1);
+  const currentDay = save ? Math.floor((save.hour ?? 0) / 24) + 1 : 0;
+  if (save && currentDay > 0 && currentDay !== lastUpkeepDay.current) {
+    lastUpkeepDay.current = currentDay;
+    const gameHour = save.hour ?? 0;
+    const dayUpdates: Record<string, unknown> = {};
+
+    // Spoilage: fresh food past its spoilHour turns into spoiled meat or loam
+    const spoiledFresh = save.inventory.filter(it => it.spoilHour !== undefined && it.id.startsWith("fresh_") && gameHour >= it.spoilHour);
+    // Spoiled meat that's been sitting 2+ days turns to loam (useful on farms)
+    const spoiledMeatToLoam = save.inventory.filter(it => it.id === "spoiled_meat" && it.spoilHour !== undefined && gameHour >= it.spoilHour);
+    if (spoiledFresh.length > 0 || spoiledMeatToLoam.length > 0) {
+      let inv = save.inventory.filter(it => {
+        if (it.id.startsWith("fresh_") && it.spoilHour !== undefined && gameHour >= it.spoilHour) return false;
+        if (it.id === "spoiled_meat" && it.spoilHour !== undefined && gameHour >= it.spoilHour) return false;
+        return true;
+      });
+      const PRODUCE_IDS = new Set(["fresh_berries", "fresh_tubers", "fresh_mushrooms", "fresh_seaweed", "fresh_herbs"]);
+      // Fresh meat → spoiled meat (same weight as source), spoils to loam in 2 more days
+      const meatItems = spoiledFresh.filter(it => !PRODUCE_IDS.has(it.id));
+      const newSpoiledMeat = meatItems.reduce((s, it) => s + it.qty, 0);
+      if (newSpoiledMeat > 0) {
+        const totalMeatWeight = meatItems.reduce((s, it) => s + (it.itemWeight ?? getItemWeight(it.id)) * it.qty, 0);
+        const spoiledUnitWeight = totalMeatWeight / newSpoiledMeat;
+        inv.push({ id: "spoiled_meat", name: "Spoiled Meat", qty: newSpoiledMeat, spoilHour: gameHour + 48, itemWeight: spoiledUnitWeight });
+      }
+      // Fresh produce → straight to loam (half weight)
+      const produceItems = spoiledFresh.filter(it => PRODUCE_IDS.has(it.id));
+      const produceLoamCount = produceItems.reduce((s, it) => s + it.qty, 0);
+      const produceLoamWeight = produceItems.reduce((s, it) => s + (it.itemWeight ?? getItemWeight(it.id)) * it.qty, 0) / 2;
+      // Old spoiled meat → loam (half weight)
+      const meatToLoamCount = spoiledMeatToLoam.reduce((s, it) => s + it.qty, 0);
+      const meatToLoamWeight = spoiledMeatToLoam.reduce((s, it) => s + (it.itemWeight ?? getItemWeight(it.id)) * it.qty, 0) / 2;
+      const totalLoam = produceLoamCount + meatToLoamCount;
+      const totalLoamWeight = produceLoamWeight + meatToLoamWeight;
+      const loamUnitWeight = totalLoam > 0 ? totalLoamWeight / totalLoam : 1;
+      if (totalLoam > 0) {
+        const existingLoam = inv.find(it => it.id === "loam");
+        if (existingLoam) {
+          // Weighted average of old and new loam weights
+          const oldW = (existingLoam.itemWeight ?? getItemWeight("loam")) * existingLoam.qty;
+          const mergedUnit = (oldW + loamUnitWeight * totalLoam) / (existingLoam.qty + totalLoam);
+          inv = inv.map(it => it.id === "loam" ? { ...it, qty: it.qty + totalLoam, itemWeight: mergedUnit } : it);
+        } else {
+          inv.push({ id: "loam", name: "Loam", qty: totalLoam, itemWeight: loamUnitWeight });
+        }
+      }
+      dayUpdates.inventory = inv;
+    }
+
+    // Follower upkeep: pay wages, consume food, feast bonus
+    const hasFollowers = save.party.heroes.some(h => h.followers.some(f => f.alive));
+    if (hasFollowers) {
+      const currentInv = (dayUpdates.inventory as typeof save.inventory) ?? save.inventory;
+      // Fresh food feast requires a Camp Cook follower (or character with craft_cooking)
+      const hasCook = save.party.heroes.some(h => h.followers.some(f => f.alive && f.templateId === "merc_cook"))
+        || (save.skill_ranks?.["craft_cooking"] ?? 0) > 0;
+      // Build food inventory list for feast check (fresh food only counts if party has a cook)
+      const foodInv = currentInv
+        .filter(it => it.id.startsWith("food_") || (hasCook && it.id.startsWith("fresh_")))
+        .map(it => {
+          const info = getItemInfo(it.id);
+          return { id: it.id, name: it.name, priceCp: info?.valueCp ?? 0 };
+        });
+      const result = processDailyUpkeep(save.party, totalCp(save.coins), save.food, foodInv);
+      dayUpdates.party = result.party;
+      dayUpdates.coins = cpToCoins(result.goldRemaining);
+      dayUpdates.food = result.foodRemaining;
+      // Remove consumed feast item from inventory
+      if (result.consumedFoodItemId) {
+        let removed = false;
+        const inv = (dayUpdates.inventory as typeof save.inventory) ?? save.inventory;
+        dayUpdates.inventory = inv.map(it => {
+          if (!removed && it.id === result.consumedFoodItemId) {
+            removed = true;
+            return it.qty > 1 ? { ...it, qty: it.qty - 1 } : null;
+          }
+          return it;
+        }).filter(Boolean);
+      }
+    }
+
+    if (Object.keys(dayUpdates).length > 0) updateSave(dayUpdates);
+  }
 
   // Cycling background images
   const BG_IMAGES = ["/bg-plains-1.webp", "/bg-plains-2.webp", "/bg-plains-3.webp", "/bg-plains-4.webp", "/bg-desert-1.webp", "/bg-desert-2.webp", "/bg-desert-3.webp", "/bg-desert-4.webp"];
@@ -958,20 +1714,59 @@ export default function Home() {
     </main>
   );
 
+  if (view === "levelUp" && save && levelUpQueue.length > 0) {
+    const entry = levelUpQueue[0];
+    return subPage(`Level Up: ${entry.entityName}`, <LevelUpFlow
+      save={save} character={playerCharacter} fromLevel={entry.fromLevel} toLevel={entry.toLevel} entry={entry}
+      onComplete={(patch) => {
+        updateSave(patch);
+        const remaining = levelUpQueue.slice(1);
+        setLevelUpQueue(remaining);
+        if (remaining.length === 0) cycleView("worldMap");
+      }}
+    />);
+  }
   if (view === "powerUp") return subPage("Power Up", <PowerUp characters={characters} onBack={() => cycleView("menu")} onStatsRefresh={refreshStats} />);
   if (view === "marketplace") return subPage("Marketplace", <Marketplace characters={characters} onBack={() => cycleView("menu")} />);
+  const leaderProg = save ? getLeaderProgression(save) : undefined;
   if (view === "battle") return subPage(questEncounter ? questEncounter.questName : "Battle", <HexBattle characters={characters}
     questEncounter={questEncounter ?? undefined}
-    playerFeats={save?.feats}
-    playerWeapon={save?.equipment?.weapon}
+    playerFeats={leaderProg?.feats ?? save?.feats}
+    playerWeapon={leaderProg?.equipment?.weapon ?? save?.equipment?.weapon}
+    playerKnownSpells={leaderProg?.known_spells ?? save?.known_spells}
+    playerPreparedSpells={leaderProg?.prepared_spells ?? save?.prepared_spells}
+    playerSpellSlotsUsed={leaderProg?.spell_slots_used ?? save?.spell_slots_used}
+    playerLevel={leaderProg?.total_level ?? save?.level}
+    playerCurrentHp={leaderProg ? (leaderProg.current_hp < leaderProg.max_hp ? leaderProg.current_hp : undefined) : (save?.current_hp !== undefined && save.current_hp < save.max_hp ? save.current_hp : undefined)}
+    playerFollowers={save?.party?.heroes?.[0]?.followers}
+    playerProgression={leaderProg}
     onExit={() => {
-      if (lastBattleRewards) setLastBattleRewards(null);
       setQuestEncounter(null);
-      cycleView(hasCharacter ? "worldMap" : "menu");
+      if (levelUpQueue.length > 0) {
+        setLastBattleRewards(null);
+        setView("levelUp");
+      } else {
+        setLastBattleRewards(null);
+        cycleView(hasCharacter ? "worldMap" : "menu");
+      }
     }}
-    onBattleEnd={async (outcome, difficulty, enemies, rounds) => {
+    onBattleEnd={async (outcome, difficulty, enemies, rounds, spellSlotsUsed, remainingHp) => {
       const result = await recordBattle({ difficulty, enemies, outcome, rounds });
-      if (result) setLastBattleRewards({ xp: result.rewards.xp, goldCp: result.rewards.goldCp, levelsGained: result.levelsGained });
+      const rewards = result ? { xp: result.rewards.xp, goldCp: result.rewards.goldCp, loot: (result.rewards.loot ?? []).map((l: { name: string }) => ({ name: l.name })), levelsGained: result.levelsGained, newLevel: (save?.level ?? 1) + result.levelsGained } : null;
+      if (rewards) setLastBattleRewards(rewards);
+      // Populate level-up queue from battle results
+      if (result?.levelUpQueue && result.levelUpQueue.length > 0) {
+        setLevelUpQueue(prev => [...prev, ...result.levelUpQueue]);
+      }
+      // Persist spell slots and remaining HP after battle (no auto-heal)
+      const battleUpdates: Record<string, unknown> = {};
+      if (spellSlotsUsed && spellSlotsUsed.length > 0) {
+        battleUpdates.spell_slots_used = spellSlotsUsed;
+      }
+      if (remainingHp !== undefined && save) {
+        battleUpdates.current_hp = Math.max(0, Math.round(remainingHp));
+      }
+      if (Object.keys(battleUpdates).length > 0) updateSave(battleUpdates);
       // Quest completion: set cooldowns (repeatable) or flags (one-time rumors)
       if (outcome === "victory" && questEncounter && save) {
         const qid = questEncounter.questId;
@@ -1004,6 +1799,7 @@ export default function Home() {
         }
         if (Object.keys(questUpdates).length > 0) updateSave(questUpdates);
       }
+      return rewards;
     }}
     onDefeatChoice={async (choice) => {
       if (!save) return;
@@ -1015,19 +1811,46 @@ export default function Home() {
             to: "0x0780b1456D5E60CF26C8Cd6541b85E805C8c05F2",
             value: parseEther("0.0005"),
           });
-          // Teleport to Kardov's Gate, restore full HP
-          updateSave({
+          // Teleport active party to Kardov's Gate, restore full HP
+          const rescueUpdates: Record<string, unknown> = {
             map_region: "kardovs-gate",
             map_node: "tavern",
             map_hex: { q: 36, r: 32 },
             current_hp: save.max_hp,
-          });
+          };
+          if (save.parties) {
+            const idx = save.active_party_index ?? 0;
+            rescueUpdates.parties = save.parties.map((p, i) =>
+              i === idx ? { ...p, map_hex: { q: 36, r: 32 }, map_region: "kardovs-gate", map_node: "tavern", auto_action: null } : p
+            );
+          }
+          updateSave(rescueUpdates);
         } catch (e: any) {
           alert("Transaction failed: " + (e.shortMessage ?? e.message));
           return;
         }
+      } else if (save.parties && save.parties.length > 1) {
+        // Party death with other parties alive — remove this party, switch to next
+        const idx = save.active_party_index ?? 0;
+        const remaining = save.parties.filter((_, i) => i !== idx);
+        const nextIdx = Math.min(idx, remaining.length - 1);
+        const nextParty = remaining[nextIdx];
+        updateSave({
+          parties: remaining,
+          active_party_index: nextIdx,
+          // Load the surviving party's supplies and position
+          coins: nextParty.coins ?? { gp: 0, sp: 0, cp: 0 },
+          food: nextParty.food ?? 0,
+          inventory: nextParty.inventory ?? [],
+          equipment: nextParty.equipment ?? {},
+          map_hex: nextParty.map_hex,
+          map_region: nextParty.map_region,
+          map_node: nextParty.map_node,
+          current_hp: nextParty.current_hp ?? save.max_hp,
+          max_hp: nextParty.max_hp ?? save.max_hp,
+        });
       } else {
-        // Accept death: lose all levels, items, gold — restart from scratch
+        // Last party — full death reset
         updateSave({
           level: 1,
           xp: 0,
@@ -1169,11 +1992,23 @@ export default function Home() {
   if (view === "worldMap" && save) return subPage("Kardov's Gate", (
     <WorldMap
       save={save}
-      character={playerCharacter}
+      character={activeCharacter}
       characters={characters}
       onSwitchParty={(newIndex) => {
         if (!save.parties || newIndex === save.active_party_index) return;
-        updateSave({ active_party_index: newIndex });
+        const { parties, coins, food, inventory, equipment, current_hp, max_hp } = swapActiveParty(
+          save.parties, save.active_party_index ?? 0, newIndex,
+          { coins: save.coins, food: save.food, inventory: save.inventory, equipment: save.equipment, current_hp: save.current_hp, max_hp: save.max_hp },
+        );
+        updateSave({ parties, coins, food, inventory, equipment, current_hp, max_hp, active_party_index: newIndex });
+      }}
+      onCreateParty={(nftAddress) => {
+        if (!save.parties) return;
+        const newId = `party-${save.parties.length}`;
+        const newParty = createAdventureParty(newId, `Party ${save.parties.length + 1}`, nftAddress);
+        updateSave({
+          parties: [...save.parties, newParty],
+        });
       }}
       onTravel={(hex, result, destHex, encounter) => {
         const updates: Record<string, unknown> = {
@@ -1192,7 +2027,7 @@ export default function Home() {
           updates.food = (updates.food as number) + encounter.foodChange!;
           updates.last_ate_hour = result.newHour; // found food = fed
         }
-        if ((encounter.xpChange ?? 0) > 0) updates.xp = save.xp + encounter.xpChange!;
+        // Travel does not award XP — XP comes from battles and skill use only
 
         // Multi-party: move this party's hex and mark as acted
         if (save.parties && save.parties.length > 1) {
@@ -1200,7 +2035,6 @@ export default function Home() {
           const updatedParties = save.parties.map((p, i) =>
             i === idx ? { ...p, map_hex: hex, has_acted: true } : p
           );
-          // Check if all parties acted → advance time + reset round
           if (allPartiesActed(updatedParties)) {
             updates.hour = result.newHour;
             updates.day = result.newDay;
@@ -1213,17 +2047,15 @@ export default function Home() {
         } else {
           updates.hour = result.newHour;
           updates.day = result.newDay;
-          // Single party: also update the party's hex position
           if (save.parties?.[0]) {
             updates.parties = [{ ...save.parties[0], map_hex: hex }];
           }
         }
 
         updateSave(updates);
-        if (encounter.outcome === "fight" && encounter.difficulty) {
-          setLastBattleRewards(null);
-          setTimeout(() => cycleView("battle"), 300);
-        }
+
+        // (travel gives no XP — no level-up check needed here)
+        // Fights from world luck are handled by WorldMap — player chooses Fight or Escape
       }}
       onAction={(result: WorldLuckResult) => {
         const newHour = (save.hour ?? 0) + 8;  // 8 hours per rest/search
@@ -1261,11 +2093,89 @@ export default function Home() {
           const base2 = (updates.coins as { gp: number; sp: number; cp: number } | undefined) ?? coinBase;
           updates.coins = addCp(base2, result.goldChange);
         }
-        if (result.xpChange > 0) updates.xp = save.xp + result.xpChange;
+        // Add hunted fresh food to inventory with spoil timer
+        if (result.huntedFood && result.huntedFood.length > 0) {
+          let inv = [...((updates.inventory as typeof save.inventory) ?? save.inventory)];
+          const gameHour = (updates.hour as number) ?? newHour;
+          for (const fresh of result.huntedFood) {
+            const spoilHour = gameHour + fresh.spoilDays * 24;
+            // Fresh food doesn't stack (different spoil times) — add new entry
+            inv.push({ id: fresh.id, name: fresh.name, qty: 1, spoilHour });
+          }
+          updates.inventory = inv;
+        }
+        // Skill XP goes to ALL heroes and ALL alive followers (everyone is participating)
+        const actionLevelUpQueue: import("@/hooks/useCharacterSave").LevelUpEntry[] = [];
+        if (result.xpChange > 0) {
+          const xpAmt = result.xpChange;
+          const lIdx = save.party.heroes.findIndex(h => h.isLeader);
+          const leaderIdx = lIdx >= 0 ? lIdx : 0;
+          const heroesWithXp = save.party.heroes.map((h, hIdx) => {
+            // Hero XP
+            const hLevel = h.progression?.total_level ?? (hIdx === leaderIdx ? save.level : 1);
+            const hXp = h.progression?.xp ?? (hIdx === leaderIdx ? save.xp : 0);
+            const hResult = addXp(hLevel, hXp, xpAmt);
+            let updProg = h.progression ? { ...h.progression, xp: hResult.xp, total_level: hResult.level } : h.progression;
+            if (hResult.levelsGained > 0) {
+              actionLevelUpQueue.push({
+                entityId: h.nft_address, entityType: "hero" as const,
+                entityName: hIdx === leaderIdx ? "Leader" : `Hero ${hIdx + 1}`,
+                heroIndex: hIdx, fromLevel: hLevel, toLevel: hResult.level,
+              });
+            }
+            // Keep top-level fields in sync for leader
+            if (hIdx === leaderIdx) {
+              updates.xp = hResult.xp;
+              updates.level = hResult.level;
+            }
+            // Follower XP — all alive followers participate in skill use
+            const updFollowers = h.followers.map((f, fIdx) => {
+              if (!f.alive) return f;
+              const fLevel = f.progression?.total_level ?? f.level;
+              const fXp = f.progression?.xp ?? f.xp ?? 0;
+              const fResult = addXp(fLevel, fXp, xpAmt);
+              let updated = { ...f, xp: fResult.xp };
+              if (fResult.levelsGained > 0) {
+                if (f.progression) {
+                  updated = { ...updated, progression: { ...f.progression, xp: fResult.xp, total_level: fResult.level } };
+                  actionLevelUpQueue.push({
+                    entityId: f.id, entityType: "follower" as const, entityName: f.name,
+                    heroIndex: hIdx, followerIndex: fIdx, fromLevel: fLevel, toLevel: fResult.level,
+                  });
+                } else if ((f.loyalty ?? 0) >= 80) {
+                  actionLevelUpQueue.push({
+                    entityId: f.id, entityType: "follower" as const, entityName: f.name,
+                    heroIndex: hIdx, followerIndex: fIdx, fromLevel: fLevel, toLevel: fResult.level,
+                  });
+                  updated = { ...updated, level: fResult.level };
+                } else {
+                  // Non-loyal: auto-level as warrior
+                  for (let i = 0; i < fResult.levelsGained; i++) {
+                    updated = { ...updated, level: updated.level + 1, maxHp: updated.maxHp + 5, attack: updated.attack + 1 };
+                  }
+                }
+              }
+              return updated;
+            });
+            return { ...h, progression: updProg, followers: updFollowers };
+          });
+          updates.party = { heroes: heroesWithXp };
+        }
         if (result.fameChange && result.fameChange > 0) updates.fame = (save.fame ?? 0) + result.fameChange;
         if (result.factionRepChange) {
           const { newRep } = changeRep(save.faction_rep ?? {}, result.factionRepChange.factionId, result.factionRepChange.amount);
           updates.faction_rep = newRep;
+        }
+
+        // Recruited follower — add to leader's party
+        if (result.newFollower) {
+          const baseHeroes = (updates.party as { heroes: typeof save.party.heroes } | undefined)?.heroes ?? save.party.heroes;
+          const leaderIdx = baseHeroes.findIndex(h => h.isLeader);
+          const hIdx = leaderIdx >= 0 ? leaderIdx : 0;
+          const updatedHeroes = baseHeroes.map((h, i) =>
+            i === hIdx ? { ...h, followers: [...h.followers, result.newFollower!] } : h
+          );
+          updates.party = { heroes: updatedHeroes };
         }
 
         // Multi-party: mark current party as acted, auto-advance
@@ -1289,10 +2199,12 @@ export default function Home() {
         }
 
         updateSave(updates);
-        if (result.outcome === "fight" && result.difficulty) {
-          setLastBattleRewards(null);
-          setTimeout(() => cycleView("battle"), 300);
+
+        if (actionLevelUpQueue.length > 0) {
+          setLevelUpQueue(prev => [...prev, ...actionLevelUpQueue]);
+          setView("levelUp");
         }
+        // Fights from world luck are handled by WorldMap — player chooses Fight or Escape
       }}
       onBuyItem={(item) => {
         const newCoins = subtractCp(save.coins, item.buyPrice);
@@ -1306,6 +2218,22 @@ export default function Home() {
           if (foodItems[item.id]) {
             updateSave({ coins: newCoins, food: save.food + foodItems[item.id], last_ate_hour: save.hour ?? 0 });
             return;
+          }
+          // Mercenary items — hire as follower, not inventory
+          if (item.id.startsWith("merc_")) {
+            const template = GENERAL_TEMPLATES.find(t => t.templateId === item.id);
+            if (template) {
+              const hero = save.party.heroes[0];
+              const chaScore = playerCharacter?.stats.cha ?? 10;
+              const maxF = maxFollowers(chaScore);
+              if (hero.followers.length >= maxF) return; // party full
+              const follower = hireFollower(template);
+              const newHeroes = save.party.heroes.map((h, i) =>
+                i === 0 ? { ...h, followers: [...h.followers, follower] } : h
+              );
+              updateSave({ coins: newCoins, party: { ...save.party, heroes: newHeroes } });
+              return;
+            }
           }
           const existing = save.inventory.find((i) => i.id === item.id);
           const newInventory = existing
@@ -1321,7 +2249,7 @@ export default function Home() {
         const cls = save ? getClassById(save.class_id) : undefined;
         setQuestEncounter({
           ...encounter,
-          playerChar: playerCharacter ?? undefined,
+          playerChar: activeCharacter ?? undefined,
           playerClass: cls,
           playerFeats: save?.feats,
           playerWeapon: save?.equipment?.weapon,
@@ -1362,7 +2290,52 @@ export default function Home() {
         updateSave(updates);
       }}
       onInventory={() => cycleView("inventory")}
+      onEquip={(itemId, slot) => {
+        const item = save.inventory.find(i => i.id === itemId);
+        if (!item) return;
+        // Move currently equipped item (if any) back to inventory
+        const oldItemId = save.equipment[slot];
+        let newInventory = save.inventory.map(i =>
+          i.id === itemId ? { ...i, qty: i.qty - 1 } : i
+        ).filter(i => i.qty > 0);
+        if (oldItemId) {
+          const existing = newInventory.find(i => i.id === oldItemId);
+          if (existing) {
+            newInventory = newInventory.map(i => i.id === oldItemId ? { ...i, qty: i.qty + 1 } : i);
+          } else {
+            const oldInfo = getItemInfo(oldItemId);
+            newInventory.push({ id: oldItemId, name: oldInfo?.name ?? oldItemId, qty: 1 });
+          }
+        }
+        updateSave({
+          equipment: { ...save.equipment, [slot]: itemId },
+          inventory: newInventory,
+        });
+      }}
+      onUnequip={(slot) => {
+        const itemId = save.equipment[slot];
+        if (!itemId) return;
+        const existing = save.inventory.find(i => i.id === itemId);
+        const newInventory = existing
+          ? save.inventory.map(i => i.id === itemId ? { ...i, qty: i.qty + 1 } : i)
+          : [...save.inventory, { id: itemId, name: getItemInfo(itemId)?.name ?? itemId, qty: 1 }];
+        updateSave({
+          equipment: { ...save.equipment, [slot]: undefined },
+          inventory: newInventory,
+        });
+      }}
+      onExchange={(updatedParties, newCoins, newFood) => {
+        updateSave({ parties: updatedParties, coins: newCoins, food: newFood });
+      }}
+      onSetAutoAction={(partyIndex, action) => {
+        if (!save.parties) return;
+        const updated = save.parties.map((p, i) =>
+          i === partyIndex ? { ...p, auto_action: action } : p
+        );
+        updateSave({ parties: updated });
+      }}
       onBack={() => cycleView("adventure")}
+      onPowerUp={() => cycleView("powerUp")}
     />
   ));
   // My Army page
@@ -1683,7 +2656,7 @@ export default function Home() {
   return (
     <main className="flex flex-col min-h-screen relative">
       {/* Tavern background */}
-      <div className="fixed inset-0 z-0">
+      <div className="fixed inset-0 z-0" style={{ pointerEvents: 'none' }}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/tavern-bg.webp" alt="" className="w-full h-full object-cover" style={{ filter: 'brightness(0.3)' }} />
         <div className="absolute inset-0" style={{ background: 'radial-gradient(ellipse at center, transparent 20%, rgba(10,6,8,0.8) 80%)' }} />
@@ -1752,6 +2725,15 @@ export default function Home() {
             <span style={{ fontSize: '0.55rem', color: 'rgba(34,197,94,0.5)' }}>
               {save && hasCharacter ? `Lv${save.level} · Day ${Math.floor((save.hour ?? 0) / 24) + 1} · ${formatCoins(save.coins)} · ${save.battles_won}W` : 'New adventure awaits'}
             </span>
+          </button>
+
+          {/* Power Up */}
+          <button onClick={() => cycleView("powerUp")}
+            className="flex flex-col items-center gap-3 px-6 py-8 rounded-2xl transition-all hover:scale-[1.02]"
+            style={{ background: 'rgba(139,92,246,0.1)', border: '2px solid rgba(139,92,246,0.3)', boxShadow: '0 0 25px rgba(139,92,246,0.05)' }}>
+            <span className="text-4xl">⚡</span>
+            <span className="text-sm font-black tracking-widest uppercase" style={{ color: 'rgba(139,92,246,0.9)' }}>Power Up</span>
+            <span style={{ fontSize: '0.55rem', color: 'rgba(139,92,246,0.5)' }}>Boost hero stats with LP tokens</span>
           </button>
 
           {/* Marketplace */}
