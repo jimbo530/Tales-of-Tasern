@@ -14,11 +14,10 @@ import { base } from "wagmi/chains";
 import { useNftStats, type NftCharacter } from "@/hooks/useNftStats";
 import { useCharacterSave } from "@/hooks/useCharacterSave";
 import { CharacterCard } from "@/components/CharacterCard";
-import { Marketplace } from "@/components/Marketplace";
-import { PowerUp } from "@/components/PowerUp";
 import { HexBattle, type QuestEncounter } from "@/components/HexBattle";
 import { WorldMap, type WorldLuckResult } from "@/components/WorldMap";
 import { PlayerInventory } from "@/components/PlayerInventory";
+import { PowerUp } from "@/components/PowerUp";
 import { CLASSES, getClassById, HIT_DIE_VALUES, type CharacterClass, type SpellcastingInfo } from "@/lib/classes";
 import { SKILLS, abilityMod, type Skill } from "@/lib/skills";
 import { FEATS, getAvailableFeats, getStartingFeatCount, featsForLevelUp, featNeedsChoice, parseFeatChoice, type Feat } from "@/lib/feats";
@@ -1583,7 +1582,7 @@ export default function Home() {
   const [search, setSearch] = useState("");
 
   // Navigation
-  const [view, setView] = useState<"menu" | "heroes" | "army" | "marketplace" | "powerUp" | "battle" | "worldMap" | "adventure" | "inventory" | "levelUp">("menu");
+  const [view, setView] = useState<"menu" | "heroes" | "army" | "battle" | "worldMap" | "adventure" | "inventory" | "levelUp" | "powerUp">("menu");
   const [lastBattleRewards, setLastBattleRewards] = useState<{ xp: number; goldCp: number; loot: { name: string }[]; levelsGained: number } | null>(null);
   const [levelUpQueue, setLevelUpQueue] = useState<import("@/hooks/useCharacterSave").LevelUpEntry[]>([]);
   const [questEncounter, setQuestEncounter] = useState<QuestEncounter | null>(null);
@@ -1779,8 +1778,6 @@ export default function Home() {
       }}
     />);
   }
-  if (view === "powerUp") return subPage("Power Up", <PowerUp characters={characters} onBack={() => cycleView("menu")} onStatsRefresh={refreshStats} />);
-  if (view === "marketplace") return subPage("Marketplace", <Marketplace characters={characters} onBack={() => cycleView("menu")} />);
   const leaderProg = save ? getLeaderProgression(save) : undefined;
   if (view === "battle") return subPage(questEncounter ? questEncounter.questName : "Battle", <HexBattle characters={characters}
     questEncounter={questEncounter ?? undefined}
@@ -1980,10 +1977,10 @@ export default function Home() {
           <div className="w-full flex flex-col items-center gap-3 px-6 py-6 rounded-2xl"
             style={{ background: "rgba(201,168,76,0.06)", border: "2px solid rgba(201,168,76,0.15)" }}>
             <span className="text-sm" style={{ color: "rgba(201,168,76,0.6)" }}>You need to own at least one hero NFT to play</span>
-            <button onClick={() => cycleView("marketplace")} className="px-4 py-2 rounded text-xs font-bold uppercase tracking-widest"
+            <a href="https://marketplace.memefortrees.com" target="_blank" rel="noopener noreferrer" className="px-4 py-2 rounded text-xs font-bold uppercase tracking-widest inline-block"
               style={{ background: "rgba(251,191,36,0.2)", color: "rgba(251,191,36,0.9)", border: "1px solid rgba(251,191,36,0.4)" }}>
               Visit Marketplace
-            </button>
+            </a>
           </div>
         ) : (
           <NewGameFlow
@@ -2538,6 +2535,8 @@ export default function Home() {
 
 
 
+  if (view === "powerUp") return subPage("Power Up", <PowerUp characters={characters} onBack={() => cycleView("menu")} onStatsRefresh={refreshStats} />);
+
   // Heroes gallery page
   if (view === "heroes") {
     const myNfts = characters.filter(c => c.owned);
@@ -2789,14 +2788,14 @@ export default function Home() {
             <span style={{ fontSize: '0.55rem', color: 'rgba(139,92,246,0.5)' }}>Boost hero stats with LP tokens</span>
           </button>
 
-          {/* Marketplace */}
-          <button onClick={() => cycleView("marketplace")}
+          {/* Marketplace — external site */}
+          <a href="https://marketplace.memefortrees.com" target="_blank" rel="noopener noreferrer"
             className="flex flex-col items-center gap-3 px-6 py-8 rounded-2xl transition-all hover:scale-[1.02]"
             style={{ background: 'rgba(251,191,36,0.1)', border: '2px solid rgba(251,191,36,0.3)', boxShadow: '0 0 25px rgba(251,191,36,0.05)' }}>
             <span className="text-4xl">🛒</span>
             <span className="text-sm font-black tracking-widest uppercase" style={{ color: 'rgba(251,191,36,0.9)' }}>Marketplace</span>
             <span style={{ fontSize: '0.55rem', color: 'rgba(251,191,36,0.5)' }}>Buy and sell hero NFTs</span>
-          </button>
+          </a>
         </div>
 
         {/* Download game assets */}

@@ -6,10 +6,12 @@ create table if not exists nft_d20_stats (
   updated_at  timestamptz not null default now()
 );
 
--- Public read, service role write
+-- Public read and write (anon key can upsert from refresh endpoint)
 alter table nft_d20_stats enable row level security;
 create policy "Public read nft_d20_stats" on nft_d20_stats
   for select using (true);
+create policy "Public write nft_d20_stats" on nft_d20_stats
+  for all using (true) with check (true);
 
 -- Fast freshness check
 create index if not exists idx_nft_d20_stats_updated

@@ -32,7 +32,6 @@ export async function GET(request: Request) {
     rows.push({
       key: "__summary__",
       data: {
-        sellerOwned: result.sellerOwned,
         assetTotals: result.assetTotals,
         tokenBreakdown: result.tokenBreakdown,
         prices: result.prices,

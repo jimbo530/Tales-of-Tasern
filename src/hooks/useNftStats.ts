@@ -65,7 +65,6 @@ async function fetchFromSupabase(): Promise<any | null> {
 
     return {
       characters: characterRows.map((r: any) => r.data),
-      sellerOwned: summaryRow?.data?.sellerOwned ?? [],
       assetTotals: summaryRow?.data?.assetTotals ?? { traditional: 0, game: 0, impact: 0 },
       tokenBreakdown: summaryRow?.data?.tokenBreakdown ?? [],
     };
@@ -93,7 +92,6 @@ export type NftCharacter = {
   subtypes: string[];
   tokenAmounts: TokenAmount[];
   usdBacking: number;
-  forSale: boolean;
 };
 
 /** Ensure all 6 core ability scores are at least 1 */
@@ -291,8 +289,7 @@ export function useNftStats() {
           }
         }
 
-        // Merge API data with ownership + seller info
-        const sellerOwnedSet = new Set((data.sellerOwned ?? []).map((a: string) => a.toLowerCase()));
+        // Merge API data with ownership
         const characters: NftCharacter[] = data.characters.map((c: any) => ({
           name: c.name,
           contractAddress: c.contractAddress,
@@ -306,7 +303,6 @@ export function useNftStats() {
           subtypes: c.subtypes ?? [],
           tokenAmounts: c.tokenAmounts ?? [],
           usdBacking: c.usdBacking ?? 0,
-          forSale: sellerOwnedSet.has(c.contractAddress.toLowerCase()),
         }));
 
         setCharacters(characters);
@@ -319,27 +315,41 @@ export function useNftStats() {
 
       setLoading(false);
 
-      // Fetch cached images AFTER loading completes (non-blocking)
+      // Load images: localStorage cache first (instant), then /api/images in background
       try {
+        type ImgEntry = { metadataUri?: string; imageUrl?: string; chain?: string };
+        const IMG_CACHE_KEY = "tot_nft_images";
+
+        // 1. Apply cached images immediately
+        const cachedImgRaw = localStorage.getItem(IMG_CACHE_KEY);
+        let imgData: Record<string, ImgEntry> = cachedImgRaw ? JSON.parse(cachedImgRaw) : {};
+        if (Object.keys(imgData).length > 0) {
+          setCharacters(prev => prev.map(char => {
+            const img = imgData[char.contractAddress.toLowerCase()];
+            if (!img?.imageUrl) return char;
+            return { ...char, metadataUri: img.metadataUri ?? char.metadataUri, imageUrl: img.imageUrl, chain: (img.chain as "base" | "polygon") ?? char.chain };
+          }));
+          console.log("[ToT] Applied cached images for", Object.keys(imgData).length, "NFTs");
+        }
+
+        // 2. Refresh from API in background (non-blocking)
         const imgController = new AbortController();
         const imgTimeout = setTimeout(() => imgController.abort(), 8000);
         const imgRes = await fetch("/api/images", { signal: imgController.signal });
         clearTimeout(imgTimeout);
         if (imgRes.ok) {
-          const imgData: Record<string, { metadataUri?: string; imageUrl?: string; chain?: string }> = await imgRes.json();
+          const freshImgData: Record<string, ImgEntry> = await imgRes.json();
+          // Merge with existing cache (keep old entries for NFTs not in fresh response)
+          imgData = { ...imgData, ...freshImgData };
+          localStorage.setItem(IMG_CACHE_KEY, JSON.stringify(imgData));
           setCharacters(prev => prev.map(char => {
             const img = imgData[char.contractAddress.toLowerCase()];
-            if (!img) return char;
-            return {
-              ...char,
-              metadataUri: img.metadataUri ?? char.metadataUri,
-              imageUrl: img.imageUrl ?? char.imageUrl,
-              chain: (img.chain as "base" | "polygon") ?? char.chain,
-            };
+            if (!img?.imageUrl) return char;
+            return { ...char, metadataUri: img.metadataUri ?? char.metadataUri, imageUrl: img.imageUrl, chain: (img.chain as "base" | "polygon") ?? char.chain };
           }));
-          console.log("[ToT] Loaded cached images for", Object.keys(imgData).length, "NFTs");
+          console.log("[ToT] Refreshed images for", Object.keys(freshImgData).length, "NFTs");
         }
-      } catch { /* images optional, cards still show without them */ }
+      } catch { /* images optional */ }
     }
 
     load();
@@ -380,14 +390,12 @@ export function useNftStats() {
         setCachedOwnership(address, ownershipMap);
       }
 
-      const sellerOwnedSet = new Set((data.sellerOwned ?? []).map((a: string) => a.toLowerCase()));
       const updated: NftCharacter[] = data.characters.map((c: any) => ({
         name: c.name, contractAddress: c.contractAddress, chain: c.chain ?? "base",
         tokenId: TOKEN_ID, metadataUri: c.metadataUri, imageUrl: c.imageUrl,
         owned: (ownershipMap.get(c.contractAddress.toLowerCase()) ?? 0) > 0,
         ownedCount: ownershipMap.get(c.contractAddress.toLowerCase()) ?? 0,
         stats: floorStats(c.stats), subtypes: c.subtypes ?? [], tokenAmounts: c.tokenAmounts ?? [], usdBacking: c.usdBacking ?? 0,
-        forSale: sellerOwnedSet.has(c.contractAddress.toLowerCase()),
       }));
       setCharacters(updated);
       if (data.assetTotals) setAssetTotals(data.assetTotals);

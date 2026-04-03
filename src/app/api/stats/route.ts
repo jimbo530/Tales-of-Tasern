@@ -125,7 +125,6 @@ export type StatsResponse = {
     tokenAmounts: Array<{ symbol: string; amount: number; stat: string; addr?: string }>;
     usdBacking: number;
   }>;
-  sellerOwned: string[];
   assetTotals: { traditional: number; game: number; impact: number };
   tokenBreakdown: Array<{ symbol: string; usd: number; category: string }>;
   prices: { btcHigh24h: number; ethHigh24h: number; polHigh24h: number; mftLow24h: number };
@@ -621,55 +620,6 @@ export async function computeAllStats(): Promise<StatsResponse> {
       };
     });
 
-    // Check which NFTs the marketplace seller owns (try both chains)
-    const SELLER = "0x0780b1456D5E60CF26C8Cd6541b85E805C8c05F2" as `0x${string}`;
-    let sellerOwned: Set<string> = new Set();
-
-    // Try Base first
-    try {
-      const baseCalls = GAME_NFTS.map((nft) => ({
-        address: nft.contractAddress, abi: ERC1155_ABI,
-        functionName: "balanceOf" as const,
-        args: [SELLER, TOKEN_ID] as [`0x${string}`, bigint],
-      }));
-      const baseResults = await chunkedMulticall(baseClient, baseCalls, 50);
-      GAME_NFTS.forEach((nft, i) => {
-        const r = baseResults[i];
-        if (r?.status === "success" && (r.result as bigint) > 0n) {
-          sellerOwned.add(nft.contractAddress.toLowerCase());
-        }
-      });
-    } catch {}
-
-    // Also try Polygon
-    try {
-      const polyCalls = GAME_NFTS.map((nft) => ({
-        address: nft.contractAddress, abi: ERC1155_ABI,
-        functionName: "balanceOf" as const,
-        args: [SELLER, TOKEN_ID] as [`0x${string}`, bigint],
-      }));
-      const polyResults = await chunkedMulticall(polygonClient, polyCalls, 100);
-      GAME_NFTS.forEach((nft, i) => {
-        const r = polyResults[i];
-        if (r?.status === "success" && (r.result as bigint) > 0n) {
-          sellerOwned.add(nft.contractAddress.toLowerCase());
-        }
-      });
-    } catch {}
-
-    // Fallback: if ownership check failed entirely, mark all backed NFTs as for sale
-    if (sellerOwned.size === 0) {
-      console.log("[API] Seller ownership check returned 0 — using fallback (all backed NFTs)");
-      characters.forEach((c: any) => {
-        const s = c.stats;
-        if (s.str > 0 || s.dex > 0 || s.con > 0 || s.int > 0 || s.wis > 0 || s.cha > 0) {
-          sellerOwned.add(c.contractAddress.toLowerCase());
-        }
-      });
-    } else {
-      console.log("[API] Seller owns", sellerOwned.size, "NFTs");
-    }
-
     // Compute global asset totals by category
     const assetTotals = { traditional: 0, game: 0, impact: 0 };
     for (const char of characters) {
@@ -707,7 +657,6 @@ export async function computeAllStats(): Promise<StatsResponse> {
 
     return {
       characters,
-      sellerOwned: [...sellerOwned],
       assetTotals: categoryTotals,
       tokenBreakdown: Object.values(tokenBreakdown),
       prices: { btcHigh24h, ethHigh24h, polHigh24h, mftLow24h },
