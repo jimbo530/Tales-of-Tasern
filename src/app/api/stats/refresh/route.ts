@@ -40,7 +40,31 @@ export async function GET(request: Request) {
       updated_at: new Date().toISOString(),
     });
 
-    // Batch upsert to Supabase (chunks of 200)
+    // Build chain-data-only rows for nft_backing (no D20 stats — shared by all consumers)
+    const backingRows = result.characters.map(c => ({
+      key: c.contractAddress.toLowerCase(),
+      data: {
+        name: c.name,
+        contractAddress: c.contractAddress,
+        chain: c.chain,
+        usdBacking: c.usdBacking,
+        tokenAmounts: c.tokenAmounts,
+      },
+      updated_at: new Date().toISOString(),
+    }));
+
+    backingRows.push({
+      key: "__summary__",
+      data: {
+        assetTotals: result.assetTotals,
+        tokenBreakdown: result.tokenBreakdown,
+        prices: result.prices,
+        updatedAt: result.updatedAt,
+      } as any,
+      updated_at: new Date().toISOString(),
+    });
+
+    // Batch upsert to nft_d20_stats (D20 game data — backward compat)
     let written = 0;
     for (let i = 0; i < rows.length; i += 200) {
       const chunk = rows.slice(i, i + 200);
@@ -54,13 +78,28 @@ export async function GET(request: Request) {
       }
     }
 
+    // Batch upsert to nft_backing (chain-data-only — shared by marketplace, card game, etc.)
+    let backingWritten = 0;
+    for (let i = 0; i < backingRows.length; i += 200) {
+      const chunk = backingRows.slice(i, i + 200);
+      const { error } = await supabaseAdmin
+        .from("nft_backing")
+        .upsert(chunk, { onConflict: "key" });
+      if (error) {
+        console.error("[refresh] nft_backing upsert error at chunk", i, ":", error.message);
+      } else {
+        backingWritten += chunk.length;
+      }
+    }
+
     const elapsed = Date.now() - start;
-    console.log("[refresh] Wrote", written, "/", rows.length, "rows to nft_d20_stats in", elapsed, "ms total");
+    console.log("[refresh] Wrote", written, "/", rows.length, "rows to nft_d20_stats,", backingWritten, "/", backingRows.length, "to nft_backing in", elapsed, "ms total");
 
     return NextResponse.json({
       ok: true,
       characters: result.characters.length,
       written,
+      backingWritten,
       elapsed,
     });
   } catch (error) {

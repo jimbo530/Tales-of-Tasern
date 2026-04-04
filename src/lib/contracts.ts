@@ -199,6 +199,15 @@ export const GAME_NFTS: GameNft[] = [
   { name: "Wolves",                 contractAddress: "0xaF92bc25a44bf43eC4100cAd6eA3620523C7DAce", chain: "base" },
   { name: "Goblins",                contractAddress: "0x99b772412C0D6E0fB31f227eCFf4E92B98379Fa8", chain: "base" },
   { name: "Rats",                   contractAddress: "0xA8a51d236a7af87D82fE2B29249B0aD70BA91d1A", chain: "base" },
+  { name: "Gruk Skullsplitter",    contractAddress: "0x44B374923178d4f80C3C158824F11Ac4A6D6266d", chain: "base" },
+  { name: "Krug Emberfist",         contractAddress: "0xf6Af75e0E275ade819BDBaAECd67C4A7F78736a5", chain: "base" },
+  { name: "Brakka Greasefang Gutlord", contractAddress: "0x4ada15ea83765c25ABA9aFce1C1d1b15b27C7d70", chain: "base" },
+  { name: "Mountain Ork",           contractAddress: "0xCd43D8eB17736bFDBd8862B7e03b6B5a4ad476A2", chain: "base" },
+  { name: "Ser Bramble of Kardov's Gate", contractAddress: "0x8A5BA476b57E473a9A3E25786d346Bd369a4233f", chain: "polygon" },
+  { name: "Varrek",                contractAddress: "0x9DF6a0f86f4E67446A69a7455f68e16FF805A304", chain: "polygon" },
+  { name: "Elder Bramblevein",     contractAddress: "0x352D6D5EA40Ec848A6711C29A8236e267CFAf5F8", chain: "polygon" },
+  { name: "Shillwood Forrest",     contractAddress: "0xB9328e86C43dF81dE7de6CA409ec06CCD02ab812", chain: "polygon" },
+  { name: "Ms. Mapsly",            contractAddress: "0x6A6A62b4EFCfAdB188642553D9D3219a738Fe23e", chain: "polygon" },
   { name: "Mandala Light Codes",   contractAddress: "0x537ee25Af1f6cDc1De66562dd0BE88Ea2046338f", chain: "polygon" },
 ];
 
