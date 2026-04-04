@@ -32,7 +32,7 @@ async function chunkedMulticall(client: any, contracts: any[], chunkSize = 50): 
       }
     }
     if (i + chunkSize < contracts.length) {
-      await new Promise(resolve => setTimeout(resolve, 500)); // 500ms between chunks
+      await new Promise(resolve => setTimeout(resolve, 1000)); // 1s between chunks — stay under RPC rate limits
     }
   }
   return results;
@@ -132,8 +132,10 @@ export type StatsResponse = {
   updatedAt: string;
 };
 
-/** Heavy computation: fetches all on-chain data and computes D20 stats. Takes 2-5 minutes. */
-export async function computeAllStats(): Promise<StatsResponse> {
+/** Heavy computation: fetches all on-chain data and computes D20 stats.
+ *  batch: optional {index, total} to process a subset of NFTs (reduces RPC load).
+ *  Pair data + prices always computed in full for accuracy. */
+export async function computeAllStats(batch?: { index: number; total: number }): Promise<StatsResponse> {
     // Fetch shared NFT/LP data from Supabase (fallback to hardcoded)
     let GAME_NFTS: GameNft[];
     let KNOWN_LP_PAIRS: { base: `0x${string}`[]; polygon: `0x${string}`[] };
@@ -157,6 +159,15 @@ export async function computeAllStats(): Promise<StatsResponse> {
       GAME_NFTS = HARDCODED_NFTS;
       KNOWN_LP_PAIRS = HARDCODED_LP_PAIRS;
       console.log("[API] Supabase fetch failed, using hardcoded data");
+    }
+
+    // Batch: only process a subset of NFTs for LP balances (pair/price data still full)
+    let NFT_BATCH = GAME_NFTS;
+    if (batch && batch.total > 0) {
+      const batchSize = Math.ceil(GAME_NFTS.length / batch.total);
+      const start = batch.index * batchSize;
+      NFT_BATCH = GAME_NFTS.slice(start, start + batchSize);
+      console.log(`[API] Batch ${batch.index}/${batch.total}: processing ${NFT_BATCH.length}/${GAME_NFTS.length} NFTs`);
     }
 
     // Fetch prices — asset daily highs for backing, MfT daily low for marketplace pricing
@@ -242,14 +253,14 @@ export async function computeAllStats(): Promise<StatsResponse> {
       { address: pair, abi: V2_PAIR_ABI, functionName: "getReserves" as const, args: [] as [] },
     ]);
 
-    // LP balance calls
-    const baseLpBalanceCalls = GAME_NFTS.flatMap((nft) =>
+    // LP balance calls — only for NFT_BATCH (reduces RPC load in batch mode)
+    const baseLpBalanceCalls = NFT_BATCH.flatMap((nft) =>
       KNOWN_LP_PAIRS.base.map((pair) => ({
         address: pair, abi: V2_PAIR_ABI, functionName: "balanceOf" as const,
         args: [nft.contractAddress] as [`0x${string}`],
       }))
     );
-    const polyLpBalanceCalls = GAME_NFTS.flatMap((nft) =>
+    const polyLpBalanceCalls = NFT_BATCH.flatMap((nft) =>
       KNOWN_LP_PAIRS.polygon.map((pair) => ({
         address: pair, abi: V2_PAIR_ABI, functionName: "balanceOf" as const,
         args: [nft.contractAddress] as [`0x${string}`],
@@ -266,8 +277,8 @@ export async function computeAllStats(): Promise<StatsResponse> {
     let polyLpBalanceResults: McResult[] = [];
     try {
       const polyResults = await Promise.all([
-        chunkedMulticall(polygonClient, polyPairStaticCalls, 100),
-        chunkedMulticall(polygonClient, polyLpBalanceCalls, 200),
+        chunkedMulticall(polygonClient, polyPairStaticCalls, 50),
+        chunkedMulticall(polygonClient, polyLpBalanceCalls, 80),
       ]);
       polyPairStaticResults = polyResults[0];
       polyLpBalanceResults = polyResults[1];
@@ -276,7 +287,7 @@ export async function computeAllStats(): Promise<StatsResponse> {
     // Retry failed Polygon LP balances — find chunks that returned all failures and retry them
     if (polyLpBalanceResults.length > 0) {
       const polyPairCount = KNOWN_LP_PAIRS.polygon.length;
-      for (let nftIdx = 0; nftIdx < GAME_NFTS.length; nftIdx++) {
+      for (let nftIdx = 0; nftIdx < NFT_BATCH.length; nftIdx++) {
         const start = nftIdx * polyPairCount;
         const nftResults = polyLpBalanceResults.slice(start, start + polyPairCount);
         const allFailed = nftResults.every(r => r.status !== "success");
@@ -285,7 +296,7 @@ export async function computeAllStats(): Promise<StatsResponse> {
           try {
             const retryCalls = KNOWN_LP_PAIRS.polygon.map(pair => ({
               address: pair, abi: V2_PAIR_ABI, functionName: "balanceOf" as const,
-              args: [GAME_NFTS[nftIdx].contractAddress] as [`0x${string}`],
+              args: [NFT_BATCH[nftIdx].contractAddress] as [`0x${string}`],
             }));
             const retryResults = await chunkedMulticall(polygonClient, retryCalls, 30);
             for (let j = 0; j < retryResults.length; j++) {
@@ -434,8 +445,8 @@ export async function computeAllStats(): Promise<StatsResponse> {
     console.log("[API] Derived USD prices for", pricedCount, "tokens:", Object.entries(tokenUsdPrices).filter(([,v]) => v > 0).map(([k, v]) => `${TOKEN_SYMBOLS[k] ?? k.slice(0,8)}: $${v.toFixed(6)}`).join(", "));
     if (ethHigh24h === 0) console.log("[API] WARNING: CoinGecko ETH price = $0, using on-chain derivation only");
 
-    // Assemble stats for each NFT
-    const characters = GAME_NFTS.map((nft, nftIdx) => {
+    // Assemble stats for each NFT (only batch NFTs have LP balance data)
+    const characters = NFT_BATCH.map((nft, nftIdx) => {
       const supplyDiv = BigInt(nftSupplyDivisor[nft.contractAddress.toLowerCase()] ?? 1);
       const tokenMap = new Map<string, bigint>();
       const accum = (addr: string, amt: bigint) => tokenMap.set(addr, (tokenMap.get(addr) ?? 0n) + amt);

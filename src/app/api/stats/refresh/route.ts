@@ -3,7 +3,9 @@ import { computeAllStats } from "../route";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 300; // 5 min — same as /api/stats
+export const maxDuration = 300; // 5 min
+
+const BATCH_COUNT = 4; // Split NFTs into 4 batches across the day
 
 export async function GET(request: Request) {
   // Auth: Vercel cron sends Authorization: Bearer <CRON_SECRET>
@@ -16,13 +18,19 @@ export async function GET(request: Request) {
     }
   }
 
+  // Auto-detect batch from UTC hour (0-3 for 4 batches across 24h)
+  const url = new URL(request.url);
+  const forceFull = url.searchParams.get("full") === "1";
+  const batchIndex = Math.floor(new Date().getUTCHours() / (24 / BATCH_COUNT));
+  const batch = forceFull ? undefined : { index: batchIndex, total: BATCH_COUNT };
+
   const start = Date.now();
   try {
-    console.log("[refresh] Computing all stats...");
-    const result = await computeAllStats();
+    console.log("[refresh]", forceFull ? "Full run" : `Batch ${batchIndex}/${BATCH_COUNT}`, "starting...");
+    const result = await computeAllStats(batch);
     console.log("[refresh] Computed", result.characters.length, "characters in", Date.now() - start, "ms");
 
-    // Build chain-data-only rows for nft_backing (shared by marketplace, card game, D20 game, etc.)
+    // Build chain-data rows for nft_backing
     const backingRows = result.characters.map(c => ({
       key: c.contractAddress.toLowerCase(),
       data: {
@@ -35,6 +43,7 @@ export async function GET(request: Request) {
       updated_at: new Date().toISOString(),
     }));
 
+    // Summary always gets fresh prices (pair data computed every run)
     backingRows.push({
       key: "__summary__",
       data: {
@@ -66,6 +75,7 @@ export async function GET(request: Request) {
 
     return NextResponse.json({
       ok: true,
+      batch: forceFull ? "full" : `${batchIndex}/${BATCH_COUNT}`,
       characters: result.characters.length,
       backingWritten,
       elapsed,
