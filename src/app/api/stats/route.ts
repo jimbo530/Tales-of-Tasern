@@ -128,6 +128,7 @@ export type StatsResponse = {
   assetTotals: { traditional: number; game: number; impact: number };
   tokenBreakdown: Array<{ symbol: string; usd: number; category: string }>;
   prices: { btcHigh24h: number; ethHigh24h: number; polHigh24h: number; mftLow24h: number };
+  tokenUsdPrices: Record<string, number>;
   updatedAt: string;
 };
 
@@ -660,6 +661,7 @@ export async function computeAllStats(): Promise<StatsResponse> {
       assetTotals: categoryTotals,
       tokenBreakdown: Object.values(tokenBreakdown),
       prices: { btcHigh24h, ethHigh24h, polHigh24h, mftLow24h },
+      tokenUsdPrices,
       updatedAt: new Date().toISOString(),
     };
 }

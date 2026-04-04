@@ -5,6 +5,7 @@ import { useAccount, usePublicClient } from "wagmi";
 import { base, polygon } from "viem/chains";
 import { ERC1155_ABI, GAME_NFTS } from "@/lib/contracts";
 import { supabase } from "@/lib/supabase";
+import { computeD20Stats } from "@/lib/computeD20Stats";
 
 const TOKEN_ID = BigInt(1);
 const MAX_TOKEN_ID = 200;
@@ -51,60 +52,48 @@ function setCachedOwnership(wallet: string, map: Map<string, number>) {
   } catch {}
 }
 
-/** Fetch D20 stats from nft_d20_stats + chain data from nft_backing, merge them */
+/** Fetch chain data from nft_backing, compute D20 stats client-side */
 async function fetchFromSupabase(): Promise<any | null> {
   try {
-    // Fetch both tables in parallel
-    const [d20Res, backingRes] = await Promise.all([
-      supabase.from("nft_d20_stats").select("key, data"),
-      supabase.from("nft_backing").select("key, data"),
-    ]);
+    const { data: backingRows, error } = await supabase
+      .from("nft_backing")
+      .select("key, data");
 
-    const d20Rows = d20Res.data ?? [];
-    const backingRows = backingRes.data ?? [];
+    if (error || !backingRows || backingRows.length === 0) return null;
 
-    // Build backing lookup: addr -> {usdBacking, tokenAmounts}
-    const backingMap = new Map<string, any>();
+    // First pass: extract summary (includes tokenUsdPrices for stat computation)
     let assetTotals = { traditional: 0, game: 0, impact: 0 };
     let tokenBreakdown: any[] = [];
+    let tokenUsdPrices: Record<string, number> = {};
+    const nftRows: typeof backingRows = [];
+
     for (const r of backingRows) {
       if (r.key === "__summary__") {
         assetTotals = r.data?.assetTotals ?? assetTotals;
         tokenBreakdown = r.data?.tokenBreakdown ?? tokenBreakdown;
-        continue;
+        tokenUsdPrices = r.data?.tokenUsdPrices ?? {};
+      } else {
+        nftRows.push(r);
       }
-      backingMap.set(r.key, r.data);
     }
 
-    // Merge D20 stats with backing chain data
-    const characterRows = d20Rows.filter((r: any) => r.key !== "__summary__");
-    if (characterRows.length === 0 && backingMap.size === 0) return null;
+    if (nftRows.length === 0) return null;
 
-    const characters = characterRows.map((r: any) => {
-      const d20 = r.data;
-      const backing = backingMap.get(r.key) ?? {};
+    // Compute D20 stats client-side from chain data + prices
+    const characters = nftRows.map((r: any) => {
+      const backing = r.data;
+      const amounts = backing.tokenAmounts ?? [];
+      const { stats, subtypes } = computeD20Stats(amounts, tokenUsdPrices);
       return {
-        ...d20,
+        name: backing.name ?? r.key,
+        contractAddress: backing.contractAddress ?? r.key,
+        chain: backing.chain ?? "base",
+        stats,
+        subtypes,
         usdBacking: backing.usdBacking ?? 0,
-        tokenAmounts: backing.tokenAmounts ?? [],
+        tokenAmounts: amounts,
       };
     });
-
-    // Also include NFTs that are in backing but not in d20 stats
-    const d20Keys = new Set(characterRows.map((r: any) => r.key));
-    for (const [key, backing] of backingMap) {
-      if (!d20Keys.has(key)) {
-        characters.push({
-          name: backing.name ?? key,
-          contractAddress: backing.contractAddress ?? key,
-          chain: backing.chain ?? "base",
-          stats: { str: 1, dex: 1, con: 1, int: 1, wis: 1, cha: 1, ac: 10, atk: 0, speed: 30, lightningDmg: 0, fireDmg: 0 },
-          subtypes: [],
-          usdBacking: backing.usdBacking ?? 0,
-          tokenAmounts: backing.tokenAmounts ?? [],
-        });
-      }
-    }
 
     return { characters, assetTotals, tokenBreakdown };
   } catch {
@@ -167,7 +156,7 @@ export function useNftStats() {
         let data: any;
         let fetched = false;
 
-        // Priority 1: Supabase nft_d20_stats (fast, always fresh from daily cron)
+        // Priority 1: Supabase nft_backing (chain data + client-side D20 stat computation)
         try {
           const sbData = await fetchFromSupabase();
           if (sbData && sbData.characters?.length > 0) {
