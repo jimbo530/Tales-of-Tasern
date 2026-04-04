@@ -51,23 +51,62 @@ function setCachedOwnership(wallet: string, map: Map<string, number>) {
   } catch {}
 }
 
-/** Fetch computed D20 stats from Supabase nft_d20_stats table (fast, ~100ms) */
+/** Fetch D20 stats from nft_d20_stats + chain data from nft_backing, merge them */
 async function fetchFromSupabase(): Promise<any | null> {
   try {
-    const { data: rows, error } = await supabase
-      .from("nft_d20_stats")
-      .select("key, data");
-    if (error || !rows || rows.length === 0) return null;
+    // Fetch both tables in parallel
+    const [d20Res, backingRes] = await Promise.all([
+      supabase.from("nft_d20_stats").select("key, data"),
+      supabase.from("nft_backing").select("key, data"),
+    ]);
 
-    const summaryRow = rows.find((r: any) => r.key === "__summary__");
-    const characterRows = rows.filter((r: any) => r.key !== "__summary__");
-    if (characterRows.length === 0) return null;
+    const d20Rows = d20Res.data ?? [];
+    const backingRows = backingRes.data ?? [];
 
-    return {
-      characters: characterRows.map((r: any) => r.data),
-      assetTotals: summaryRow?.data?.assetTotals ?? { traditional: 0, game: 0, impact: 0 },
-      tokenBreakdown: summaryRow?.data?.tokenBreakdown ?? [],
-    };
+    // Build backing lookup: addr -> {usdBacking, tokenAmounts}
+    const backingMap = new Map<string, any>();
+    let assetTotals = { traditional: 0, game: 0, impact: 0 };
+    let tokenBreakdown: any[] = [];
+    for (const r of backingRows) {
+      if (r.key === "__summary__") {
+        assetTotals = r.data?.assetTotals ?? assetTotals;
+        tokenBreakdown = r.data?.tokenBreakdown ?? tokenBreakdown;
+        continue;
+      }
+      backingMap.set(r.key, r.data);
+    }
+
+    // Merge D20 stats with backing chain data
+    const characterRows = d20Rows.filter((r: any) => r.key !== "__summary__");
+    if (characterRows.length === 0 && backingMap.size === 0) return null;
+
+    const characters = characterRows.map((r: any) => {
+      const d20 = r.data;
+      const backing = backingMap.get(r.key) ?? {};
+      return {
+        ...d20,
+        usdBacking: backing.usdBacking ?? 0,
+        tokenAmounts: backing.tokenAmounts ?? [],
+      };
+    });
+
+    // Also include NFTs that are in backing but not in d20 stats
+    const d20Keys = new Set(characterRows.map((r: any) => r.key));
+    for (const [key, backing] of backingMap) {
+      if (!d20Keys.has(key)) {
+        characters.push({
+          name: backing.name ?? key,
+          contractAddress: backing.contractAddress ?? key,
+          chain: backing.chain ?? "base",
+          stats: { str: 1, dex: 1, con: 1, int: 1, wis: 1, cha: 1, ac: 10, atk: 0, speed: 30, lightningDmg: 0, fireDmg: 0 },
+          subtypes: [],
+          usdBacking: backing.usdBacking ?? 0,
+          tokenAmounts: backing.tokenAmounts ?? [],
+        });
+      }
+    }
+
+    return { characters, assetTotals, tokenBreakdown };
   } catch {
     return null;
   }

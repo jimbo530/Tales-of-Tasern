@@ -22,19 +22,22 @@ export async function GET(request: Request) {
     const result = await computeAllStats();
     console.log("[refresh] Computed", result.characters.length, "characters in", Date.now() - start, "ms");
 
-    // Build upsert rows: one per NFT + one summary row
+    // Build D20-only rows for nft_d20_stats (game-specific: stats, subtypes — no chain data)
     const rows = result.characters.map(c => ({
       key: c.contractAddress.toLowerCase(),
-      data: c,
+      data: {
+        name: c.name,
+        contractAddress: c.contractAddress,
+        chain: c.chain,
+        stats: c.stats,
+        subtypes: c.subtypes,
+      },
       updated_at: new Date().toISOString(),
     }));
 
     rows.push({
       key: "__summary__",
       data: {
-        assetTotals: result.assetTotals,
-        tokenBreakdown: result.tokenBreakdown,
-        prices: result.prices,
         updatedAt: result.updatedAt,
       } as any,
       updated_at: new Date().toISOString(),
