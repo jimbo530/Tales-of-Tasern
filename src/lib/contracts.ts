@@ -265,6 +265,11 @@ export const KNOWN_LP_PAIRS = {
     "0x4ff6295614884b0f7c3269d5ae486b66c5d8615f", // PR25 / EGP  (Uniswap V2)
     "0x485cbb3fe4cae0eb4efbfb859092be506afc6d18", // PR25 / LGP  (Uniswap V2)
     "0x00501f69afa9613ab155e80b9d433bcb972d6f05", // PR25 / WETH (Uniswap V2)
+    "0xaB9DC44b75F87f40421120e8E1228076123f2735", // PR25 / IGS  (Uniswap V2)
+    "0x54a326013c971f5aabf28240ffd6c1ef9d77e6f9", // PR25 / BTN  (Uniswap V2)
+    "0x3434a0b68d36d8ae4ffb9e2c236a680a25e9237d", // PR25 / PKT  (Uniswap V2)
+    "0x46b7b31cac35586673f1791025032e6ee0e2e72b", // PR25 / OGC  (Uniswap V2)
+    "0xd548854d8e850011bd12d0f14b326a931d8fd4c7", // PR25 / DHG  (Uniswap V2)
     // ── CCC (mana) ──────────────────────────────────────────────────────────
     "0x73e6a1630486d0874ec56339327993a3e4684691", // CCC / DDD     (Uniswap V2)
     "0xbcd50f1c7f28bc5712ac03c5a18ff0d46ce6bff5", // CCC / EGP     (Uniswap V2)
