@@ -10,6 +10,8 @@
 
 import { type Equipment } from "./saveSystem";
 import { type CharacterClass, CLASSES, getBAB, getSaveBonus, getClassById, HIT_DIE_VALUES } from "./classes";
+import { getItemInfo } from "./itemRegistry";
+import { parseArmorEffect } from "./battleStats";
 
 // ── Entity Progression (shared by heroes and loyal followers) ─────────────
 
@@ -155,6 +157,9 @@ export type Follower = {
   xp: number;               // XP toward next level (independent of hero)
   class_id: string;         // default class: "warrior" for combat, "commoner" for labor
   progression?: EntityProgression;  // full progression — present for loyal followers when customized
+  // ── Gift tracking ──
+  giftMoraleToday: number;  // morale gained from gifts today (caps at 15/day)
+  giftLoyalty: number;      // total loyalty gained from gifts (caps at 40 — rest must be earned)
 };
 
 // ── Party Structure ─────────────────────────────────────────────────────────
@@ -245,6 +250,129 @@ export function updateLoyaltyDaily(follower: Follower): Follower {
   else delta = -1;                              // miserable → faster loss
   const newLoyalty = Math.max(0, Math.min(100, (follower.loyalty ?? 0) + delta));
   return { ...follower, loyalty: Math.round(newLoyalty * 10) / 10 }; // keep 1 decimal
+}
+
+// ── Gift System ──────────────────────────────────────────────────────────────
+// Followers accept gifts from inventory. Value determines morale/loyalty gain.
+// Morale: easy to buy but capped at 15/day from gifts.
+// Loyalty: only 40 total loyalty can come from gifts — the rest must be earned
+// through service (daily loyalty ticks from high morale over time).
+//
+// Gift value tiers (in cp):
+//   1-49cp     → +3 morale, +1 loyalty
+//   50-199cp   → +5 morale, +2 loyalty
+//   200-999cp  → +8 morale, +3 loyalty
+//   1000cp+    → +12 morale, +5 loyalty
+
+const GIFT_MORALE_CAP_PER_DAY = 15;
+const GIFT_LOYALTY_CAP = 40;
+
+export type GiftResult = {
+  follower: Follower;
+  moraleGain: number;
+  loyaltyGain: number;
+  moraleCapHit: boolean;
+  loyaltyCapHit: boolean;
+};
+
+/** Give a gift to a follower. Returns updated follower + what was gained. */
+export function giveGift(follower: Follower, itemValueCp: number): GiftResult {
+  // Determine base gains from gift value
+  let baseMorale: number;
+  let baseLoyalty: number;
+  if (itemValueCp >= 1000) { baseMorale = 12; baseLoyalty = 5; }
+  else if (itemValueCp >= 200) { baseMorale = 8; baseLoyalty = 3; }
+  else if (itemValueCp >= 50) { baseMorale = 5; baseLoyalty = 2; }
+  else { baseMorale = 3; baseLoyalty = 1; }
+
+  // Apply daily morale cap
+  const moraleSpent = follower.giftMoraleToday ?? 0;
+  const moraleRoom = Math.max(0, GIFT_MORALE_CAP_PER_DAY - moraleSpent);
+  const actualMorale = Math.min(baseMorale, moraleRoom);
+
+  // Apply lifetime loyalty cap from gifts
+  const loyaltySpent = follower.giftLoyalty ?? 0;
+  const loyaltyRoom = Math.max(0, GIFT_LOYALTY_CAP - loyaltySpent);
+  const actualLoyalty = Math.min(baseLoyalty, loyaltyRoom);
+
+  const updated: Follower = {
+    ...follower,
+    morale: Math.min(100, follower.morale + actualMorale),
+    loyalty: Math.min(100, (follower.loyalty ?? 0) + actualLoyalty),
+    giftMoraleToday: moraleSpent + actualMorale,
+    giftLoyalty: loyaltySpent + actualLoyalty,
+  };
+
+  return {
+    follower: updated,
+    moraleGain: actualMorale,
+    loyaltyGain: actualLoyalty,
+    moraleCapHit: actualMorale < baseMorale,
+    loyaltyCapHit: actualLoyalty < baseLoyalty,
+  };
+}
+
+/** Reset daily gift morale tracking (call at start of each new day) */
+export function resetDailyGifts(follower: Follower): Follower {
+  return { ...follower, giftMoraleToday: 0 };
+}
+
+// ── Auto-Equip ─────────────────────────────────────────────────────────────
+// Followers auto-equip the best weapon/armor/shield they receive.
+
+/** Parse average weapon damage from effect string like "1d8 slashing" → 4.5 */
+export function parseWeaponAvgDmg(effect?: string): number {
+  if (!effect) return 0;
+  const m = effect.match(/(\d+)d(\d+)/);
+  if (!m) return 0;
+  return parseInt(m[1]) * (parseInt(m[2]) + 1) / 2;
+}
+
+/** Auto-equip an item on a follower if it's better than current gear.
+ *  Stores item IDs in follower.weapon / follower.armor / progression.equipment.
+ *  Returns the (possibly updated) follower. */
+export function autoEquipFollower(follower: Follower, itemId: string): Follower {
+  const info = getItemInfo(itemId);
+  if (!info) return follower;
+
+  const cat = info.category;
+  let updated = { ...follower };
+
+  if (cat === "weapon") {
+    const newDmg = parseWeaponAvgDmg(info.effect);
+    const curEffect = updated.weapon ? getItemInfo(updated.weapon)?.effect : undefined;
+    const curDmg = parseWeaponAvgDmg(curEffect);
+    if (newDmg > curDmg) {
+      updated.weapon = itemId;
+      if (updated.progression) {
+        updated.progression = { ...updated.progression, equipment: { ...updated.progression.equipment, weapon: itemId } };
+      }
+    }
+  } else if (cat === "armor") {
+    const parsed = parseArmorEffect(info.effect);
+    if (parsed.isShield) {
+      // Shield — compare to progression shield slot
+      const curShieldId = updated.progression?.equipment?.shield;
+      const curShieldAc = parseArmorEffect(curShieldId ? getItemInfo(curShieldId)?.effect : undefined).ac;
+      if (parsed.ac > curShieldAc) {
+        if (updated.progression) {
+          updated.progression = { ...updated.progression, equipment: { ...updated.progression.equipment, shield: itemId } };
+        }
+      }
+    } else {
+      // Body armor — compare to current armor
+      const curEffect = updated.armor ? getItemInfo(updated.armor)?.effect : undefined;
+      const curAc = parseArmorEffect(curEffect).ac;
+      if (parsed.ac > curAc) {
+        updated.armor = itemId;
+        if (updated.progression) {
+          updated.progression = { ...updated.progression, equipment: { ...updated.progression.equipment, armor: itemId } };
+        }
+      }
+    }
+  }
+
+  return updated;
 }
 
 /** Check for desertions — returns followers that remain */
@@ -456,6 +584,8 @@ export function hireFollower(template: FollowerTemplate, customName?: string, fa
     armor: template.armor,
     xp: 0,
     class_id: defaultClass,
+    giftMoraleToday: 0,
+    giftLoyalty: 0,
   };
 }
 
@@ -508,6 +638,25 @@ export function createAdventureParty(
     map_region: "kardovs-gate",
     map_node: "tavern",
     has_acted: false,
+  };
+}
+
+/** Add an NFT hero to an existing party (max 4 heroes per party) */
+export function addHeroToParty<T extends Party>(party: T, nftAddress: string): T {
+  if (party.heroes.length >= 4) return party;
+  return {
+    ...party,
+    heroes: [...party.heroes, { nft_address: nftAddress.toLowerCase(), isLeader: false, followers: [] }],
+  };
+}
+
+/** Remove an NFT hero from a party (cannot remove the leader) */
+export function removeHeroFromParty<T extends Party>(party: T, nftAddress: string): T {
+  const hero = party.heroes.find(h => h.nft_address === nftAddress.toLowerCase());
+  if (!hero || hero.isLeader) return party;
+  return {
+    ...party,
+    heroes: party.heroes.filter(h => h.nft_address !== nftAddress.toLowerCase()),
   };
 }
 
@@ -628,6 +777,8 @@ export function migrateEntityProgression(save: {
       xp: f.xp ?? 0,
       loyalty: f.loyalty ?? 0,
       class_id: f.class_id ?? ((f.role === "melee" || f.role === "ranged" || f.role === "faction") ? "warrior" : "commoner"),
+      giftMoraleToday: f.giftMoraleToday ?? 0,
+      giftLoyalty: f.giftLoyalty ?? 0,
     }));
 
   // Apply to active party
@@ -822,6 +973,9 @@ export function processDailyUpkeep(
       if (updated.alive) {
         updated = updateLoyaltyDaily(updated);
       }
+
+      // ── Reset daily gift morale cap ──
+      updated = resetDailyGifts(updated);
 
       return updated;
     });

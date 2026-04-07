@@ -1477,6 +1477,13 @@ function getLootTable(tier: LootTier): LootItem[] {
   }
 }
 
+/** Look up a loot item by ID across all tiers */
+const ALL_LOOT = [...JUNK_LOOT, ...COMMON_LOOT, ...UNCOMMON_LOOT, ...RARE_LOOT];
+const LOOT_MAP = new Map(ALL_LOOT.map(i => [i.id, i]));
+export function getItemById(id: string): LootItem | undefined {
+  return LOOT_MAP.get(id);
+}
+
 function coinFlip(): boolean {
   return Math.random() < 0.5;
 }

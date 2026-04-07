@@ -14,6 +14,7 @@ export type ItemInfo = {
   valueCp: number;     // value in copper
   category: string;
   description: string;
+  effect?: string;     // mechanical effect (weapon dice, armor AC, etc.)
 };
 
 // Build the lookup map once
@@ -28,6 +29,7 @@ function addLoot(items: LootItem[]) {
       valueCp: Math.round(it.value * 100),
       category: it.category,
       description: it.description,
+      effect: it.effect,
     });
   }
 }
@@ -41,6 +43,7 @@ function addShop(items: ShopItem[]) {
       valueCp: it.buyPrice,
       category: it.category,
       description: it.description,
+      effect: it.effect,
     });
   }
 }

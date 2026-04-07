@@ -1,7 +1,7 @@
 "use client";
 
 import { useReducer, useCallback, useEffect, useRef } from "react";
-import { type HexCoord, hexDistance, hexesInRange, isAdjacent } from "@/lib/hexGrid";
+import { type HexCoord, hexDistance, hexesInRange, isAdjacent, hexNeighbors, GRID_COLS, GRID_ROWS } from "@/lib/hexGrid";
 import {
   type BattleUnit,
   type CombatLogEntry,
@@ -16,11 +16,16 @@ import {
   resolveAttack,
   resolveSpellCast,
   computeEnemyMove,
+  greedyPathTo,
   canAttack,
   isCharge,
   hasCondition,
   getAoOThreats,
   createFollowerUnit,
+  isConscious,
+  isUnconscious,
+  isDead,
+  isAlive,
 } from "@/lib/hexCombat";
 import { getSpell, requiresConcentration, type SpellBattleEffect } from "@/lib/spells";
 import { getFeatCombatFlags } from "@/lib/feats";
@@ -38,7 +43,8 @@ export type BattlePhase =
   | "playerReaction"
   | "enemyTurn"
   | "victory"
-  | "defeat";
+  | "defeat"
+  | "retreat";
 
 export type PlayerSubMode = "idle" | "moving" | "attacking" | "casting";
 
@@ -57,12 +63,13 @@ type BattleState = {
   combatLog: CombatLogEntry[];
   logCounter: number;
   pendingAoO: { attackerId: string; targetId: string } | null;
+  packFed: boolean;  // a food-motivated enemy escaped with a body — rest of pack flees
 };
 
 // ── Actions ──────────────────────────────────────────────────────────────────
 
 type Action =
-  | { type: "INIT"; player: BattleUnit; enemies: BattleUnit[]; followers?: BattleUnit[] }
+  | { type: "INIT"; player: BattleUnit; enemies: BattleUnit[]; followers?: BattleUnit[]; extraHeroes?: BattleUnit[] }
   | { type: "MOVE"; hex: HexCoord }
   | { type: "SELECT_TARGET"; targetId: string }
   | { type: "ROLL"; natural: number }
@@ -70,11 +77,14 @@ type Action =
   | { type: "END_TURN" }
   | { type: "READY_ATTACK" }
   | { type: "ENEMY_MOVE"; unitId: string; hex: HexCoord }
-  | { type: "ENEMY_ATTACK"; unitId: string; natural: number; result: AttackResult }
+  | { type: "ENEMY_ATTACK"; unitId: string; targetId: string; natural: number; result: AttackResult }
   | { type: "READIED_TRIGGER"; attackerId: string; targetId: string; natural: number; result: AttackResult }
   | { type: "NEXT_TURN" }
   | { type: "CAST_SPELL"; spellId: string; targetId: string }
   | { type: "SET_SUBMODE"; subMode: PlayerSubMode }
+  | { type: "GRAB_BODY"; unitId: string; bodyId: string }
+  | { type: "ENEMY_FLEE"; unitId: string; escaped: boolean }
+  | { type: "RETREAT"; roll: number; dc: number }
   | { type: "AOO_TAKE" }
   | { type: "AOO_PASS" };
 
@@ -85,6 +95,13 @@ function addLog(state: BattleState, text: string, logType: CombatLogEntry["type"
     logCounter: id,
     combatLog: [...state.combatLog.slice(-50), { id, text, type: logType }],
   };
+}
+
+/** Log the right message when a unit drops: unconscious (0 to -9) or dead (-10) */
+function logDowned(state: BattleState, unit: BattleUnit): BattleState {
+  if (isDead(unit)) return addLog(state, `${unit.name} is slain!`, "kill");
+  if (isUnconscious(unit)) return addLog(state, `${unit.name} falls unconscious! (${unit.currentHp} HP)`, "kill");
+  return state;
 }
 
 /** 5e Concentration check: when a concentrating unit takes damage, roll CON save
@@ -133,23 +150,23 @@ function dropConcentration(state: BattleState, casterId: string): BattleState {
 
 function calcReachable(unit: BattleUnit, units: BattleUnit[]): HexCoord[] {
   const occupied = new Set(
-    units.filter(u => u.id !== unit.id && u.currentHp > 0).map(u => `${u.position.q},${u.position.r}`)
+    units.filter(u => u.id !== unit.id && isConscious(u)).map(u => `${u.position.q},${u.position.r}`)
   );
   return hexesInRange(unit.position, Math.floor(unit.stats.speed / 5), occupied);
 }
 
 function calcAttackable(unit: BattleUnit, units: BattleUnit[]): string[] {
   return units
-    .filter(u => u.currentHp > 0 && u.isPlayer !== unit.isPlayer && hexDistance(unit.position, u.position) <= unit.attackRange)
+    .filter(u => isAlive(u) && u.isPlayer !== unit.isPlayer && hexDistance(unit.position, u.position) <= unit.attackRange)
     .map(u => u.id);
 }
 
 function checkEnd(state: BattleState): BattleState {
-  // Clean up concentration effects from dead units
-  const deadConcentrators = state.units.filter(u => u.currentHp <= 0 && u.concentrationSpellId);
-  if (deadConcentrators.length > 0) {
+  // Clean up concentration effects from dead/unconscious units
+  const lostConcentrators = state.units.filter(u => !isConscious(u) && u.concentrationSpellId);
+  if (lostConcentrators.length > 0) {
     let units = state.units;
-    for (const dead of deadConcentrators) {
+    for (const dead of lostConcentrators) {
       const sid = dead.concentrationSpellId!;
       units = units.map(u => {
         const cleaned = { ...u, activeEffects: u.activeEffects.filter(e => !(e.concentration && e.sourceId === dead.id && e.spellId === sid)) };
@@ -159,10 +176,17 @@ function checkEnd(state: BattleState): BattleState {
     }
     state = { ...state, units };
   }
-  const player = state.units.find(u => u.isPlayer);
-  const enemiesAlive = state.units.filter(u => !u.isPlayer && u.currentHp > 0);
-  if (!player || player.currentHp <= 0) return { ...state, phase: "defeat" };
-  if (enemiesAlive.length === 0) return { ...state, phase: "victory" };
+  // Defeat: all player-side units are dead (-10) or unconscious (no one left to fight)
+  const playerSideConscious = state.units.filter(u => u.isPlayer && isConscious(u));
+  const playerSideAlive = state.units.filter(u => u.isPlayer && isAlive(u));
+  // Victory: all enemies are dead (-10) or unconscious
+  const enemiesConscious = state.units.filter(u => !u.isPlayer && isConscious(u));
+  // Party wipe: everyone dead (not just unconscious — unconscious allies can still be saved)
+  if (playerSideAlive.length === 0) return { ...state, phase: "defeat" };
+  // No conscious player-side units but some alive (all unconscious) = also defeat
+  if (playerSideConscious.length === 0) return { ...state, phase: "defeat" };
+  // All enemies down (dead or unconscious) = victory
+  if (enemiesConscious.length === 0) return { ...state, phase: "victory" };
   return state;
 }
 
@@ -170,16 +194,51 @@ function advanceTurn(state: BattleState): BattleState {
   let idx = state.currentTurnIndex;
   let round = state.round;
 
-  // Find next living unit
+  // Find next conscious unit (skip dead and unconscious)
   for (let i = 0; i < state.turnOrder.length; i++) {
     idx = (idx + 1) % state.turnOrder.length;
     if (idx === 0) round++;
     const unit = state.units.find(u => u.id === state.turnOrder[idx]);
-    if (unit && unit.currentHp > 0) break;
+    if (!unit) continue;
+    // Unconscious units bleed out: -1 HP per round (unless stabilized or auto-stabilize boon)
+    if (isUnconscious(unit)) {
+      if (!unit.stabilized && (unit.stats.autoStabilize)) {
+        // Auto-stabilize boon (Wound Closure)
+        state = {
+          ...state,
+          units: state.units.map(u => u.id === unit.id ? { ...u, stabilized: true } : u),
+        };
+        state = addLog(state, `${unit.name} auto-stabilizes! (Wound Closure)`, "system");
+      } else if (!unit.stabilized) {
+        const newHp = unit.currentHp - 1;
+        state = {
+          ...state,
+          units: state.units.map(u => u.id === unit.id ? { ...u, currentHp: newHp } : u),
+        };
+        if (newHp <= -10) {
+          state = addLog(state, `${unit.name} bleeds out and dies!`, "kill");
+        } else {
+          state = addLog(state, `${unit.name} is bleeding out... (${newHp} HP)`, "system");
+        }
+      }
+      continue; // skip their turn
+    }
+    // Regeneration boon: +1 HP at start of turn if conscious
+    if (isConscious(unit) && unit.stats.hasRegen) {
+      const regenHp = Math.min(unit.maxHp, unit.currentHp + 1);
+      if (regenHp > unit.currentHp) {
+        state = {
+          ...state,
+          units: state.units.map(u => u.id === unit.id ? { ...u, currentHp: regenHp } : u),
+        };
+        state = addLog(state, `${unit.name} regenerates 1 HP (${regenHp}/${unit.maxHp})`, "system");
+      }
+    }
+    if (isConscious(unit)) break;
   }
 
   const nextUnit = state.units.find(u => u.id === state.turnOrder[idx]);
-  if (!nextUnit || nextUnit.currentHp <= 0) return { ...state, phase: "victory" };
+  if (!nextUnit || !isConscious(nextUnit)) return checkEnd(state);
 
   const newRound = round > state.round;  // reactions reset each full round
 
@@ -224,7 +283,7 @@ function advanceTurn(state: BattleState): BattleState {
 function reducer(state: BattleState, action: Action): BattleState {
   switch (action.type) {
     case "INIT": {
-      const allUnits = [action.player, ...(action.followers ?? []), ...action.enemies];
+      const allUnits = [action.player, ...(action.extraHeroes ?? []), ...(action.followers ?? []), ...action.enemies];
       const sorted = [...allUnits].sort((a, b) => b.stats.initiative - a.stats.initiative);
       const turnOrder = sorted.map(u => u.id);
       const first = sorted[0];
@@ -244,6 +303,7 @@ function reducer(state: BattleState, action: Action): BattleState {
         combatLog: [],
         logCounter: 0,
         pendingAoO: null,
+        packFed: false,
       };
       s = addLog(s, "Battle begins!", "system");
       s = addLog(s, `Initiative: ${sorted.map(u => `${u.name} (${u.stats.initiative})`).join(", ")}`, "info");
@@ -269,18 +329,18 @@ function reducer(state: BattleState, action: Action): BattleState {
       const threats = getAoOThreats(mover, oldPos, action.hex, units);
       for (const enemy of threats) {
         const playerNow = s.units.find(u => u.id === activeId)!;
-        if (playerNow.currentHp <= 0) break;
+        if (!isConscious(playerNow)) break;
         const natural = rollD20();
         const threatRange = enemy.weaponProperties.includes("reach") ? 2 : 1;
         const result = resolveAttack(enemy, playerNow, natural, threatRange);
         s = { ...s, units: s.units.map(u => u.id === enemy.id ? { ...u, reactionUsed: true } : u) };
         s = addLog(s, `Opportunity attack! ${enemy.name} strikes at ${playerNow.name}: ${result.breakdown}`, result.hit ? "hit" : "miss");
         if (result.hit) {
-          s = { ...s, units: s.units.map(u => u.id === activeId ? { ...u, currentHp: Math.max(0, u.currentHp - result.damage) } : u) };
+          s = { ...s, units: s.units.map(u => u.id === activeId ? { ...u, currentHp: Math.max(-10, u.currentHp - result.damage) } : u) };
           s = checkConcentration(s, activeId, result.damage);
           const hitUnit = s.units.find(u => u.id === activeId)!;
-          if (hitUnit.currentHp <= 0) {
-            s = addLog(s, `${hitUnit.name} has fallen!`, "kill");
+          if (!isConscious(hitUnit)) {
+            s = logDowned(s, hitUnit);
             return checkEnd(s);
           }
         }
@@ -331,49 +391,85 @@ function reducer(state: BattleState, action: Action): BattleState {
       const target2 = state.units.find(u => u.id === state.pendingTargetId)!;
       const charged = attacker2.weaponProperties.includes("charge") && isCharge(attacker2, target2);
       const finalDamage = charged ? damage * 2 : damage;
-      let units = state.units.map(u =>
-        u.id === state.pendingTargetId ? { ...u, currentHp: Math.max(0, u.currentHp - finalDamage) } : u
-      );
-      const target = units.find(u => u.id === state.pendingTargetId)!;
+      // Apply damage with death save / phoenix checks
+      let units = state.units.map(u => {
+        if (u.id !== state.pendingTargetId) return u;
+        let newHp = u.currentHp - finalDamage;
+        // Death Save boon: drop to 1 HP instead of 0 (once per battle)
+        if (newHp <= 0 && u.currentHp > 0 && u.stats.hasDeathSave && !u._deathSaveUsed) {
+          newHp = 1;
+          return { ...u, currentHp: newHp, _deathSaveUsed: true } as any;
+        }
+        return { ...u, currentHp: Math.max(-10, newHp) };
+      });
+      let target = units.find(u => u.id === state.pendingTargetId)!;
+      // Check if death save fired
+      if (target.currentHp === 1 && (target as any)._deathSaveUsed) {
+        // Log it after state is built
+      }
       const activeId = state.turnOrder[state.currentTurnIndex];
-      const attacker = units.find(u => u.id === activeId)!;
+      let attacker = units.find(u => u.id === activeId)!;
+      // Retaliation damage (Tempest boon)
+      if (state.lastAttackResult.retaliationDmg && state.lastAttackResult.retaliationDmg > 0) {
+        const retDmg = state.lastAttackResult.retaliationDmg;
+        units = units.map(u => u.id === activeId ? { ...u, currentHp: Math.max(-10, u.currentHp - retDmg) } : u);
+        attacker = units.find(u => u.id === activeId)!;
+      }
       units = units.map(u => u.id === activeId ? { ...u, hasActed: true } : u);
       const updAtk = units.find(u => u.id === activeId)!;
       const mvLeft = !updAtk.hasMoved ? calcReachable(updAtk, units) : [];
       let s: BattleState = { ...state, units, phase: "playerTurn", subMode: "idle", reachableHexes: mvLeft, attackableEnemies: [], pendingTargetId: null };
       s = checkConcentration(s, state.pendingTargetId!, finalDamage);
-      if (target.currentHp <= 0) {
-        s = addLog(s, `${target.name} is defeated!`, "kill");
+      // Log death save
+      if (target.currentHp === 1 && (target as any)._deathSaveUsed) {
+        s = addLog(s, `${target.name} refuses to fall! (Unbreakable — drops to 1 HP)`, "system");
+      }
+      // Log retaliation
+      if (state.lastAttackResult.retaliationText) {
+        s = addLog(s, state.lastAttackResult.retaliationText, "hit");
+        if (!isConscious(attacker)) {
+          s = logDowned(s, attacker);
+        }
+      }
+      if (!isConscious(target)) {
+        // Phoenix boon: revive at half HP once per battle
+        if (target.stats.hasPhoenix && !(target as any)._phoenixUsed) {
+          const reviveHp = Math.floor(target.maxHp / 2);
+          s = { ...s, units: s.units.map(u => u.id === target.id ? { ...u, currentHp: reviveHp, _phoenixUsed: true } as any : u) };
+          s = addLog(s, `${target.name} rises from the ashes! Phoenix revive — ${reviveHp} HP!`, "crit");
+        } else {
+          s = logDowned(s, target);
 
-        // Cleave: free attack on adjacent enemy after a kill
-        // Great Cleave: chain indefinitely as long as each swing kills
-        const flags = getFeatCombatFlags(attacker.feats);
-        if (flags.cleave || flags.greatCleave) {
-          const cleavedIds = new Set<string>([target.id]);
-          let keepCleaving = true;
-          while (keepCleaving) {
-            keepCleaving = false;
-            const cleaveTarget = s.units.find(u =>
-              u.currentHp > 0 && !u.isPlayer && !cleavedIds.has(u.id) && isAdjacent(attacker.position, u.position)
-            );
-            if (!cleaveTarget) break;
-            const cleaveRoll = rollD20();
-            const cleaveResult = resolveAttack(attacker, cleaveTarget, cleaveRoll, 1);
-            const logType: CombatLogEntry["type"] = !cleaveResult.hit ? "miss" : (cleaveResult.damage > 0 ? "hit" : "miss");
-            s = addLog(s, `Cleave! ${attacker.name} swings at ${cleaveTarget.name}: ${cleaveResult.breakdown}`, logType);
-            if (cleaveResult.hit) {
-              s = {
-                ...s,
-                units: s.units.map(u =>
-                  u.id === cleaveTarget.id ? { ...u, currentHp: Math.max(0, u.currentHp - cleaveResult.damage) } : u
-                ),
-              };
-              s = checkConcentration(s, cleaveTarget.id, cleaveResult.damage);
-              const cleavedUnit = s.units.find(u => u.id === cleaveTarget.id)!;
-              if (cleavedUnit.currentHp <= 0) {
-                s = addLog(s, `${cleavedUnit.name} is defeated!`, "kill");
-                cleavedIds.add(cleaveTarget.id);
-                if (flags.greatCleave) keepCleaving = true; // chain continues
+          // Cleave: free attack on adjacent enemy after a kill/knockout
+          // Great Cleave: chain indefinitely as long as each swing drops a foe
+          const flags = getFeatCombatFlags(attacker.feats);
+          if (flags.cleave || flags.greatCleave) {
+            const cleavedIds = new Set<string>([target.id]);
+            let keepCleaving = true;
+            while (keepCleaving) {
+              keepCleaving = false;
+              const cleaveTarget = s.units.find(u =>
+                isConscious(u) && !u.isPlayer && !cleavedIds.has(u.id) && isAdjacent(attacker.position, u.position)
+              );
+              if (!cleaveTarget) break;
+              const cleaveRoll = rollD20();
+              const cleaveResult = resolveAttack(attacker, cleaveTarget, cleaveRoll, 1);
+              const logType: CombatLogEntry["type"] = !cleaveResult.hit ? "miss" : (cleaveResult.damage > 0 ? "hit" : "miss");
+              s = addLog(s, `Cleave! ${attacker.name} swings at ${cleaveTarget.name}: ${cleaveResult.breakdown}`, logType);
+              if (cleaveResult.hit) {
+                s = {
+                  ...s,
+                  units: s.units.map(u =>
+                    u.id === cleaveTarget.id ? { ...u, currentHp: Math.max(-10, u.currentHp - cleaveResult.damage) } : u
+                  ),
+                };
+                s = checkConcentration(s, cleaveTarget.id, cleaveResult.damage);
+                const cleavedUnit = s.units.find(u => u.id === cleaveTarget.id)!;
+                if (!isConscious(cleavedUnit)) {
+                  s = logDowned(s, cleavedUnit);
+                  cleavedIds.add(cleaveTarget.id);
+                  if (flags.greatCleave) keepCleaving = true; // chain continues
+                }
               }
             }
           }
@@ -421,25 +517,29 @@ function reducer(state: BattleState, action: Action): BattleState {
         if (spell.battle.hexArea && spell.battle.hexArea > 0) {
           const hitIds: string[] = [];
           units = s.units.map(u => {
-            if (u.id === activeId || u.currentHp <= 0) return u;
+            if (u.id === activeId || isDead(u)) return u; // AoE hits unconscious units too
             if (hexDistance(u.position, target.position) <= (spell.battle!.hexArea ?? 0)) {
               hitIds.push(u.id);
-              return { ...u, currentHp: Math.max(0, u.currentHp - dmgAmt) };
+              return { ...u, currentHp: Math.max(-10, u.currentHp - dmgAmt) };
             }
             return u;
           });
           s = { ...s, units };
-          for (const hid of hitIds) s = checkConcentration(s, hid, dmgAmt);
+          for (const hid of hitIds) {
+            s = checkConcentration(s, hid, dmgAmt);
+            const hitU = s.units.find(u => u.id === hid)!;
+            if (isDead(hitU)) s = addLog(s, `${hitU.name} is slain by the blast!`, "kill");
+          }
         } else {
           units = s.units.map(u =>
-            u.id === action.targetId ? { ...u, currentHp: Math.max(0, u.currentHp - dmgAmt) } : u
+            u.id === action.targetId ? { ...u, currentHp: Math.max(-10, u.currentHp - dmgAmt) } : u
           );
           s = { ...s, units };
           s = checkConcentration(s, action.targetId, dmgAmt);
         }
         const killed = s.units.find(u => u.id === action.targetId);
-        if (killed && killed.currentHp <= 0) {
-          s = addLog(s, `${killed.name} is defeated!`, "kill");
+        if (killed && !isConscious(killed)) {
+          s = logDowned(s, killed);
         }
       }
 
@@ -529,13 +629,13 @@ function reducer(state: BattleState, action: Action): BattleState {
           s = addLog(s, `Brace! Double damage: ${finalDmg}!`, "crit");
         }
         const units = s.units.map(u =>
-          u.id === action.targetId ? { ...u, currentHp: Math.max(0, u.currentHp - finalDmg) } : u
+          u.id === action.targetId ? { ...u, currentHp: Math.max(-10, u.currentHp - finalDmg) } : u
         );
         s = { ...s, units };
         s = checkConcentration(s, action.targetId, finalDmg);
         const hit = s.units.find(u => u.id === action.targetId)!;
-        if (hit.currentHp <= 0) {
-          s = addLog(s, `${hit.name} is defeated!`, "kill");
+        if (!isConscious(hit)) {
+          s = logDowned(s, hit);
         }
       }
       // Clear readied flag
@@ -545,20 +645,43 @@ function reducer(state: BattleState, action: Action): BattleState {
 
     case "ENEMY_ATTACK": {
       const attacker = state.units.find(u => u.id === action.unitId)!;
-      const target = state.units.find(u => u.isPlayer)!;
+      const target = state.units.find(u => u.id === action.targetId) ?? state.units.find(u => u.isPlayer && isConscious(u))!;
       let s = state;
       const logType: CombatLogEntry["type"] = !action.result.hit ? "miss" : (action.natural === 20 ? "crit" : "hit");
       s = addLog(s, `${attacker.name} attacks ${target.name}: ${action.result.breakdown}`, logType);
 
       if (action.result.hit) {
-        const units = s.units.map(u =>
-          u.id === target.id ? { ...u, currentHp: Math.max(0, u.currentHp - action.result.damage) } : u
-        );
+        // Apply damage with death save check
+        const units = s.units.map(u => {
+          if (u.id !== target.id) return u;
+          let newHp = u.currentHp - action.result.damage;
+          if (newHp <= 0 && u.currentHp > 0 && u.stats.hasDeathSave && !(u as any)._deathSaveUsed) {
+            return { ...u, currentHp: 1, _deathSaveUsed: true } as any;
+          }
+          return { ...u, currentHp: Math.max(-10, newHp) };
+        });
         s = { ...s, units };
         s = checkConcentration(s, target.id, action.result.damage);
         const p = s.units.find(u => u.id === target.id)!;
-        if (p.currentHp <= 0) {
-          s = addLog(s, `${p.name} has fallen!`, "kill");
+        if (p.currentHp === 1 && (p as any)._deathSaveUsed) {
+          s = addLog(s, `${p.name} refuses to fall! (Unbreakable — drops to 1 HP)`, "system");
+        }
+        // Retaliation damage
+        if (action.result.retaliationDmg && action.result.retaliationDmg > 0) {
+          s = { ...s, units: s.units.map(u => u.id === attacker.id ? { ...u, currentHp: Math.max(-10, u.currentHp - action.result.retaliationDmg!) } : u) };
+          s = addLog(s, action.result.retaliationText!, "hit");
+          const retUnit = s.units.find(u => u.id === attacker.id)!;
+          if (!isConscious(retUnit)) s = logDowned(s, retUnit);
+        }
+        if (!isConscious(p)) {
+          // Phoenix revive
+          if (p.stats.hasPhoenix && !(p as any)._phoenixUsed) {
+            const reviveHp = Math.floor(p.maxHp / 2);
+            s = { ...s, units: s.units.map(u => u.id === p.id ? { ...u, currentHp: reviveHp, _phoenixUsed: true } as any : u) };
+            s = addLog(s, `${p.name} rises from the ashes! Phoenix revive — ${reviveHp} HP!`, "crit");
+          } else {
+            s = logDowned(s, p);
+          }
         }
       }
       s = { ...s, lastRollNatural: action.natural, lastAttackResult: action.result };
@@ -577,11 +700,11 @@ function reducer(state: BattleState, action: Action): BattleState {
       let s: BattleState = { ...state, units, pendingAoO: null, phase: "enemyTurn" };
       s = addLog(s, `Opportunity attack! ${attacker.name} strikes at ${target.name}: ${result.breakdown}`, result.hit ? "hit" : "miss");
       if (result.hit) {
-        s = { ...s, units: s.units.map(u => u.id === targetId ? { ...u, currentHp: Math.max(0, u.currentHp - result.damage) } : u) };
+        s = { ...s, units: s.units.map(u => u.id === targetId ? { ...u, currentHp: Math.max(-10, u.currentHp - result.damage) } : u) };
         s = checkConcentration(s, targetId, result.damage);
         const hit = s.units.find(u => u.id === targetId)!;
-        if (hit.currentHp <= 0) {
-          s = addLog(s, `${hit.name} is defeated!`, "kill");
+        if (!isConscious(hit)) {
+          s = logDowned(s, hit);
         }
       }
       return checkEnd(s);
@@ -589,6 +712,57 @@ function reducer(state: BattleState, action: Action): BattleState {
 
     case "AOO_PASS": {
       return { ...state, pendingAoO: null, phase: "enemyTurn" };
+    }
+
+    case "GRAB_BODY": {
+      // Predator grabs an unconscious unit — marks carrying
+      const units = state.units.map(u =>
+        u.id === action.unitId ? { ...u, carrying: action.bodyId, hasActed: true } : u
+      );
+      let s: BattleState = { ...state, units };
+      const grabber = s.units.find(u => u.id === action.unitId)!;
+      const body = s.units.find(u => u.id === action.bodyId)!;
+      s = addLog(s, `${grabber.name} seizes ${body.name}'s body!`, "system");
+      return s;
+    }
+
+    case "ENEMY_FLEE": {
+      // Predator carrying a body reaches the edge and escapes
+      if (action.escaped) {
+        const fleeing = state.units.find(u => u.id === action.unitId)!;
+        const carriedId = fleeing.carrying;
+        const carried = carriedId ? state.units.find(u => u.id === carriedId) : null;
+        // Remove both the fleeing enemy and the carried body from combat
+        const units = state.units.map(u =>
+          u.id === action.unitId || u.id === carriedId
+            ? { ...u, currentHp: -10 }  // mark as dead/gone
+            : u
+        );
+        let s: BattleState = { ...state, units, packFed: true };
+        s = addLog(s, `${fleeing.name} drags ${carried?.name ?? "a body"} away into the wilderness!`, "kill");
+        // Check if remaining food-motivated enemies should flee too
+        const foodEnemiesLeft = s.units.some(u => !u.isPlayer && u.motivation === "food" && isConscious(u));
+        if (foodEnemiesLeft) {
+          s = addLog(s, "The rest of the pack begins to scatter!", "system");
+        }
+        return checkEnd(s);
+      }
+      return state;
+    }
+
+    case "RETREAT": {
+      let s = state;
+      if (action.roll >= action.dc) {
+        s = addLog(s, `Retreat succeeds! (${action.roll} vs DC ${action.dc}) — your party flees!`, "system");
+        return { ...s, phase: "retreat" };
+      }
+      // Failed — waste your turn
+      const au = s.units.find(u => u.id === s.turnOrder[s.currentTurnIndex]);
+      s = addLog(s, `Retreat fails! (${action.roll} vs DC ${action.dc}) — ${au?.name ?? "you"} can't disengage!`, "system");
+      const units = s.units.map(u =>
+        u.id === s.turnOrder[s.currentTurnIndex] ? { ...u, hasMoved: true, hasActed: true } : u
+      );
+      return advanceTurn({ ...s, units });
     }
 
     case "SET_SUBMODE": {
@@ -621,6 +795,7 @@ const INITIAL_STATE: BattleState = {
   combatLog: [],
   logCounter: 0,
   pendingAoO: null,
+  packFed: false,
 };
 
 export function useHexBattle() {
@@ -634,8 +809,13 @@ export function useHexBattle() {
     ? state.units.find(u => u.id === state.turnOrder[state.currentTurnIndex]) ?? null
     : null;
 
-  const startBattle = useCallback((character: NftCharacter, difficulty: "easy" | "medium" | "hard" | "deadly", charClass?: CharacterClass, allCharacters?: NftCharacter[], featIds?: string[], weaponName?: string, spellInfo?: SpellUnitInfo, currentHp?: number, followers?: Follower[], progression?: EntityProgression) => {
-    const player = createPlayerUnit(character, { q: 1, r: 5 }, charClass, featIds ?? [], weaponName, spellInfo, currentHp, progression);
+  const startBattle = useCallback((character: NftCharacter, difficulty: "easy" | "medium" | "hard" | "deadly", charClass?: CharacterClass, allCharacters?: NftCharacter[], featIds?: string[], weaponName?: string, spellInfo?: SpellUnitInfo, currentHp?: number, followers?: Follower[], progression?: EntityProgression, extraHeroes?: { char: NftCharacter; charClass?: CharacterClass; featIds?: string[]; weaponName?: string; spellInfo?: SpellUnitInfo; currentHp?: number; progression?: EntityProgression }[], armorEffect?: string, shieldEffect?: string) => {
+    const player = createPlayerUnit(character, { q: 1, r: 5 }, charClass, featIds ?? [], weaponName, spellInfo, currentHp, progression, undefined, armorEffect, shieldEffect);
+    // Extra hero positions (behind leader)
+    const heroPositions: HexCoord[] = [{ q: 0, r: 5 }, { q: 0, r: 4 }, { q: 0, r: 6 }];
+    const extraHeroUnits = (extraHeroes ?? []).slice(0, 3).map((h, i) =>
+      createPlayerUnit(h.char, heroPositions[i], h.charClass, h.featIds ?? [], h.weaponName, h.spellInfo, h.currentHp, h.progression, i + 1)
+    );
     const followerPositions: HexCoord[] = [{ q: 1, r: 4 }, { q: 1, r: 6 }, { q: 2, r: 4 }, { q: 2, r: 6 }];
     const followerUnits = (followers ?? [])
       .filter(f => f.alive && f.hp > 0 && (f.role === "melee" || f.role === "ranged"))
@@ -644,13 +824,17 @@ export function useHexBattle() {
     const specs = generateEncounter(difficulty, allCharacters ?? []);
     const startPositions: HexCoord[] = [{ q: 8, r: 4 }, { q: 8, r: 6 }, { q: 7, r: 5 }];
     const enemies = specs.map((s, i) => createEnemyUnit(s, startPositions[i], i));
-    dispatch({ type: "INIT", player, enemies, followers: followerUnits });
+    dispatch({ type: "INIT", player, enemies, followers: followerUnits, extraHeroes: extraHeroUnits });
   }, []);
 
   /** Start a quest battle with pre-built enemy specs (bypasses encounter generation) */
-  const startQuestBattle = useCallback((character: NftCharacter, specs: EnemySpec[], charClass?: CharacterClass, featIds?: string[], weaponName?: string, spellInfo?: SpellUnitInfo, currentHp?: number, followers?: Follower[], progression?: EntityProgression) => {
+  const startQuestBattle = useCallback((character: NftCharacter, specs: EnemySpec[], charClass?: CharacterClass, featIds?: string[], weaponName?: string, spellInfo?: SpellUnitInfo, currentHp?: number, followers?: Follower[], progression?: EntityProgression, extraHeroes?: { char: NftCharacter; charClass?: CharacterClass; featIds?: string[]; weaponName?: string; spellInfo?: SpellUnitInfo; currentHp?: number; progression?: EntityProgression }[], armorEffect?: string, shieldEffect?: string) => {
     const playerPos = { q: 1, r: 5 };
-    const player = createPlayerUnit(character, playerPos, charClass, featIds ?? [], weaponName, spellInfo, currentHp, progression);
+    const player = createPlayerUnit(character, playerPos, charClass, featIds ?? [], weaponName, spellInfo, currentHp, progression, undefined, armorEffect, shieldEffect);
+    const heroPositions: HexCoord[] = [{ q: 0, r: 5 }, { q: 0, r: 4 }, { q: 0, r: 6 }];
+    const extraHeroUnits = (extraHeroes ?? []).slice(0, 3).map((h, i) =>
+      createPlayerUnit(h.char, heroPositions[i], h.charClass, h.featIds ?? [], h.weaponName, h.spellInfo, h.currentHp, h.progression, i + 1)
+    );
     const followerPositions: HexCoord[] = [{ q: 1, r: 4 }, { q: 1, r: 6 }, { q: 2, r: 4 }, { q: 2, r: 6 }];
     const followerUnits = (followers ?? [])
       .filter(f => f.alive && f.hp > 0 && (f.role === "melee" || f.role === "ranged"))
@@ -658,7 +842,7 @@ export function useHexBattle() {
       .map((f, i) => createFollowerUnit(f, followerPositions[i], i));
     const spawnPositions = generateSpawnPositions(specs.length, playerPos);
     const enemies = specs.map((s, i) => createEnemyUnit(s, spawnPositions[i], i));
-    dispatch({ type: "INIT", player, enemies, followers: followerUnits });
+    dispatch({ type: "INIT", player, enemies, followers: followerUnits, extraHeroes: extraHeroUnits });
   }, []);
 
   const clickHex = useCallback((hex: HexCoord) => {
@@ -714,6 +898,11 @@ export function useHexBattle() {
     dispatch({ type: "CAST_SPELL", spellId, targetId });
   }, [state.phase]);
 
+  const attemptRetreat = useCallback((roll: number, dc: number) => {
+    if (state.phase !== "playerTurn") return;
+    dispatch({ type: "RETREAT", roll, dc });
+  }, [state.phase]);
+
   const takeAoO = useCallback(() => {
     if (state.phase === "playerReaction") dispatch({ type: "AOO_TAKE" });
   }, [state.phase]);
@@ -733,8 +922,128 @@ export function useHexBattle() {
 
     const activeId = state.turnOrder[state.currentTurnIndex];
     const enemy = state.units.find(u => u.id === activeId);
-    const player = state.units.find(u => u.isPlayer);
-    if (!enemy || !player || enemy.currentHp <= 0 || player.currentHp <= 0) {
+    // Target nearest conscious player-side unit (cruel enemies also target unconscious)
+    const targetFilter = enemy?.cruel
+      ? (u: BattleUnit) => u.isPlayer && isAlive(u)
+      : (u: BattleUnit) => u.isPlayer && isConscious(u);
+    const player = state.units
+      .filter(targetFilter)
+      // Prefer conscious targets even for cruel enemies — only hit downed foes if nothing else
+      .sort((a, b) => {
+        const aConscious = isConscious(a) ? 0 : 1;
+        const bConscious = isConscious(b) ? 0 : 1;
+        if (aConscious !== bConscious) return aConscious - bConscious;
+        return hexDistance(enemy?.position ?? a.position, a.position) - hexDistance(enemy?.position ?? b.position, b.position);
+      })[0] ?? null;
+    if (!enemy || !isConscious(enemy)) {
+      timerRef.current = setTimeout(() => {
+        if (!cancelled) dispatch({ type: "NEXT_TURN" });
+      }, 300);
+      return () => { cancelled = true; };
+    }
+
+    // ── Food-motivated predator AI ────────────────────────────────────────
+    if (enemy.motivation === "food") {
+      const occupied = new Set(
+        state.units.filter(u => u.id !== enemy.id && isConscious(u)).map(u => `${u.position.q},${u.position.r}`)
+      );
+      const maxSteps = Math.floor(enemy.stats.speed / 5);
+      const isAtEdge = (p: HexCoord) => p.q === 0 || p.q === GRID_COLS - 1 || p.r === 0 || p.r === GRID_ROWS - 1;
+
+      // Find nearest edge hex for fleeing
+      const nearestEdgeHex = (from: HexCoord): HexCoord => {
+        const edges: HexCoord[] = [];
+        for (let q = 0; q < GRID_COLS; q++) { edges.push({ q, r: 0 }); edges.push({ q, r: GRID_ROWS - 1 }); }
+        for (let r = 1; r < GRID_ROWS - 1; r++) { edges.push({ q: 0, r }); edges.push({ q: GRID_COLS - 1, r }); }
+        return edges.reduce((a, b) => hexDistance(from, b) < hexDistance(from, a) ? b : a);
+      };
+
+      // (1) Pack already fed — flee toward edge
+      if (state.packFed && !enemy.carrying) {
+        const edgeDest = nearestEdgeHex(enemy.position);
+        const newPos = greedyPathTo(enemy.position, edgeDest, maxSteps, occupied, 0);
+        const atEdge = isAtEdge(newPos);
+        timerRef.current = setTimeout(() => {
+          if (cancelled) return;
+          const moved = newPos.q !== enemy.position.q || newPos.r !== enemy.position.r;
+          if (moved) dispatch({ type: "ENEMY_MOVE", unitId: enemy.id, hex: newPos });
+          timerRef.current = setTimeout(() => {
+            if (cancelled) return;
+            if (atEdge) {
+              // Fleeing without a body — just remove from combat
+              dispatch({ type: "ENEMY_FLEE", unitId: enemy.id, escaped: true });
+              timerRef.current = setTimeout(() => { if (!cancelled) dispatch({ type: "NEXT_TURN" }); }, 800);
+            } else {
+              dispatch({ type: "NEXT_TURN" });
+            }
+          }, moved ? 500 : 100);
+        }, 400);
+        return () => { cancelled = true; };
+      }
+
+      // (2) Carrying a body — flee toward edge
+      if (enemy.carrying) {
+        const edgeDest = nearestEdgeHex(enemy.position);
+        const newPos = greedyPathTo(enemy.position, edgeDest, maxSteps, occupied, 0);
+        const atEdge = isAtEdge(newPos);
+        timerRef.current = setTimeout(() => {
+          if (cancelled) return;
+          const moved = newPos.q !== enemy.position.q || newPos.r !== enemy.position.r;
+          if (moved) dispatch({ type: "ENEMY_MOVE", unitId: enemy.id, hex: newPos });
+          timerRef.current = setTimeout(() => {
+            if (cancelled) return;
+            if (atEdge) {
+              dispatch({ type: "ENEMY_FLEE", unitId: enemy.id, escaped: true });
+              timerRef.current = setTimeout(() => { if (!cancelled) dispatch({ type: "NEXT_TURN" }); }, 800);
+            } else {
+              dispatch({ type: "NEXT_TURN" });
+            }
+          }, moved ? 500 : 100);
+        }, 400);
+        return () => { cancelled = true; };
+      }
+
+      // (3) Adjacent to an unconscious body — grab it
+      const adjacentBody = state.units.find(u =>
+        u.isPlayer && isUnconscious(u) && isAdjacent(enemy.position, u.position)
+      );
+      if (adjacentBody) {
+        timerRef.current = setTimeout(() => {
+          if (cancelled) return;
+          dispatch({ type: "GRAB_BODY", unitId: enemy.id, bodyId: adjacentBody.id });
+          timerRef.current = setTimeout(() => { if (!cancelled) dispatch({ type: "NEXT_TURN" }); }, 800);
+        }, 400);
+        return () => { cancelled = true; };
+      }
+
+      // (4) Unconscious body exists — move toward it
+      const nearestBody = state.units
+        .filter(u => u.isPlayer && isUnconscious(u))
+        .sort((a, b) => hexDistance(enemy.position, a.position) - hexDistance(enemy.position, b.position))[0];
+      if (nearestBody) {
+        const newPos = computeEnemyMove(enemy, nearestBody, state.units);
+        timerRef.current = setTimeout(() => {
+          if (cancelled) return;
+          const moved = newPos.q !== enemy.position.q || newPos.r !== enemy.position.r;
+          if (moved) dispatch({ type: "ENEMY_MOVE", unitId: enemy.id, hex: newPos });
+          timerRef.current = setTimeout(() => {
+            if (cancelled) return;
+            // Check if now adjacent after moving
+            if (isAdjacent(newPos, nearestBody.position)) {
+              dispatch({ type: "GRAB_BODY", unitId: enemy.id, bodyId: nearestBody.id });
+              timerRef.current = setTimeout(() => { if (!cancelled) dispatch({ type: "NEXT_TURN" }); }, 800);
+            } else {
+              dispatch({ type: "NEXT_TURN" });
+            }
+          }, moved ? 500 : 100);
+        }, 400);
+        return () => { cancelled = true; };
+      }
+      // (5) No bodies available — fall through to normal combat to down someone
+    }
+
+    // ── Normal AI needs a target ──
+    if (!player) {
       timerRef.current = setTimeout(() => {
         if (!cancelled) dispatch({ type: "NEXT_TURN" });
       }, 300);
@@ -746,10 +1055,10 @@ export function useHexBattle() {
       timerRef.current = setTimeout(() => {
         if (cancelled) return;
         const dist = hexDistance(enemy.position, player.position);
-        if (dist <= enemy.attackRange && enemy.currentHp > 0) {
+        if (dist <= enemy.attackRange && isConscious(enemy)) {
           const natural = rollD20();
           const result = resolveAttack(enemy, player, natural, dist);
-          dispatch({ type: "ENEMY_ATTACK", unitId: enemy.id, natural, result });
+          dispatch({ type: "ENEMY_ATTACK", unitId: enemy.id, targetId: player.id, natural, result });
           timerRef.current = setTimeout(() => { if (!cancelled) dispatch({ type: "NEXT_TURN" }); }, 1000);
         } else {
           dispatch({ type: "NEXT_TURN" });
@@ -773,7 +1082,7 @@ export function useHexBattle() {
 
       // Readied attack trigger — fires when enemy enters player's threat range
       const playerNow = state.units.find(u => u.isPlayer);
-      if (playerNow?.readiedAttack && moved && !wasInRange && nowInRange && playerNow.currentHp > 0) {
+      if (playerNow?.readiedAttack && moved && !wasInRange && nowInRange && isConscious(playerNow)) {
         timerRef.current = setTimeout(() => {
           if (cancelled) return;
           const dist = hexDistance(newPos, playerNow.position);
@@ -788,7 +1097,7 @@ export function useHexBattle() {
             if (distAfter <= enemy.attackRange) {
               const n2 = rollD20();
               const r2 = resolveAttack(enemy, playerNow, n2, distAfter);
-              dispatch({ type: "ENEMY_ATTACK", unitId: enemy.id, natural: n2, result: r2 });
+              dispatch({ type: "ENEMY_ATTACK", unitId: enemy.id, targetId: playerNow.id, natural: n2, result: r2 });
               timerRef.current = setTimeout(() => { if (!cancelled) dispatch({ type: "NEXT_TURN" }); }, 1000);
             } else {
               dispatch({ type: "NEXT_TURN" });
@@ -805,7 +1114,7 @@ export function useHexBattle() {
         if (dist <= enemy.attackRange) {
           const natural = rollD20();
           const result = resolveAttack(enemy, player, natural, dist);
-          dispatch({ type: "ENEMY_ATTACK", unitId: enemy.id, natural, result });
+          dispatch({ type: "ENEMY_ATTACK", unitId: enemy.id, targetId: player.id, natural, result });
           timerRef.current = setTimeout(() => {
             if (!cancelled) dispatch({ type: "NEXT_TURN" });
           }, 1000);
@@ -841,6 +1150,7 @@ export function useHexBattle() {
     readyAttack,
     endTurn,
     castSpell,
+    attemptRetreat,
     takeAoO,
     passAoO,
   };

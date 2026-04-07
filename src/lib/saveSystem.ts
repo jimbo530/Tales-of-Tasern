@@ -1,6 +1,7 @@
 import { supabase } from "./supabase";
 import { type Party, type AdventureParty, defaultParty, createAdventureParty } from "./party";
 import { type LootItem, pickLoot } from "./loot";
+import type { OwnedShip } from "./ships";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -137,9 +138,14 @@ export type CharacterSave = {
   fame: number;                     // performer renown (0+), unlocks venues & tips
   last_rest_hour: number;           // hour when the player last rested (for exhaustion)
   last_ate_hour: number;            // hour when the player last ate (for starvation exhaustion)
+  hex_threats: Record<string, { expires_day: number; encounter_key: string }>;  // "q,r" → territorial threat
+  gate_mail: { coins: Coins; messages: string[] };  // accumulates at Kardov's Gate — must visit to collect
   battles_won: number;
   battles_lost: number;
   total_play_time: number;
+  // ── Ships ──
+  ships: OwnedShip[];                   // owned ships (docked or at sea)
+  active_ship_index: number | null;     // currently boarded ship, null if on land
   // ── Multi-Party Adventuring ──
   parties: AdventureParty[];         // multiple parties exploring independently
   active_party_index: number;        // which party is currently selected
@@ -335,13 +341,17 @@ export function defaultSave(
     food: 9,                    // 3 days of food to start
     current_hp: 12,
     max_hp: 12,
-    coins: { gp: 0, sp: 0, cp: 0 },
+    coins: { gp: 100, sp: 0, cp: 0 },
     fame: 0,
     last_rest_hour: 0,
     last_ate_hour: 0,
+    hex_threats: {},
+    gate_mail: { coins: { gp: 0, sp: 0, cp: 0 }, messages: [] },
     battles_won: 0,
     battles_lost: 0,
     total_play_time: 0,
+    ships: [],
+    active_ship_index: null,
     parties: [createAdventureParty("party-0", "Party 1", nftAddress, { q: 36, r: 32 })],
     active_party_index: 0,
   };

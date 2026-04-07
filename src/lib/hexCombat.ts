@@ -1,11 +1,15 @@
 import { computeStats, type ComputedStats } from "./battleStats";
 import { type HexCoord, hexDistance, hexNeighbors, isAdjacent, GRID_COLS, GRID_ROWS } from "./hexGrid";
 import type { NftCharacter } from "@/hooks/useNftStats";
+import { DEFAULT_BOON_FIELDS } from "./computeD20Stats";
+import { nd } from "./treasure";
 import { type CharacterClass, getBAB, HIT_DIE_VALUES, getClassById } from "./classes";
 import type { Monster } from "./monsters";
 import { getFeatCombatFlags, getFeatBonuses } from "./feats";
 import type { SpellBattleEffect } from "./spells";
-import { type Follower, type EntityProgression, totalBAB, totalSaves } from "./party";
+import { type Follower, type EntityProgression, totalBAB, totalSaves, parseWeaponAvgDmg } from "./party";
+import { getItemInfo } from "./itemRegistry";
+import { parseArmorEffect } from "./battleStats";
 
 // ── Weapon Range & Properties System ─────────────────────────────────────────
 // 1 hex = 5ft (matches movement: speed 30 = 6 hexes).
@@ -163,17 +167,28 @@ export type BattleUnit = {
   activeEffects: ActiveSpellEffect[];
   concentrationSpellId?: string;  // spell ID the unit is concentrating on (max 1)
   rawAbilities: { str: number; dex: number; con: number; int: number; wis: number; cha: number };
+  stabilized?: boolean;           // unconscious but no longer bleeding out
+  cruel?: boolean;                // if true, will attack downed/unconscious foes
+  motivation?: "kill" | "food" | "territorial";  // food=grab bodies & flee, territorial=fight to death
+  carrying?: string;              // ID of unconscious body this unit is carrying
   spellSlots?: number[];          // max spell slots per level [0th, 1st, ...]
   spellSlotsUsed?: number[];      // slots used this battle
   availableSpells?: string[];     // spell IDs available to cast (known or prepared)
   casterLevel?: number;           // for damage scaling and DC
   castingAbilityMod?: number;     // ability modifier for spell DC
+  // ── Boon one-time-use tracking ──
+  _deathSaveUsed?: boolean;       // Unbreakable: already dropped to 1 HP this battle
+  _phoenixUsed?: boolean;         // Phoenix: already revived this battle
+  _actionSurgeUsed?: boolean;     // Action Surge: already used this battle
+  _boonSpellUses?: Record<string, number>; // track boon spell uses (key = spell name)
 };
 
 export type AttackResult = {
   hit: boolean;
   damage: number;
   breakdown: string;
+  retaliationDmg?: number;   // lightning damage dealt back to attacker (Tempest)
+  retaliationText?: string;
 };
 
 export type CombatLogEntry = {
@@ -181,6 +196,21 @@ export type CombatLogEntry = {
   text: string;
   type: "info" | "hit" | "miss" | "crit" | "kill" | "system";
 };
+
+// ── Death Mechanic (D&D 3.5) ────────────────────────────────────────────────
+// 0 HP = unconscious, -10 HP = dead. Applies to ALL units equally.
+
+/** Unit is conscious and can act */
+export function isConscious(u: BattleUnit): boolean { return u.currentHp > 0; }
+
+/** Unit is unconscious (0 to -9 HP) — can't act, bleeding out unless stabilized */
+export function isUnconscious(u: BattleUnit): boolean { return u.currentHp <= 0 && u.currentHp > -10; }
+
+/** Unit is dead (-10 HP or below) — permanently removed from combat */
+export function isDead(u: BattleUnit): boolean { return u.currentHp <= -10; }
+
+/** Unit can still participate (not dead) */
+export function isAlive(u: BattleUnit): boolean { return u.currentHp > -10; }
 
 // ── Enemy NFT lookup ─────────────────────────────────────────────────────────
 // Enemies are real NFTs — same LP-backed stat system as players.
@@ -229,6 +259,8 @@ export type EnemySpec = {
   hpOverride?: number;   // use this HP instead of computed (for D&D monsters)
   attackRange?: number;  // override attack range in hexes (default 1 = melee)
   rangeIncrement?: number; // range increment in hexes (default 0)
+  cruel?: boolean;       // if true, will attack downed/unconscious foes
+  motivation?: "kill" | "food" | "territorial";  // food=grab bodies & flee, territorial=fight to death
 };
 
 /** Look up an enemy NFT from the character list — uses real LP stats */
@@ -242,33 +274,44 @@ function buildEnemySpec(key: string, characters: NftCharacter[]): EnemySpec {
     name: def.displayName,
     imageUrl: nft?.imageUrl || (def.localImage || undefined),
     imageEmoji: def.imageEmoji,
-    stats: nft?.stats ?? { str: 1, dex: 1, con: 1, int: 1, wis: 1, cha: 1, ac: 10, atk: 0, speed: 30, lightningDmg: 0, fireDmg: 0 },
+    stats: nft?.stats ?? { str: 1, dex: 1, con: 1, int: 1, wis: 1, cha: 1, ac: 10, naturalArmor: 0, atk: 0, speed: 30, lightningDmg: 0, fireDmg: 0, ...DEFAULT_BOON_FIELDS },
     subtypes: nft?.subtypes ?? [],
   };
 }
 
 // ── Monster → EnemySpec (D&D stats from monsters.ts) ────────────────────────
 
+// Monster types that fight for food — will grab downed bodies and flee
+const FOOD_MOTIVATED_TYPES: Set<string> = new Set(["beast", "vermin", "animal"]);
+// Monster names that are cannibals/predators regardless of type
+const FOOD_MOTIVATED_NAMES = /cannibal|ghoul|troglodyte|gnoll|hyena|troll/i;
+// Territorial monsters fight to the death defending their space (e.g. rats in a cellar)
+const TERRITORIAL_NAMES = /rat|spider|centipede|scorpion|snake|bat|swarm/i;
+
 /** Build an EnemySpec from a Monster definition — uses D&D stats directly */
 export function createMonsterSpec(monster: Monster, emoji?: string): EnemySpec {
+  // Beasts, vermin, and certain named monsters fight for food
+  const isHungry = FOOD_MOTIVATED_TYPES.has(monster.type)
+    || FOOD_MOTIVATED_NAMES.test(monster.name);
+  // Territorial overrides food for small vermin that defend their den
+  const isTerritorial = TERRITORIAL_NAMES.test(monster.name);
+  const motivation: EnemySpec["motivation"] = isTerritorial
+    ? "territorial"
+    : isHungry ? "food" : undefined;
   return {
     name: monster.name,
     imageEmoji: emoji ?? "\u{1F47E}",  // 👾 default
     stats: {
-      str: monster.str,
-      dex: monster.dex,
-      con: monster.con,
-      int: monster.int,
-      wis: monster.wis,
-      cha: monster.cha,
-      ac: monster.ac,
-      atk: 0,
-      speed: monster.speed,
-      lightningDmg: 0,
-      fireDmg: 0,
+      str: monster.str, dex: monster.dex, con: monster.con,
+      int: monster.int, wis: monster.wis, cha: monster.cha,
+      ac: monster.ac, naturalArmor: 0, atk: 0,
+      speed: monster.speed, lightningDmg: 0, fireDmg: 0,
+      ...DEFAULT_BOON_FIELDS,
     },
     subtypes: [],
     hpOverride: monster.hp,  // use D&D HP, not computed
+    ...(motivation ? { motivation } : {}),
+    ...(motivation === "food" ? { cruel: true } : {}),
   };
 }
 
@@ -332,10 +375,12 @@ export function createPlayerUnit(
   char: NftCharacter, position: HexCoord, charClass?: CharacterClass,
   featIds: string[] = [], weaponName?: string, spellInfo?: SpellUnitInfo,
   currentHpOverride?: number, progression?: EntityProgression,
+  heroIndex?: number,
+  armorEffect?: string, shieldEffect?: string,
 ): BattleUnit {
   const level = progression?.total_level ?? 1;
   const feats = progression?.feats ?? featIds;
-  const stats = computeStats(char.stats, charClass, level, feats);
+  const stats = computeStats(char.stats, charClass, level, feats, armorEffect, shieldEffect);
   // Override stats from progression (multiclass BAB, tracked HP)
   if (progression) {
     stats.atkBonus = totalBAB(progression.class_levels) + Math.floor(Math.max(0, char.stats.str) / 2);
@@ -356,7 +401,10 @@ export function createPlayerUnit(
     }
     const fb = getFeatBonuses(feats);
     stats.attack = Math.max(1, char.stats.str) + damageBonus + fb.damage;
-    stats.ac = char.stats.ac + acBonus + fb.ac;
+    // Recompute AC with 3.5 armor system using progression bonuses
+    const miscAC = (char.stats.ac - 10) + acBonus + fb.ac;
+    stats.ac = 10 + stats.armorBonus + stats.shieldBonus + stats.dexMod + stats.naturalArmor + miscAC;
+    stats.magicAC = 10 + stats.dexMod + stats.naturalArmor + miscAC;
     stats.speed = (char.stats.speed || 30) + speedBonus + fb.speed;
     stats.hp += hpBonus + fb.hp;
   }
@@ -365,7 +413,7 @@ export function createPlayerUnit(
   const curHp = currentHpOverride !== undefined ? Math.min(currentHpOverride, maxHp)
     : progression ? Math.min(progression.current_hp, maxHp) : maxHp;
   return {
-    id: "player",
+    id: heroIndex !== undefined && heroIndex > 0 ? `hero-${heroIndex}` : "player",
     name: char.name,
     imageUrl: char.imageUrl ?? undefined,
     position,
@@ -425,6 +473,8 @@ export function createEnemyUnit(spec: EnemySpec, position: HexCoord, index: numb
     reactionUsed: false,
     activeEffects: [],
     rawAbilities: { str: spec.stats.str, dex: spec.stats.dex, con: spec.stats.con, int: spec.stats.int, wis: spec.stats.wis, cha: spec.stats.cha },
+    ...(spec.cruel ? { cruel: true } : {}),
+    ...(spec.motivation ? { motivation: spec.motivation } : {}),
   };
 }
 
@@ -464,9 +514,23 @@ export function createFollowerUnit(follower: Follower, position: HexCoord, index
       }
     }
 
-    const weaponBonus = Math.floor(prog.total_level / 3);
+    // ── Equipment bonuses ──
+    const weaponId = prog.equipment?.weapon ?? follower.weapon;
+    const armorId = prog.equipment?.armor ?? follower.armor;
+    const shieldId = prog.equipment?.shield;
+    const wepInfo = weaponId ? getItemInfo(weaponId) : undefined;
+    const armInfo = armorId ? getItemInfo(armorId) : undefined;
+    const shdInfo = shieldId ? getItemInfo(shieldId) : undefined;
+    const weaponAvg = Math.round(parseWeaponAvgDmg(wepInfo?.effect));
+    const weaponFallback = Math.floor(prog.total_level / 3);  // level-based if no weapon
+    const arm = parseArmorEffect(armInfo?.effect);
+    const shd = parseArmorEffect(shdInfo?.effect);
+    const followerDexModProg = Math.floor((Math.max(1, dex) + 9 - 10) / 2);
+    const maxDexCapProg = Math.min(arm.maxDex, shd.maxDex);
+    const cappedDexProg = Math.min(followerDexModProg, maxDexCapProg);
+
     const stats: ComputedStats = {
-      attack:       Math.max(1, str + weaponBonus + damageBonus + fb.damage),
+      attack:       Math.max(1, str + (weaponAvg || weaponFallback) + damageBonus + fb.damage),
       mAtk:         1,
       def:          Math.max(1, dex),
       mDef:         1,
@@ -474,11 +538,23 @@ export function createFollowerUnit(follower: Follower, position: HexCoord, index
       healing:      0,
       initiative:   Math.max(1, dex) + fb.initiative,
       carryCapacity: 100,
-      ac:           follower.ac + acBonus + fb.ac,
+      ac:           arm.ac || shd.ac ? 10 + arm.ac + shd.ac + cappedDexProg + acBonus + fb.ac : follower.ac + acBonus + fb.ac,
+      magicAC:      10 + cappedDexProg,
+      naturalArmor: 0,
+      armorBonus:   arm.ac,
+      shieldBonus:  shd.ac,
+      dexMod:       cappedDexProg,
       atkBonus:     bab + primaryMod + fb.atkBonus,
       speed:        speed + speedBonus + fb.speed,
       lightningDmg: 0,
       fireDmg:      0,
+      lightningDice: null, fireDice: null, retaliationDice: null,
+      // Followers don't have boon fields
+      bonusHp: 0, initiativeBonus: 0, hasEvasion: false, hasRegen: false,
+      autoStabilize: false, hasDeathSave: false, hasPhoenix: false, hasActionSurge: false,
+      resistances: [], immunities: [], conditionImmunities: [], saveAdvantages: [],
+      boonSpells: [], retaliationDmg: 0, hasGuardianReaction: false, oppAttackDisadvantage: false,
+      rerollD20: false, fateDie: false, spellResistance: false,
     };
     return {
       id: `follower-${index}`,
@@ -514,9 +590,17 @@ export function createFollowerUnit(follower: Follower, position: HexCoord, index
   const con = 2 + Math.floor(follower.level / 6);
   const primaryMod = Math.floor((isRanged ? dex : str) / 2);
   const atkBonus = follower.attack + primaryMod;
-  const weaponBonus = Math.floor(follower.level / 3);
-  const attack = str + weaponBonus;
 
+  // ── Equipment bonuses (template followers) ──
+  const tWepInfo = follower.weapon ? getItemInfo(follower.weapon) : undefined;
+  const tArmInfo = follower.armor ? getItemInfo(follower.armor) : undefined;
+  const tWepAvg = Math.round(parseWeaponAvgDmg(tWepInfo?.effect));
+  const tWeaponFallback = Math.floor(follower.level / 3);
+  const tArm = parseArmorEffect(tArmInfo?.effect);
+  const attack = str + (tWepAvg || tWeaponFallback);
+
+  const followerDexMod = Math.floor((Math.max(1, dex) + 9 - 10) / 2);
+  const cappedDexT = Math.min(followerDexMod, tArm.maxDex);
   const stats: ComputedStats = {
     attack:       Math.max(1, attack),
     mAtk:         1,
@@ -526,11 +610,22 @@ export function createFollowerUnit(follower: Follower, position: HexCoord, index
     healing:      0,
     initiative:   Math.max(1, dex),
     carryCapacity: 100,
-    ac:           follower.ac,
+    ac:           tArm.ac ? 10 + tArm.ac + cappedDexT : follower.ac,
+    magicAC:      10 + cappedDexT,
+    naturalArmor: 0,
+    armorBonus:   tArm.ac,
+    shieldBonus:  0,
+    dexMod:       cappedDexT,
     atkBonus:     atkBonus,
     speed,
     lightningDmg: 0,
     fireDmg:      0,
+    lightningDice: null, fireDice: null, retaliationDice: null,
+    bonusHp: 0, initiativeBonus: 0, hasEvasion: false, hasRegen: false,
+    autoStabilize: false, hasDeathSave: false, hasPhoenix: false, hasActionSurge: false,
+    resistances: [], immunities: [], conditionImmunities: [], saveAdvantages: [],
+    boonSpells: [], retaliationDmg: 0, hasGuardianReaction: false, oppAttackDisadvantage: false,
+    rerollD20: false, fateDie: false, spellResistance: false,
   };
   return {
     id: `follower-${index}`,
@@ -781,17 +876,68 @@ export function resolveAttack(
   if (pbsDmg > 0) parts.push(`+${pbsDmg} PBS`);
   if (dmgBuff !== 0) parts.push(`${dmgBuff > 0 ? "+" : ""}${dmgBuff} spell`);
 
-  if (attacker.subtypes.includes("electric") && attacker.stats.lightningDmg > 0) {
-    damage += attacker.stats.lightningDmg;
-    parts.push(`${attacker.stats.lightningDmg} Lightning`);
+  // ── Roll elemental dice ──
+  let lightningRolled = 0;
+  const hasLightning = attacker.subtypes.includes("electric") && attacker.stats.lightningDmg > 0;
+  if (hasLightning) {
+    lightningRolled = attacker.stats.lightningDice
+      ? nd(attacker.stats.lightningDice.n, attacker.stats.lightningDice.sides)
+      : attacker.stats.lightningDmg;
+    damage += lightningRolled;
+    const diceTag = attacker.stats.lightningDice ? ` (${attacker.stats.lightningDice.n}d${attacker.stats.lightningDice.sides})` : "";
+    parts.push(`${lightningRolled} Lightning${diceTag}`);
   }
-  if (attacker.subtypes.includes("fire") && attacker.stats.fireDmg > 0) {
-    damage += attacker.stats.fireDmg;
-    parts.push(`${attacker.stats.fireDmg} Fire`);
+  let fireRolled = 0;
+  const hasFire = attacker.subtypes.includes("fire") && attacker.stats.fireDmg > 0;
+  if (hasFire) {
+    fireRolled = attacker.stats.fireDice
+      ? nd(attacker.stats.fireDice.n, attacker.stats.fireDice.sides)
+      : attacker.stats.fireDmg;
+    damage += fireRolled;
+    const diceTag = attacker.stats.fireDice ? ` (${attacker.stats.fireDice.n}d${attacker.stats.fireDice.sides})` : "";
+    parts.push(`${fireRolled} Fire${diceTag}`);
   }
 
   if (isCrit) damage *= 2;
   damage = Math.max(1, Math.round(damage));
+
+  // ── Apply target resistances/immunities ──
+  let resistNote = "";
+  const tRes = target.stats.resistances ?? [];
+  const tImm = target.stats.immunities ?? [];
+  if (hasLightning && tImm.includes("lightning")) {
+    damage -= Math.round(lightningRolled * (isCrit ? 2 : 1));
+    resistNote += " (immune lightning)";
+  }
+  if (hasFire && tImm.includes("fire")) {
+    damage -= Math.round(fireRolled * (isCrit ? 2 : 1));
+    resistNote += " (immune fire)";
+  }
+  // Resistance to bludgeoning (physical) halves total physical damage
+  if (tRes.includes("bludgeoning") && !hasLightning && !hasFire) {
+    damage = Math.max(1, Math.floor(damage / 2));
+    resistNote += " (resist bludgeon)";
+  }
+  damage = Math.max(1, damage);
+
+  // ── Retaliation damage (Tempest boon — melee only, roll 2d6) ──
+  let retaliationDmg: number | undefined;
+  let retaliationText: string | undefined;
+  if (distance <= 1 && (target.stats.retaliationDmg ?? 0) > 0) {
+    retaliationDmg = target.stats.retaliationDice
+      ? nd(target.stats.retaliationDice.n, target.stats.retaliationDice.sides)
+      : target.stats.retaliationDmg;
+    if ((attacker.stats.immunities ?? []).includes("lightning")) {
+      retaliationDmg = 0;
+      retaliationText = `${target.name}'s lightning retaliation — ${attacker.name} is immune!`;
+    } else {
+      if ((attacker.stats.resistances ?? []).includes("lightning")) {
+        retaliationDmg = Math.floor(retaliationDmg / 2);
+      }
+      const diceTag = target.stats.retaliationDice ? ` (${target.stats.retaliationDice.n}d${target.stats.retaliationDice.sides})` : "";
+      retaliationText = `${target.name} retaliates with ${retaliationDmg} lightning${diceTag} damage!`;
+    }
+  }
 
   const dmgStr = parts.join(" + ");
   const critStr = isCrit ? " CRITICAL HIT! " : "";
@@ -800,7 +946,9 @@ export function resolveAttack(
   return {
     hit: true,
     damage,
-    breakdown: `d20(${natural}) + ${modStr} = ${modified} vs AC ${acStr}${rangeStr} —${critStr} ${damage} damage (${dmgStr}${isCrit ? " x2" : ""})`,
+    breakdown: `d20(${natural}) + ${modStr} = ${modified} vs AC ${acStr}${rangeStr} —${critStr} ${damage} damage (${dmgStr}${isCrit ? " x2" : ""})${resistNote}`,
+    retaliationDmg: retaliationDmg && retaliationDmg > 0 ? retaliationDmg : undefined,
+    retaliationText,
   };
 }
 
@@ -828,11 +976,11 @@ export function computeEnemyMove(
   const maxSteps = Math.floor(enemy.stats.speed / 5);
   const current = enemy.position;
   const occupied = new Set(
-    allUnits.filter(u => u.id !== enemy.id && u.currentHp > 0).map(u => `${u.position.q},${u.position.r}`)
+    allUnits.filter(u => u.id !== enemy.id && isConscious(u)).map(u => `${u.position.q},${u.position.r}`)
   );
 
   const allyPositions = allUnits
-    .filter(u => u.id !== enemy.id && !u.isPlayer && u.currentHp > 0)
+    .filter(u => u.id !== enemy.id && !u.isPlayer && isConscious(u))
     .map(u => u.position);
 
   // Ranged enemies: stay put if in range, sidestep to spread fire angles
@@ -889,7 +1037,7 @@ export function computeEnemyMove(
 }
 
 /** Simple greedy pathfinding toward destination, stop at minDist */
-function greedyPathTo(
+export function greedyPathTo(
   start: HexCoord,
   dest: HexCoord,
   maxSteps: number,
@@ -930,7 +1078,7 @@ export function getAoOThreats(
 ): BattleUnit[] {
   const threats: BattleUnit[] = [];
   for (const u of allUnits) {
-    if (u.id === mover.id || u.currentHp <= 0 || u.isPlayer === mover.isPlayer) continue;
+    if (u.id === mover.id || !isConscious(u) || u.isPlayer === mover.isPlayer) continue;
     if (u.reactionUsed || u.isRanged) continue;  // ranged weapons can't AoO
     if (hasCondition(u, "stunned") || hasCondition(u, "dazed")) continue;
 

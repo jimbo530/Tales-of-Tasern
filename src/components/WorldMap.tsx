@@ -3,17 +3,19 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import { type CharacterSave, type Coins, type Equipment, travel, HOURS_PER_ACTION, formatCoins, totalCp, canAfford, cpToCoins, coinWeight, exchangeUp, isQuestOnCooldown, isQuestOnDayCooldown, dayCooldownRemaining, xpToNextLevel, getExhaustionPoints, exhaustedStat, lowestExhaustedStat } from "@/lib/saveSystem";
 import type { NftCharacter } from "@/hooks/useNftStats";
-import { getZone, getLevelRange, generateFightEncounter, generateLootDrop, type EncounterData, type LootDrop } from "@/lib/encounters";
+import { getZone, getLevelRange, generateFightEncounter, generateLootDrop, rollGoodEncounter, KARDOV_GOOD_D20, KARDOV_NOTHING, KARDOV_SOCIAL, WIZARD_GIFTS, type EncounterData, type LootDrop } from "@/lib/encounters";
 import { getShopsForLocation, getAvailableItems, type Shop, type ShopItem } from "@/lib/shops";
 import { SKILLS, abilityMod as calcAbilityMod } from "@/lib/skills";
-import { hireFollower, FACTION_TEMPLATES, maxFollowers, type Follower } from "@/lib/party";
+import { hireFollower, FACTION_TEMPLATES, maxFollowers, giveGift, type Follower } from "@/lib/party";
 import { rollFieldTreasure, rollTreasure, d, nd } from "@/lib/treasure";
 import { MONSTERS } from "@/lib/monsters";
 import { createMonsterSpec, type EnemySpec } from "@/lib/hexCombat";
 import { FEATS, getSkillFocusBonus } from "@/lib/feats";
 import { getClassById } from "@/lib/classes";
 import { getCarryThresholds, getEncumbrance } from "@/lib/battleStats";
+import { DEFAULT_BOON_FIELDS } from "@/lib/computeD20Stats";
 import { getItemInfo, getItemWeight } from "@/lib/itemRegistry";
+import { ALL_SHIPS, shipsForSale, getShip, purchaseShip, effectiveShipSpeed, hoursPerWaterHex, repairCostGp, type OwnedShip, type Ship as ShipData } from "@/lib/ships";
 import { rollFarmDrop, rollWildernessFoodDrop, rollHuntedFood, type FoodItem, type FreshFoodItem } from "@/lib/foodItems";
 import type { QuestEncounter } from "@/components/HexBattle";
 
@@ -125,12 +127,14 @@ export type WorldLuckResult = {
   fameChange?: number;          // performer renown gained (Perform skill only)
   factionRepChange?: { factionId: string; amount: number }; // faction rep from performing, crafting, etc.
   enemyCount?: number;        // pre-rolled count for generated encounters (thugs, etc.)
+  thugType?: "mugger" | "killer";  // sub-type for thug_fight (layered city check)
   encounter?: EncounterData;  // populated when outcome is "fight"
   loot?: LootDrop;           // populated on valuable/rare finds
   treasureDesc?: string;     // detailed treasure breakdown text
   foodDrop?: FoodItem[];     // specific food items found (farms, foraging)
   huntedFood?: FreshFoodItem[];  // fresh hunted/foraged food (spoils, terrain-specific)
   newFollower?: Follower;        // recruited follower to add to party
+  rewardItems?: { id: string; name: string; qty: number; itemWeight?: number }[];  // items to add to inventory
 };
 
 const DANGER_DESC: Record<HexType, string[]> = {
@@ -298,9 +302,30 @@ export function rollWorldLuck(
   const dangerCeiling = isTown ? 0 : isFarm ? 2 : isDungeon ? 5 : 3;
   const hazardCeiling = isTown ? 0 : isFarm ? 4 : 6;
 
-  // Town thugs — worldRoll 1-2 in town = mugging attempt
-  // Diplomacy or Intimidate (DC 12) talks them down; otherwise fight
+  // ── Kardov's Gate layered d20 checks ──
+  // 1st roll (worldRoll): 1-2 = bad guys, 3-19 = nothing, 20 = good stuff
+  // 2nd roll (bad):  1 = killers (fight to death), 2-20 = muggers (can talk down)
+  // 2nd roll (good): d20 on KARDOV_GOOD_D20 for what good thing happens
   if (isTown && worldRoll <= 2) {
+    const badSubRoll = 1 + Math.floor(Math.random() * 20);
+    const ps = Math.max(1, partySize ?? 1);
+
+    if (badSubRoll === 1) {
+      // KILLERS — no negotiation, fight to the death
+      const killerCount = ps + 1 + Math.floor(Math.random() * 2);
+      return r({
+        skillDC: 0, outcome: "thug_fight", thugType: "killer",
+        enemyCount: killerCount,
+        description: pick([
+          `Dark figures step from the shadows — ${killerCount} assassins. They're not after your coin. They want you dead.`,
+          `${killerCount} hired killers block the alley, blades drawn. Someone put a price on ${pn}'s head.`,
+          `"Nothing personal," says the lead assassin. ${killerCount} of them, weapons out. This isn't a robbery.`,
+        ]),
+        hpChange: 0, goldChange: 0, foodChange: 0, xpChange: 0,
+      });
+    }
+
+    // MUGGERS — diplomacy/intimidate DC 12 talks them down
     const canTalk = ["diplomacy", "intimidate"].includes(sid);
     const dc = 12;
     if (canTalk && skillRoll >= dc) {
@@ -316,17 +341,79 @@ export function rollWorldLuck(
         hpChange: 0, goldChange: 0, foodChange: 0, xpChange: 10,
       });
     }
-    // Thug fight — enemies generated in useEffect from this outcome
-    const ps = Math.max(1, partySize ?? 1);
     const thugCount = ps + d(6);
     return r({
-      skillDC: dc, outcome: "thug_fight",
+      skillDC: dc, outcome: "thug_fight", thugType: "mugger",
       enemyCount: thugCount,
       description: pick([
         `${thugCount} street thugs step out from a dark alley. "Your money or your life, ${pn}!"`,
         `A gang of ${thugCount} armed ruffians corners ${fn} near the docks. "Empty your pockets."`,
         `${thugCount} thugs with clubs and knives block the street. "Nice gear, ${pn}. Hand it over."`,
       ]),
+      hpChange: 0, goldChange: 0, foodChange: 0, xpChange: 0,
+    });
+  }
+
+  // Town roll 20 — good day! Roll on KARDOV_GOOD_D20 for what happens.
+  // Good sub-roll of 20 triggers a social encounter instead of a static reward.
+  if (isTown && worldRoll === 20) {
+    const goodRoll = 1 + Math.floor(Math.random() * 20); // 1-20
+
+    // ── Social encounter (good sub-roll 20) ──
+    if (goodRoll === 20) {
+      const social = KARDOV_SOCIAL[Math.floor(Math.random() * KARDOV_SOCIAL.length)];
+      const preferred = social.skillOptions.includes(sid);
+      const checkDc = preferred ? social.dc : social.fallbackDc;
+      const success = skillRoll >= checkDc;
+
+      if (success) {
+        const goldChange = social.goldCp ? Math.floor(social.goldCp / 10) : 0;
+        const rewardItems: { id: string; name: string; qty: number; itemWeight?: number }[] = [];
+        let desc = social.description + "\n\n" + social.successDesc;
+
+        if (social.magicItemReward) {
+          const gift = WIZARD_GIFTS[Math.floor(Math.random() * WIZARD_GIFTS.length)];
+          rewardItems.push({ id: gift.id, name: gift.name, qty: 1, itemWeight: gift.weight });
+          desc += ` He hands you a ${gift.name}.`;
+        }
+
+        return r({
+          skillDC: checkDc,
+          outcome: social.foodChange ? "find_food" : social.goldCp ? "find_coins" : "find_valuable",
+          description: desc,
+          hpChange: social.hpChange ?? 0, goldChange,
+          foodChange: social.foodChange ?? 0, xpChange: social.xpChange ?? 0,
+          fameChange: social.fameChange,
+          ...(social.goldCp ? { coinReward: cpToCoins(social.goldCp) } : {}),
+          rewardItems: rewardItems.length > 0 ? rewardItems : undefined,
+        });
+      }
+      // Failed social encounter — consolation XP
+      return r({
+        skillDC: checkDc, outcome: "nothing",
+        description: social.description + "\n\n" + social.failDesc,
+        hpChange: 0, goldChange: 0, foodChange: 0, xpChange: social.failXp ?? 3,
+      });
+    }
+
+    // ── Regular good encounter (sub-roll 1-19) ──
+    const entry = KARDOV_GOOD_D20[goodRoll - 1]; // index 0-18
+    const goldChange = entry.goldCp ? Math.floor(entry.goldCp / 10) : 0;
+    return r({
+      skillDC: 0,
+      outcome: entry.foodChange ? "find_food" : entry.goldCp ? "find_coins" : "nothing",
+      description: entry.description,
+      hpChange: entry.hpChange ?? 0, goldChange, foodChange: entry.foodChange ?? 0,
+      xpChange: entry.xpChange ?? 0, fameChange: entry.fameChange,
+      ...(entry.goldCp ? { coinReward: cpToCoins(entry.goldCp) } : {}),
+    });
+  }
+
+  // Town rolls 3-19 — nothing eventful. The city is busy but safe.
+  if (isTown) {
+    return r({
+      skillDC: 0, outcome: "nothing",
+      description: KARDOV_NOTHING[Math.floor(Math.random() * KARDOV_NOTHING.length)],
       hpChange: 0, goldChange: 0, foodChange: 0, xpChange: 0,
     });
   }
@@ -360,7 +447,8 @@ export function rollWorldLuck(
         difficulty = "hard";
       }
     }
-    const encounter = generateFightEncounter(hex.type, levelRange, difficulty);
+    const zone = getZone(hex.q, hex.r);
+    const encounter = generateFightEncounter(hex.type, levelRange, difficulty, zone?.id);
     return {
       worldRoll, skillRoll, skillDC: dc, interaction, outcome: "fight", difficulty,
       description: encounter.description,
@@ -840,6 +928,23 @@ export function rollWorldLuck(
     return r({ skillDC: 25, outcome: "find_food",
       description: pick(FIND_FOOD_DESC[hex.type] ?? FIND_FOOD_DESC.plains) + " Found: " + drops.map(f => f.name).join(", ") + ".",
       hpChange: 0, goldChange: gold, foodChange: food, xpChange: 2, foodDrop: drops });
+  }
+
+  // ── Good encounter — high world roll (15+) triggers zone-specific lucky finds ──
+  // Town uses its own d20 chart (handled above), so skip this for town hexes.
+  if (worldRoll >= 15 && !isTown) {
+    const zone = getZone(hex.q, hex.r);
+    const good = rollGoodEncounter(zone?.id, hex.type);
+    if (good) {
+      const goldChange = good.goldCp ? Math.floor(good.goldCp / 10) : 0; // cp→sp rough display
+      return r({
+        skillDC: 0, outcome: good.foodChange ? "find_food" : good.goldCp ? "find_coins" : "nothing",
+        description: good.description,
+        hpChange: good.hpChange ?? 0, goldChange, foodChange: good.foodChange ?? 0,
+        xpChange: good.xpChange ?? 0, fameChange: good.fameChange,
+        ...(good.goldCp ? { coinReward: cpToCoins(good.goldCp) } : {}),
+      });
+    }
   }
 
   // ── Below 25: nothing found — skill-flavored failure ──
@@ -2077,8 +2182,15 @@ type Props = {
   onUnequip?: (slot: keyof Equipment) => void;
   onSwitchParty?: (newIndex: number) => void;  // switch active party
   onCreateParty?: (nftAddress: string) => void; // create new party led by this NFT
+  onAddHero?: (nftAddress: string) => void;    // add NFT hero to active party
+  onRemoveHero?: (nftAddress: string) => void; // remove NFT hero from active party
   onExchange?: (parties: Props["save"]["parties"], coins: { gp: number; sp: number; cp: number }, food: number) => void;
   onSetAutoAction?: (partyIndex: number, action: { type: "rest" | "skill"; skill?: string } | null) => void;
+  onCollectMail?: () => void;
+  onGiveGift?: (followerIndex: number, heroIndex: number, itemId: string, result: ReturnType<typeof giveGift>) => void;
+  onBuyShip?: (shipId: string, shipName: string) => void;
+  onBoardShip?: (shipIndex: number) => void;
+  onDisembark?: () => void;
   onBack: () => void;
   onPowerUp?: () => void;
 };
@@ -2117,7 +2229,7 @@ function getEquipSlot(itemId: string, info: { category: string; name: string } |
   return null;
 }
 
-export function WorldMap({ save, character, characters, onTravel, onAction, onBuyItem, onBattle, onQuestBattle, onExhaustionCollapse, onInventory, onEquip, onUnequip, onSwitchParty, onCreateParty, onExchange, onSetAutoAction, onBack, onPowerUp }: Props) {
+export function WorldMap({ save, character, characters, onTravel, onAction, onBuyItem, onBattle, onQuestBattle, onExhaustionCollapse, onInventory, onEquip, onUnequip, onSwitchParty, onCreateParty, onAddHero, onRemoveHero, onExchange, onSetAutoAction, onCollectMail, onGiveGift, onBuyShip, onBoardShip, onDisembark, onBack, onPowerUp }: Props) {
   const [selectedHex, setSelectedHex] = useState<MapHex | null>(null);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -2130,8 +2242,10 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
   const [cityShop, setCityShop] = useState<string | null>(null);         // shop or temple id
   const [leftPanel, setLeftPanel] = useState<"sheet" | "inventory" | "party">("sheet");
   const [selectedFollowerId, setSelectedFollowerId] = useState<string | null>(null);
+  const [giftPickFollowerId, setGiftPickFollowerId] = useState<string | null>(null);
   const [gameLog, setGameLog] = useState<WorldLuckResult[]>([]);
   const [showNewPartyPicker, setShowNewPartyPicker] = useState(false);
+  const [showAddHeroPicker, setShowAddHeroPicker] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Block all actions when a fight is pending — must fight or escape first
@@ -2205,7 +2319,7 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
         let name: string;
         do { name = thugNames[Math.floor(Math.random() * thugNames.length)]; } while (usedN.has(name) && usedN.size < thugNames.length);
         usedN.add(name);
-        return { name, imageEmoji: "\uD83D\uDC4A", stats: { str: 5, dex: 5, con: 5, int: 5, wis: 5, cha: 5, ac: 13, atk: 1, speed: 30, lightningDmg: 0, fireDmg: 0 }, subtypes: [], hpOverride: 8 + Math.floor(Math.random() * 4) + 1 };
+        return { name, imageEmoji: "\uD83D\uDC4A", stats: { str: 5, dex: 5, con: 5, int: 5, wis: 5, cha: 5, ac: 13, naturalArmor: 0, atk: 1, speed: 30, lightningDmg: 0, fireDmg: 0, ...DEFAULT_BOON_FIELDS }, subtypes: [], hpOverride: 8 + Math.floor(Math.random() * 4) + 1 };
       });
       setPendingQuest({ questId: "tavern_thugs", questName: "Street Shakedown", enemies: thugs, difficulty: "medium" });
       return;
@@ -2242,7 +2356,7 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
         let name: string;
         do { name = smugglerNames[Math.floor(Math.random() * smugglerNames.length)]; } while (usedN.has(name) && usedN.size < smugglerNames.length);
         usedN.add(name);
-        return { name, imageEmoji: "\uD83D\uDDE1\uFE0F", stats: { str: 6, dex: 7, con: 5, int: 5, wis: 5, cha: 5, ac: 14, atk: 2, speed: 30, lightningDmg: 0, fireDmg: 0 }, subtypes: [], hpOverride: 10 + Math.floor(Math.random() * 6) + 1 };
+        return { name, imageEmoji: "\uD83D\uDDE1\uFE0F", stats: { str: 6, dex: 7, con: 5, int: 5, wis: 5, cha: 5, ac: 14, naturalArmor: 0, atk: 2, speed: 30, lightningDmg: 0, fireDmg: 0, ...DEFAULT_BOON_FIELDS }, subtypes: [], hpOverride: 10 + Math.floor(Math.random() * 6) + 1 };
       });
       setPendingQuest({ questId: "rumor_smugglers", questName: "Smuggler's Cave", enemies, difficulty: "medium" });
       return;
@@ -2269,8 +2383,8 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
         name: i === 0 ? "Shadow Priest" : `Cultist ${i}`,
         imageEmoji: i === 0 ? "\uD83E\uDDD9" : "\uD83D\uDC64",
         stats: i === 0
-          ? { str: 5, dex: 6, con: 6, int: 8, wis: 8, cha: 7, ac: 16, atk: 3, speed: 30, lightningDmg: 0, fireDmg: 0 }
-          : { str: 5, dex: 5, con: 5, int: 5, wis: 5, cha: 5, ac: 13, atk: 1, speed: 30, lightningDmg: 0, fireDmg: 0 },
+          ? { str: 5, dex: 6, con: 6, int: 8, wis: 8, cha: 7, ac: 16, naturalArmor: 0, atk: 3, speed: 30, lightningDmg: 0, fireDmg: 0, ...DEFAULT_BOON_FIELDS }
+          : { str: 5, dex: 5, con: 5, int: 5, wis: 5, cha: 5, ac: 13, naturalArmor: 0, atk: 1, speed: 30, lightningDmg: 0, fireDmg: 0, ...DEFAULT_BOON_FIELDS },
         subtypes: [] as string[],
         hpOverride: i === 0 ? 20 + save.level * 2 : 8 + Math.floor(Math.random() * 4),
       }));
@@ -2307,30 +2421,39 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
     }
 
     // Thug fight — use the pre-rolled count from calculateWorldLuck
+    // Killers (badSubRoll 1) are deadlier: higher stats, kill motivation, no mercy
+    // Muggers (badSubRoll 2-20) are standard thugs who want your coin
     if (lastAction.outcome === "thug_fight") {
+      const isKiller = lastAction.thugType === "killer";
       const thugCount = lastAction.enemyCount ?? (Math.max(1, save.party.heroes.length) + Math.floor(Math.random() * 6) + 1);
       const combatFeats = FEATS.filter(f => f.category === "combat" && !f.prereqs.feat && !f.prereqs.minBAB && !f.prereqs.classOnly);
-      const thugNames = ["Scarface", "Knuckles", "Ratbone", "Grinner", "Nail", "Crooked Tom", "Shiv", "Guttersnipe",
+      const muggerNames = ["Scarface", "Knuckles", "Ratbone", "Grinner", "Nail", "Crooked Tom", "Shiv", "Guttersnipe",
         "Brick", "Fang", "Weasel", "Scar", "Blackjack", "Dirk", "Mugsy", "Stubs"];
+      const killerNames = ["Shadow", "Viper", "Silencer", "The Pale One", "Nightblade", "Whisper", "Razor",
+        "Hemlock", "The Surgeon", "Garrote", "Asp", "Deadeye", "Stiletto", "Crow", "Wraith", "Ghost"];
+      const namePool = isKiller ? killerNames : muggerNames;
       const usedNames = new Set<string>();
       const thugs: EnemySpec[] = Array.from({ length: thugCount }, () => {
         let name: string;
-        do { name = thugNames[Math.floor(Math.random() * thugNames.length)]; } while (usedNames.has(name) && usedNames.size < thugNames.length);
+        do { name = namePool[Math.floor(Math.random() * namePool.length)]; } while (usedNames.has(name) && usedNames.size < namePool.length);
         usedNames.add(name);
         const feat = combatFeats[Math.floor(Math.random() * combatFeats.length)];
         return {
           name: `${name} (${feat.name})`,
-          imageEmoji: "\uD83D\uDC4A",  // 👊
-          stats: { str: 5, dex: 5, con: 5, int: 5, wis: 5, cha: 5, ac: 13, atk: 1, speed: 30, lightningDmg: 0, fireDmg: 0 },
+          imageEmoji: isKiller ? "\uD83D\uDDE1\uFE0F" : "\uD83D\uDC4A",  // 🗡️ or 👊
+          stats: isKiller
+            ? { str: 7, dex: 8, con: 6, int: 5, wis: 5, cha: 5, ac: 15, naturalArmor: 0, atk: 3, speed: 30, lightningDmg: 0, fireDmg: 0, ...DEFAULT_BOON_FIELDS }
+            : { str: 5, dex: 5, con: 5, int: 5, wis: 5, cha: 5, ac: 13, naturalArmor: 0, atk: 1, speed: 30, lightningDmg: 0, fireDmg: 0, ...DEFAULT_BOON_FIELDS },
           subtypes: [],
-          hpOverride: 8 + Math.floor(Math.random() * 4) + 1,
+          hpOverride: isKiller ? 14 + Math.floor(Math.random() * 6) + 1 : 8 + Math.floor(Math.random() * 4) + 1,
+          ...(isKiller ? { motivation: "kill" as const } : {}),
         };
       });
       setPendingQuest({
-        questId: "thug_ambush",
-        questName: "Street Ambush",
+        questId: isKiller ? "assassin_ambush" : "thug_ambush",
+        questName: isKiller ? "Assassins!" : "Street Ambush",
         enemies: thugs,
-        difficulty: "medium",
+        difficulty: isKiller ? "hard" : "medium",
       });
       return;
     }
@@ -2553,6 +2676,18 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
 
   /** Effective travel hexes with terrain speed factored in (for food/starvation calc) */
   function travelCost(dist: number, hex: MapHex): number {
+    // Ship travel on water — uses ship speed instead of walking
+    const shipIdx = save.active_ship_index ?? null;
+    if (hex.type === "water" && shipIdx != null) {
+      const ownedShip = (save.ships ?? [])[shipIdx];
+      const tmpl = ownedShip ? getShip(ownedShip.shipId) : null;
+      if (tmpl) {
+        const shipSpd = effectiveShipSpeed(tmpl, "moderate", tmpl.oarSpeed > 0);
+        const hrsPerHex = hoursPerWaterHex(shipSpd);
+        // Convert to food cost: 1 food per 8 hours of travel
+        return Math.max(1, Math.round((dist * hrsPerHex) / 8));
+      }
+    }
     let speed = TERRAIN_SPEED[hex.type] ?? 1;
     if (hex.tags?.includes("road")) speed *= 0.5;
     else if (hex.tags?.includes("dirt_road")) speed *= 0.7;
@@ -2573,7 +2708,17 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
     const effectiveHexes = travelCost(dist, selectedHex);
     const result = travel(effectiveHexes, save, con);
     const destDist = hexDistance(selectedHex, CITY_CENTER);
+    // Check for active territorial threat on destination hex
+    const threatKey = `${selectedHex.q},${selectedHex.r}`;
+    const currentDay = Math.floor((save.hour ?? 0) / 24) + 1;
+    const activeThreat = (save.hex_threats ?? {})[threatKey];
+    const hasThreat = activeThreat && activeThreat.expires_day > currentDay;
     const encounter = rollWorldLuck(selectedHex, "travel", charStats, skillRanks, destDist, undefined, heroCount, save.fame ?? 0, exhPts, save.feats, character?.name, save.faction_name);
+    // If hex has a territorial threat, override encounter to force the fight
+    if (hasThreat && encounter.outcome !== "fight" && encounter.outcome !== "thug_fight") {
+      encounter.outcome = "fight";
+      encounter.description = "The territorial creatures are still here — they attack on sight!";
+    }
     onTravel({ q: selectedHex.q, r: selectedHex.r }, result, selectedHex, encounter);
     // If travel encounter is a fight, set lastAction so fightBlocking activates and fight UI shows
     if (encounter.outcome === "fight" || encounter.outcome === "thug_fight") {
@@ -2638,6 +2783,10 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
           <span>{"\u{1F356}"}{save.food}</span>
           <span>{"\u2764\uFE0F"}{save.current_hp}/{save.max_hp}</span>
           <span>{"\u{1FA99}"}{formatCoins(save.coins)}</span>
+          {(save.active_ship_index ?? null) != null && (() => {
+            const os = (save.ships ?? [])[(save.active_ship_index!)];
+            return os ? <span style={{ color: "rgba(96,165,250,0.9)" }}>{"\u{26F5}"}{os.name}</span> : null;
+          })()}
         </div>
         <button onClick={onInventory} className="px-3 py-1 rounded text-xs font-bold uppercase tracking-widest"
           style={{ background: "rgba(251,191,36,0.1)", color: "rgba(251,191,36,0.7)", border: "1px solid rgba(251,191,36,0.25)" }}>
@@ -2654,7 +2803,7 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
           </span>
           {save.parties.map((p, i) => {
             const isActive = i === (save.active_party_index ?? 0);
-            const partyNft = characters?.find(c => c.contractAddress.toLowerCase() === p.heroes[0]?.nft_address);
+            const heroNfts = p.heroes.map(h => characters?.find(c => c.contractAddress.toLowerCase() === h.nft_address)).filter(Boolean);
             return (
               <button key={p.id} onClick={() => onSwitchParty?.(i)}
                 className="flex items-center gap-1.5 px-2 py-1 rounded shrink-0"
@@ -2663,12 +2812,18 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
                   border: `1px solid ${isActive ? "rgba(96,165,250,0.5)" : "rgba(201,168,76,0.1)"}`,
                   opacity: p.has_acted && !isActive ? 0.4 : 1,
                 }}>
-                {partyNft?.imageUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={partyNft.imageUrl} alt="" className="rounded-full" style={{ width: 18, height: 18, objectFit: "cover" }} />
-                ) : (
-                  <span style={{ fontSize: "0.7rem" }}>{"\u{1F6E1}\uFE0F"}</span>
-                )}
+                <div className="flex" style={{ marginRight: heroNfts.length > 1 ? (heroNfts.length - 1) * -6 : 0 }}>
+                  {heroNfts.length > 0 ? heroNfts.map((nft, j) => (
+                    nft?.imageUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img key={j} src={nft.imageUrl} alt="" className="rounded-full" style={{ width: 18, height: 18, objectFit: "cover", marginLeft: j > 0 ? -6 : 0, border: "1px solid rgba(0,0,0,0.5)", position: "relative", zIndex: heroNfts.length - j }} />
+                    ) : (
+                      <span key={j} style={{ fontSize: "0.7rem" }}>{"\u{1F6E1}\uFE0F"}</span>
+                    )
+                  )) : (
+                    <span style={{ fontSize: "0.7rem" }}>{"\u{1F6E1}\uFE0F"}</span>
+                  )}
+                </div>
                 <span className="text-xs" style={{ color: isActive ? "rgba(96,165,250,0.9)" : "rgba(232,213,176,0.6)", fontSize: "0.55rem" }}>
                   {p.name}
                 </span>
@@ -2687,7 +2842,7 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
       )}
       {/* NFT picker — inline below party bar so it isn't clipped by overflow:hidden */}
       {showNewPartyPicker && (() => {
-        const usedAddresses = new Set(save.parties?.map(p => p.heroes[0]?.nft_address) ?? []);
+        const usedAddresses = new Set(save.parties?.flatMap(p => p.heroes.map(h => h.nft_address)) ?? []);
         const available = characters?.filter(c => c.owned && !usedAddresses.has(c.contractAddress.toLowerCase())) ?? [];
         return (
           <div className="rounded-lg p-2 flex flex-wrap gap-1 items-center"
@@ -2860,7 +3015,7 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
                       <div className="flex flex-col gap-0.5">
                         {rankedSkills.map(s => {
                           const ranks = save.skill_ranks[s.id] ?? 0;
-                          const abilScore = stats[s.ability as keyof typeof stats] ?? 10;
+                          const abilScore = (stats as unknown as Record<string, number>)[s.ability] ?? 10;
                           const total = ranks + calcAbilityMod(abilScore);
                           return (
                             <div key={s.id} className="flex justify-between">
@@ -3021,9 +3176,21 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
                       <div key={hero.nft_address}>
                         {/* Hero header */}
                         <div className="flex items-center gap-2 px-2 py-1.5 rounded-t" style={{ background: hero.isLeader ? "rgba(251,191,36,0.08)" : "rgba(255,255,255,0.03)", border: `1px solid ${hero.isLeader ? "rgba(251,191,36,0.2)" : "rgba(201,168,76,0.1)"}` }}>
+                          {charForHero?.imageUrl && (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={charForHero.imageUrl} alt="" className="rounded-full" style={{ width: 24, height: 24, objectFit: "cover", flexShrink: 0 }} />
+                          )}
                           <div className="flex-1">
-                            <div className="font-bold" style={{ color: hero.isLeader ? "rgba(251,191,36,0.9)" : "rgba(232,213,176,0.9)", fontSize: "0.65rem" }}>
-                              {hero.isLeader ? "\u{1F451} " : ""}{charForHero?.name ?? hero.nft_address.slice(0, 8)}
+                            <div className="flex items-center gap-1">
+                              <span className="font-bold" style={{ color: hero.isLeader ? "rgba(251,191,36,0.9)" : "rgba(232,213,176,0.9)", fontSize: "0.65rem" }}>
+                                {hero.isLeader ? "\u{1F451} " : ""}{charForHero?.name ?? hero.nft_address.slice(0, 8)}
+                              </span>
+                              {!hero.isLeader && onRemoveHero && (
+                                <button onClick={() => onRemoveHero(hero.nft_address)}
+                                  className="px-1 rounded" style={{ fontSize: "0.4rem", color: "rgba(220,38,38,0.6)", background: "rgba(220,38,38,0.08)", border: "1px solid rgba(220,38,38,0.15)", marginLeft: "auto" }}>
+                                  Remove
+                                </button>
+                              )}
                             </div>
                             <div style={{ color: "rgba(201,168,76,0.6)" }}>Lv{hLevel} {hClassLabel}</div>
                             <div className="flex items-center gap-2 mt-0.5">
@@ -3073,9 +3240,9 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
                                         <div className="font-bold uppercase tracking-widest mb-0.5" style={{ fontSize: "0.4rem", color: "rgba(201,168,76,0.4)" }}>Equipment</div>
                                         <div className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5">
                                           <span style={{ color: "rgba(201,168,76,0.5)" }}>Weapon</span>
-                                          <span style={{ color: "rgba(232,213,176,0.8)" }}>{f.weapon ?? "Unarmed"}</span>
+                                          <span style={{ color: "rgba(232,213,176,0.8)" }}>{f.weapon ? (getItemInfo(f.weapon)?.name ?? f.weapon) : "Unarmed"}</span>
                                           <span style={{ color: "rgba(201,168,76,0.5)" }}>Armor</span>
-                                          <span style={{ color: "rgba(232,213,176,0.8)" }}>{f.armor && f.armor !== "None" ? f.armor : "Unarmored"}</span>
+                                          <span style={{ color: "rgba(232,213,176,0.8)" }}>{f.armor ? (getItemInfo(f.armor)?.name ?? f.armor) : "Unarmored"}</span>
                                         </div>
                                       </div>
                                       {/* Combat Stats */}
@@ -3083,7 +3250,7 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
                                         <div className="font-bold uppercase tracking-widest mb-0.5" style={{ fontSize: "0.4rem", color: "rgba(201,168,76,0.4)" }}>Combat</div>
                                         <div className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5">
                                           <span style={{ color: "rgba(201,168,76,0.5)" }}>AC</span>
-                                          <span style={{ color: "rgba(232,213,176,0.8)" }}>{f.progression?.equipment ? "from gear" : f.ac}</span>
+                                          <span style={{ color: "rgba(232,213,176,0.8)" }}>{f.ac}{f.armor ? ` (${getItemInfo(f.armor)?.name ?? "gear"})` : ""}</span>
                                           <span style={{ color: "rgba(201,168,76,0.5)" }}>Attack</span>
                                           <span style={{ color: "rgba(232,213,176,0.8)" }}>+{f.progression ? (() => { let bab = 0; for (const cl of f.progression!.class_levels) { const cd = getClassById(cl.class_id); if (cd) { const rate = cd.bab === "good" ? 1 : cd.bab === "average" ? 0.75 : 0.5; bab += Math.floor(cl.levels * rate); } } return bab; })() : f.attack}</span>
                                           <span style={{ color: "rgba(201,168,76,0.5)" }}>HP</span>
@@ -3132,6 +3299,54 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
                                           </div>
                                         </div>
                                       )}
+                                      {/* Gift System */}
+                                      {onGiveGift && (
+                                        <div>
+                                          {giftPickFollowerId === f.id ? (
+                                            <div>
+                                              <div className="font-bold uppercase tracking-widest mb-0.5 flex items-center justify-between" style={{ fontSize: "0.4rem", color: "rgba(201,168,76,0.4)" }}>
+                                                <span>Give Gift</span>
+                                                <button onClick={(e) => { e.stopPropagation(); setGiftPickFollowerId(null); }} style={{ color: "rgba(220,38,38,0.6)", fontSize: "0.4rem" }}>Cancel</button>
+                                              </div>
+                                              <div className="flex flex-col gap-0.5" style={{ maxHeight: 120, overflowY: "auto" }}>
+                                                {save.inventory.filter(it => it.qty > 0).map(item => {
+                                                  const info = getItemInfo(item.id);
+                                                  if (!info || info.valueCp <= 0) return null;
+                                                  return (
+                                                    <button
+                                                      key={item.id}
+                                                      className="flex items-center justify-between px-1.5 py-0.5 rounded text-left"
+                                                      style={{ background: "rgba(201,168,76,0.06)", border: "1px solid rgba(201,168,76,0.12)", fontSize: "0.45rem" }}
+                                                      onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        const fIdx = hero.followers.indexOf(f);
+                                                        if (fIdx < 0) return;
+                                                        const result = giveGift(f, info.valueCp);
+                                                        onGiveGift(fIdx, hIdx, item.id, result);
+                                                        setGiftPickFollowerId(null);
+                                                      }}
+                                                    >
+                                                      <span style={{ color: "rgba(232,213,176,0.8)" }}>{info.name} <span style={{ color: "rgba(201,168,76,0.4)" }}>x{item.qty}</span></span>
+                                                      <span style={{ color: "rgba(251,191,36,0.6)" }}>{formatCoins(cpToCoins(info.valueCp))}</span>
+                                                    </button>
+                                                  );
+                                                })}
+                                                {save.inventory.filter(it => it.qty > 0 && getItemInfo(it.id)?.valueCp).length === 0 && (
+                                                  <span style={{ color: "rgba(232,213,176,0.3)", fontSize: "0.4rem" }}>No items to give</span>
+                                                )}
+                                              </div>
+                                            </div>
+                                          ) : (
+                                            <button
+                                              className="w-full px-2 py-1 rounded text-xs font-bold uppercase tracking-widest"
+                                              style={{ background: "rgba(251,191,36,0.08)", color: "rgba(251,191,36,0.7)", border: "1px solid rgba(251,191,36,0.2)", fontSize: "0.4rem" }}
+                                              onClick={(e) => { e.stopPropagation(); setGiftPickFollowerId(f.id); }}
+                                            >
+                                              Give Gift
+                                            </button>
+                                          )}
+                                        </div>
+                                      )}
                                     </div>
                                   )}
                                 </div>
@@ -3144,16 +3359,80 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
                       </div>
                     );
                   })}
+                  {/* Add / Remove Hero */}
+                  {save.party.heroes.length < 4 && onAddHero && (
+                    <button
+                      onClick={() => setShowAddHeroPicker(v => !v)}
+                      className="w-full px-2 py-1.5 rounded text-xs font-bold uppercase tracking-widest"
+                      style={{ background: "rgba(74,222,128,0.08)", color: "rgba(74,222,128,0.7)", border: "1px solid rgba(74,222,128,0.2)", fontSize: "0.5rem" }}>
+                      + Add Hero to Party
+                    </button>
+                  )}
+                  {showAddHeroPicker && (() => {
+                    const usedInAll = new Set(save.parties?.flatMap(p => p.heroes.map(h => h.nft_address)) ?? save.party.heroes.map(h => h.nft_address));
+                    const avail = characters?.filter(c => c.owned && !usedInAll.has(c.contractAddress.toLowerCase())) ?? [];
+                    return (
+                      <div className="rounded-lg p-2 flex flex-wrap gap-1 items-center"
+                        style={{ background: "rgba(15,10,5,0.95)", border: "1px solid rgba(74,222,128,0.3)" }}>
+                        <span className="text-xs font-bold uppercase tracking-widest px-1 shrink-0" style={{ color: "rgba(74,222,128,0.5)", fontSize: "0.45rem" }}>
+                          Add Hero
+                        </span>
+                        {avail.length === 0 && (
+                          <span className="text-xs px-1" style={{ color: "rgba(232,213,176,0.4)", fontSize: "0.45rem" }}>No available NFTs</span>
+                        )}
+                        {avail.map(nft => (
+                          <button key={nft.contractAddress} className="flex items-center gap-1.5 px-2 py-1 rounded shrink-0"
+                            style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(74,222,128,0.15)" }}
+                            onClick={() => { onAddHero?.(nft.contractAddress.toLowerCase()); setShowAddHeroPicker(false); }}>
+                            {nft.imageUrl ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={nft.imageUrl} alt="" className="rounded-full" style={{ width: 18, height: 18, objectFit: "cover" }} />
+                            ) : (
+                              <span style={{ fontSize: "0.6rem" }}>{"\u{1F6E1}\uFE0F"}</span>
+                            )}
+                            <span style={{ color: "rgba(232,213,176,0.8)", fontSize: "0.5rem" }}>{nft.name || "Hero"}</span>
+                          </button>
+                        ))}
+                        <button onClick={() => setShowAddHeroPicker(false)}
+                          className="text-xs px-2 py-1 rounded shrink-0"
+                          style={{ background: "rgba(255,255,255,0.03)", color: "rgba(232,213,176,0.4)", fontSize: "0.45rem" }}>
+                          Cancel
+                        </button>
+                      </div>
+                    );
+                  })()}
                   {/* Party summary */}
                   <div className="px-2 py-1.5 rounded" style={{ background: "rgba(0,0,0,0.15)", border: "1px solid rgba(201,168,76,0.08)" }}>
                     <div className="font-bold uppercase tracking-widest mb-1" style={{ fontSize: "0.4rem", color: "rgba(201,168,76,0.4)" }}>Party Summary</div>
                     <div className="grid grid-cols-2 gap-x-2 gap-y-0.5">
-                      <span>Heroes</span><span className="font-bold">{save.party.heroes.length}</span>
+                      <span>Heroes</span><span className="font-bold">{save.party.heroes.length} / 4</span>
                       <span>Followers</span><span className="font-bold">{save.party.heroes.reduce((s, h) => s + h.followers.filter(f => f.alive).length, 0)}</span>
                       <span>Daily Cost</span><span className="font-bold">{formatCoins(cpToCoins(save.party.heroes.reduce((s, h) => s + h.followers.filter(f => f.alive).reduce((a, f) => a + f.dailyCost, 0), 0)))}</span>
                       <span>Daily Food</span><span className="font-bold">{1 + save.party.heroes.reduce((s, h) => s + h.followers.filter(f => f.alive).reduce((a, f) => a + f.foodCost, 0), 0)}/day</span>
                     </div>
                   </div>
+                  {/* Fleet overview */}
+                  {(save.ships ?? []).length > 0 && (
+                    <div className="px-2 py-1.5 rounded" style={{ background: "rgba(0,0,0,0.15)", border: "1px solid rgba(96,165,250,0.08)" }}>
+                      <div className="font-bold uppercase tracking-widest mb-1" style={{ fontSize: "0.4rem", color: "rgba(96,165,250,0.4)" }}>{"\u{26F5}"} Fleet ({(save.ships ?? []).length} ship{(save.ships ?? []).length !== 1 ? "s" : ""})</div>
+                      {(save.ships ?? []).map((os, si) => {
+                        const tmpl = getShip(os.shipId);
+                        if (!tmpl) return null;
+                        const isActive = (save.active_ship_index ?? null) === si;
+                        const hpPct = os.maxHp > 0 ? Math.round((os.currentHp / os.maxHp) * 100) : 100;
+                        return (
+                          <div key={si} className="flex items-center gap-2 py-0.5" style={{ borderBottom: "1px solid rgba(96,165,250,0.05)" }}>
+                            <span style={{ fontSize: "0.45rem", color: isActive ? "rgba(96,165,250,0.9)" : "rgba(232,213,176,0.7)" }}>
+                              {isActive ? "\u{26F5}" : "\u2693"} {os.name}
+                            </span>
+                            <span style={{ fontSize: "0.35rem", color: "rgba(201,168,76,0.4)" }}>{tmpl.name}</span>
+                            <span style={{ fontSize: "0.35rem", color: hpPct > 50 ? "rgba(74,222,128,0.6)" : "rgba(220,38,38,0.6)" }}>{hpPct}%</span>
+                            <span style={{ fontSize: "0.35rem", color: "rgba(201,168,76,0.3)" }}>{isActive ? "Aboard" : os.dockedAt ? "Docked" : "At sea"}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               );
             })()}
@@ -3362,6 +3641,7 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
                 { id: "temple", name: "Temple District", emoji: "\u26EA", desc: "Places of worship and power" },
                 { id: "high", name: "High District", emoji: "\u{1F451}", desc: "Luxury services" },
                 { id: "low", name: "Low District", emoji: "\u{1F3DA}\uFE0F", desc: "Common folk, cheap rest" },
+                ...(isKardov ? [{ id: "harbor", name: "Harbor District", emoji: "\u2693", desc: "Shipwrights, docks, and the sea" }] : []),
               ];
 
               const temples = [
@@ -3379,8 +3659,32 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
 
               // ── No district selected: show district buttons ──
               if (!cityDistrict) {
+                const mail = isKardov ? save.gate_mail : null;
+                const hasMail = mail && (totalCp(mail.coins) > 0 || mail.messages.length > 0);
                 return (
                   <div className="mt-2 flex flex-col gap-1">
+                    {/* ── Gate Mail notification ── */}
+                    {isKardov && hasMail && (
+                      <button onClick={() => onCollectMail?.()}
+                        className="flex items-center gap-2 px-3 py-2 rounded-lg transition-all hover:scale-[1.02]"
+                        style={{
+                          background: "rgba(251,191,36,0.12)",
+                          border: "1px solid rgba(251,191,36,0.4)",
+                          animation: "pulse 2s ease-in-out infinite",
+                        }}>
+                        <span style={{ fontSize: "0.9rem" }}>{"📬"}</span>
+                        <div className="flex flex-col items-start">
+                          <span className="font-bold uppercase tracking-wider" style={{ fontSize: "0.45rem", color: "rgba(251,191,36,0.9)" }}>
+                            Mail Waiting at the Gate — {mail.messages.length} message{mail.messages.length !== 1 ? "s" : ""}
+                          </span>
+                          {totalCp(mail.coins) > 0 && (
+                            <span style={{ fontSize: "0.4rem", color: "rgba(232,213,176,0.6)" }}>
+                              Coin deliveries: {formatCoins(mail.coins)}
+                            </span>
+                          )}
+                        </div>
+                      </button>
+                    )}
                     <div style={{ fontSize: "0.45rem", color: "rgba(74,222,128,0.5)", letterSpacing: "0.1em" }} className="font-bold uppercase">
                       City Districts
                     </div>
@@ -4153,6 +4457,129 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
                 );
               }
 
+              // ── Harbor District (shipwright, docks, owned ships) ──
+              if (cityDistrict === "harbor") {
+                const portShips = shipsForSale("large"); // Kardov's Gate = major port
+                const ownedShips = (save.ships ?? []).filter(s => s.dockedAt?.q === save.map_hex.q && s.dockedAt?.r === save.map_hex.r);
+                const activeShipIdx = save.active_ship_index ?? null;
+                return (
+                  <div className="mt-2 flex flex-col gap-1">
+                    <button onClick={() => setCityDistrict(null)} className="self-start px-2 py-0.5 rounded text-xs"
+                      style={{ color: "rgba(201,168,76,0.5)", border: "1px solid rgba(201,168,76,0.1)", fontSize: "0.4rem" }}>
+                      ← Back to Districts
+                    </button>
+                    <div style={{ fontSize: "0.45rem", color: "rgba(201,168,76,0.5)", letterSpacing: "0.1em" }} className="font-bold uppercase">
+                      {"\u2693"} Harbor District
+                    </div>
+
+                    {/* Owned ships docked here */}
+                    {ownedShips.length > 0 && (
+                      <div>
+                        <div className="font-bold uppercase tracking-widest mb-0.5" style={{ fontSize: "0.4rem", color: "rgba(96,165,250,0.5)" }}>Your Ships (Docked)</div>
+                        {ownedShips.map((os, oi) => {
+                          const tmpl = getShip(os.shipId);
+                          if (!tmpl) return null;
+                          const globalIdx = (save.ships ?? []).indexOf(os);
+                          const isBoarded = activeShipIdx === globalIdx;
+                          const hpPct = os.maxHp > 0 ? Math.round((os.currentHp / os.maxHp) * 100) : 100;
+                          const repCost = repairCostGp(tmpl, os);
+                          return (
+                            <div key={oi} className="px-2 py-1.5 rounded mb-1" style={{ background: isBoarded ? "rgba(96,165,250,0.12)" : "rgba(201,168,76,0.06)", border: `1px solid ${isBoarded ? "rgba(96,165,250,0.3)" : "rgba(201,168,76,0.15)"}` }}>
+                              <div className="flex items-center justify-between">
+                                <span className="font-bold" style={{ fontSize: "0.5rem", color: "rgba(232,213,176,0.9)" }}>{os.name}</span>
+                                <span style={{ fontSize: "0.4rem", color: "rgba(201,168,76,0.4)" }}>{tmpl.name}</span>
+                              </div>
+                              <div className="flex flex-wrap gap-x-2 gap-y-0" style={{ fontSize: "0.4rem", color: "rgba(232,213,176,0.5)" }}>
+                                <span>Hull <span style={{ color: hpPct > 50 ? "rgba(74,222,128,0.8)" : hpPct > 25 ? "rgba(251,191,36,0.8)" : "rgba(220,38,38,0.8)" }}>{os.currentHp}/{os.maxHp}</span></span>
+                                {tmpl.riggingHp > 0 && <span>Rigging {os.riggingHp}/{os.maxRiggingHp}</span>}
+                                <span>Crew {os.crewAssigned.length}/{tmpl.crew}</span>
+                                <span>Cargo {tmpl.cargoTons}t</span>
+                              </div>
+                              <div className="flex gap-1 mt-1">
+                                {!isBoarded && onBoardShip && (
+                                  <button onClick={() => onBoardShip(globalIdx)}
+                                    className="px-2 py-0.5 rounded font-bold uppercase tracking-widest"
+                                    style={{ fontSize: "0.35rem", background: "rgba(96,165,250,0.15)", color: "rgba(96,165,250,0.9)", border: "1px solid rgba(96,165,250,0.3)" }}>
+                                    Board
+                                  </button>
+                                )}
+                                {isBoarded && onDisembark && (
+                                  <button onClick={() => onDisembark()}
+                                    className="px-2 py-0.5 rounded font-bold uppercase tracking-widest"
+                                    style={{ fontSize: "0.35rem", background: "rgba(251,191,36,0.15)", color: "rgba(251,191,36,0.9)", border: "1px solid rgba(251,191,36,0.3)" }}>
+                                    Disembark
+                                  </button>
+                                )}
+                                {repCost > 0 && (
+                                  <span style={{ fontSize: "0.35rem", color: "rgba(220,38,38,0.6)" }}>Repair: {formatCoins(cpToCoins(repCost * 100))}</span>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* Shipwright — buy ships */}
+                    <div>
+                      <div className="font-bold uppercase tracking-widest mb-0.5" style={{ fontSize: "0.4rem", color: "rgba(74,222,128,0.5)" }}>Shipwright — Vessels for Sale</div>
+                      <div className="flex flex-col gap-1" style={{ maxHeight: 300, overflowY: "auto" }}>
+                        {portShips.map(s => {
+                          const costCp = s.costGp * 100;
+                          const canBuy = totalCp(save.coins) >= costCp;
+                          const speedDesc = s.windSpeed > 0 && s.oarSpeed > 0
+                            ? `Wind ${s.windSpeed}ft / Oar ${s.oarSpeed}ft`
+                            : s.windSpeed > 0 ? `Wind ${s.windSpeed}ft` : `Oar ${s.oarSpeed}ft`;
+                          return (
+                            <div key={s.id} className="px-2 py-1.5 rounded" style={{ background: "rgba(201,168,76,0.04)", border: "1px solid rgba(201,168,76,0.1)" }}>
+                              <div className="flex items-center justify-between">
+                                <span className="font-bold" style={{ fontSize: "0.5rem", color: "rgba(232,213,176,0.9)" }}>{s.name}</span>
+                                <span className="font-bold" style={{ fontSize: "0.45rem", color: canBuy ? "rgba(251,191,36,0.9)" : "rgba(220,38,38,0.6)" }}>{formatCoins(cpToCoins(costCp))}</span>
+                              </div>
+                              <div style={{ fontSize: "0.35rem", color: "rgba(232,213,176,0.4)", marginBottom: 2 }}>{s.description}</div>
+                              <div className="grid grid-cols-2 gap-x-3 gap-y-0" style={{ fontSize: "0.38rem", color: "rgba(232,213,176,0.5)" }}>
+                                <span>Size: {s.size}</span>
+                                <span>Speed: {speedDesc}</span>
+                                <span>Crew: {s.crew}{s.rowers > 0 ? ` (${s.rowers} rowers)` : ""}</span>
+                                <span>Passengers: {s.maxPassengers}</span>
+                                <span>Cargo: {s.cargoTons > 0 ? `${s.cargoTons} tons` : `${s.cargoLbs} lbs`}</span>
+                                <span>Hull: {s.sectionHp}hp/section ({s.totalSections} sections)</span>
+                                <span>Hardness: {s.hardness}</span>
+                                <span>Ram: {s.ramDamage}</span>
+                                {s.weaponMounts.length > 0 && (
+                                  <span className="col-span-2">Weapons: {s.weaponMounts.map(w => `${w.count}x ${w.type.replace(/_/g, " ")}`).join(", ")}</span>
+                                )}
+                                {s.special.length > 0 && (
+                                  <span className="col-span-2">Special: {s.special.join(", ")}</span>
+                                )}
+                              </div>
+                              {onBuyShip && (
+                                <button
+                                  disabled={!canBuy}
+                                  onClick={() => {
+                                    const shipName = prompt(`Name your ${s.name}:`) || s.name;
+                                    onBuyShip(s.id, shipName);
+                                  }}
+                                  className="mt-1 w-full px-2 py-1 rounded font-bold uppercase tracking-widest"
+                                  style={{
+                                    fontSize: "0.4rem",
+                                    background: canBuy ? "rgba(74,222,128,0.12)" : "rgba(201,168,76,0.04)",
+                                    color: canBuy ? "rgba(74,222,128,0.9)" : "rgba(201,168,76,0.3)",
+                                    border: `1px solid ${canBuy ? "rgba(74,222,128,0.3)" : "rgba(201,168,76,0.1)"}`,
+                                    cursor: canBuy ? "pointer" : "not-allowed",
+                                  }}>
+                                  {canBuy ? "Purchase" : "Cannot Afford"}
+                                </button>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+
               return null;
             })()}
             {currentHex && currentHex.type !== "town" && (
@@ -4225,9 +4652,9 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
                       setLastAction(result);
                       onAction(result);
                     }}
-                    disabled={(currentHex.type === "water" || (save.food === 0 && save.current_hp >= save.max_hp))}
+                    disabled={((currentHex.type === "water" && (save.active_ship_index ?? null) == null) || (save.food === 0 && save.current_hp >= save.max_hp))}
                     className="px-2 py-1.5 rounded text-xs font-bold uppercase tracking-widest"
-                    style={{ background: "rgba(96,165,250,0.15)", color: "rgba(96,165,250,0.9)", border: "1px solid rgba(96,165,250,0.3)", opacity: currentHex.type === "water" || (save.food === 0 && save.current_hp >= save.max_hp) ? 0.4 : 1 }}>
+                    style={{ background: "rgba(96,165,250,0.15)", color: "rgba(96,165,250,0.9)", border: "1px solid rgba(96,165,250,0.3)", opacity: (currentHex.type === "water" && (save.active_ship_index ?? null) == null) || (save.food === 0 && save.current_hp >= save.max_hp) ? 0.4 : 1 }}>
                     Rest (8h)
                   </button>
                   {save.parties && save.parties.length >= 1 && (() => {
@@ -4244,9 +4671,14 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
                     );
                   })()}
                 </div>}
-                {currentHex.type === "water" && (
+                {currentHex.type === "water" && (save.active_ship_index ?? null) == null && (
                   <div style={{ fontSize: "0.45rem", color: "rgba(220,38,38,0.6)" }}>
-                    Can&apos;t rest on water without a boat
+                    Can&apos;t rest on water without a ship
+                  </div>
+                )}
+                {currentHex.type === "water" && (save.active_ship_index ?? null) != null && (
+                  <div style={{ fontSize: "0.45rem", color: "rgba(96,165,250,0.6)" }}>
+                    {"\u{26F5}"} Aboard ship — rest belowdecks
                   </div>
                 )}
                 {/* Location-specific dungeon quests */}
@@ -4536,7 +4968,9 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
                 const hours = travelHours(dist, selectedHex);
                 const preview = travel(hexCost, save, con);
                 const hasRoad = selectedHex.tags?.includes("road") || selectedHex.tags?.includes("dirt_road");
-                const speedLabel = hasRoad ? "road" : (TERRAIN_SPEED[selectedHex.type] ?? 1) < 1 ? "fast" : (TERRAIN_SPEED[selectedHex.type] ?? 1) === 1 ? "normal" : "slow";
+                const isOnShip = (save.active_ship_index ?? null) != null;
+                const isWaterDest = selectedHex.type === "water";
+                const speedLabel = isWaterDest && isOnShip ? "sailing" : hasRoad ? "road" : (TERRAIN_SPEED[selectedHex.type] ?? 1) < 1 ? "fast" : (TERRAIN_SPEED[selectedHex.type] ?? 1) === 1 ? "normal" : "slow";
                 const timeStr = hours >= 24 ? `${Math.floor(hours / 24)}d ${hours % 24}h` : `${hours}h`;
                 return (
                   <div className="mt-2 flex flex-col gap-1">
@@ -4550,17 +4984,28 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
                         Overloaded! Drop items or give to followers before traveling.
                       </div>
                     )}
-                    {dist <= MAX_TRAVEL && playerEncumbrance !== "over" && (
-                      <button onClick={handleTravel}
-                        className="mt-1 w-full px-3 py-1.5 rounded text-xs font-bold uppercase tracking-widest"
-                        style={{
-                          background: preview.starving ? "rgba(220,38,38,0.15)" : "rgba(74,222,128,0.15)",
-                          color: preview.starving ? "rgba(220,38,38,0.9)" : "rgba(74,222,128,0.9)",
-                          border: `1px solid ${preview.starving ? "rgba(220,38,38,0.4)" : "rgba(74,222,128,0.4)"}`,
-                        }}>
-                        {"\u{1F6B6}"} Travel ({timeStr})
-                      </button>
-                    )}
+                    {dist <= MAX_TRAVEL && playerEncumbrance !== "over" && (() => {
+                      const tKey = `${selectedHex.q},${selectedHex.r}`;
+                      const cDay = Math.floor((save.hour ?? 0) / 24) + 1;
+                      const threat = (save.hex_threats ?? {})[tKey];
+                      const isThreatened = threat && threat.expires_day > cDay;
+                      return (<>
+                        {isThreatened && (
+                          <div className="mt-1 text-center px-2 py-1 rounded" style={{ fontSize: "0.45rem", color: "rgba(220,38,38,0.9)", background: "rgba(220,38,38,0.08)", border: "1px solid rgba(220,38,38,0.2)" }}>
+                            Territorial creatures still claim this hex ({threat.expires_day - cDay}d remaining)
+                          </div>
+                        )}
+                        <button onClick={handleTravel}
+                          className="mt-1 w-full px-3 py-1.5 rounded text-xs font-bold uppercase tracking-widest"
+                          style={{
+                            background: isThreatened ? "rgba(220,38,38,0.15)" : preview.starving ? "rgba(220,38,38,0.15)" : "rgba(74,222,128,0.15)",
+                            color: isThreatened ? "rgba(220,38,38,0.9)" : preview.starving ? "rgba(220,38,38,0.9)" : "rgba(74,222,128,0.9)",
+                            border: `1px solid ${isThreatened ? "rgba(220,38,38,0.4)" : preview.starving ? "rgba(220,38,38,0.4)" : "rgba(74,222,128,0.4)"}`,
+                          }}>
+                          {isThreatened ? "\u26A0\uFE0F" : isWaterDest && isOnShip ? "\u{26F5}" : "\u{1F6B6}"} {isWaterDest && isOnShip ? "Sail" : "Travel"} ({timeStr})
+                        </button>
+                      </>);
+                    })()}
                     {dist > MAX_TRAVEL && playerEncumbrance !== "over" && (
                       <div className="mt-1 text-center" style={{ fontSize: "0.5rem", color: "rgba(201,168,76,0.4)" }}>
                         Too far — max {MAX_TRAVEL} hexes per move

@@ -18,6 +18,7 @@ import { HexBattle, type QuestEncounter } from "@/components/HexBattle";
 import { WorldMap, type WorldLuckResult } from "@/components/WorldMap";
 import { PlayerInventory } from "@/components/PlayerInventory";
 import { PowerUp } from "@/components/PowerUp";
+import { TutorialOverlay } from "@/components/TutorialOverlay";
 import { CLASSES, getClassById, HIT_DIE_VALUES, type CharacterClass, type SpellcastingInfo } from "@/lib/classes";
 import { SKILLS, abilityMod, type Skill } from "@/lib/skills";
 import { FEATS, getAvailableFeats, getStartingFeatCount, featsForLevelUp, featNeedsChoice, parseFeatChoice, type Feat } from "@/lib/feats";
@@ -26,7 +27,9 @@ import { DOMAINS, type Domain } from "@/lib/domains";
 import { formatCoins, addCp, subtractCp, totalCp, cpToCoins, addCoinsRaw, setQuestCooldown, setQuestCooldownDays, getExhaustionPoints, lowestExhaustedStat, addXp } from "@/lib/saveSystem";
 import { changeRep } from "@/lib/factions";
 import { getItemInfo, getItemWeight } from "@/lib/itemRegistry";
-import { allPartiesActed, resetPartyRound, nextUnactedParty, hireFollower, GENERAL_TEMPLATES, maxFollowers, createAdventureParty, swapActiveParty, migratePartySupplies, migrateEntityProgression, processDailyUpkeep, getLeaderProgression, defaultProgression, type EntityProgression } from "@/lib/party";
+import { purchaseShip, getShip } from "@/lib/ships";
+import { getItemById } from "@/lib/loot";
+import { allPartiesActed, resetPartyRound, nextUnactedParty, hireFollower, GENERAL_TEMPLATES, maxFollowers, createAdventureParty, swapActiveParty, migratePartySupplies, migrateEntityProgression, processDailyUpkeep, getLeaderProgression, defaultProgression, autoEquipFollower, type EntityProgression } from "@/lib/party";
 import { downloadAndCache, getCacheCount, clearImageCache } from "@/lib/imageCache";
 import { resolveImage, toHttp } from "@/lib/resolveImage";
 
@@ -1582,10 +1585,12 @@ export default function Home() {
   const [search, setSearch] = useState("");
 
   // Navigation
-  const [view, setView] = useState<"menu" | "heroes" | "army" | "battle" | "worldMap" | "adventure" | "inventory" | "levelUp" | "powerUp">("menu");
+  const [view, setView] = useState<"menu" | "heroes" | "army" | "battle" | "worldMap" | "adventure" | "inventory" | "levelUp" | "powerUp" | "tokenPowers">("menu");
   const [lastBattleRewards, setLastBattleRewards] = useState<{ xp: number; goldCp: number; loot: { name: string }[]; levelsGained: number } | null>(null);
   const [levelUpQueue, setLevelUpQueue] = useState<import("@/hooks/useCharacterSave").LevelUpEntry[]>([]);
   const [questEncounter, setQuestEncounter] = useState<QuestEncounter | null>(null);
+  const [prevHex, setPrevHex] = useState<{ q: number; r: number } | null>(null);
+  const [mailCollected, setMailCollected] = useState<{ coins: { gp: number; sp: number; cp: number }; messages: string[] } | null>(null);
 
   // Character save system
   const { save, hasCharacter, updateSave, createCharacter, recordBattle } = useCharacterSave();
@@ -1701,6 +1706,30 @@ export default function Home() {
       }
     }
 
+    // Noble Birth boon: daily coin income accumulates at Kardov's Gate mail
+    const leaderChar = characters.find(c => c.contractAddress.toLowerCase() === save.nft_address?.toLowerCase());
+    if (leaderChar?.boons?.length) {
+      const nobleBoon = leaderChar.boons.filter(b => b.category === "mft");
+      if (nobleBoon.length > 0) {
+        const highest = nobleBoon[nobleBoon.length - 1];
+        const gpMatch = highest.effect.match(/(\d+)gp per day/);
+        const spMatch = highest.effect.match(/(\d+)sp per day/);
+        const cpMatch = highest.effect.match(/(\d+)cp per day/);
+        let incomeCp = 0;
+        if (gpMatch) incomeCp = parseInt(gpMatch[1]) * 100;
+        else if (spMatch) incomeCp = parseInt(spMatch[1]) * 10;
+        else if (cpMatch) incomeCp = parseInt(cpMatch[1]);
+        if (incomeCp > 0) {
+          const mail = (dayUpdates.gate_mail as typeof save.gate_mail) ?? save.gate_mail ?? { coins: { gp: 0, sp: 0, cp: 0 }, messages: [] };
+          const titleName = highest.name;
+          dayUpdates.gate_mail = {
+            coins: addCp(mail.coins, incomeCp),
+            messages: [...mail.messages.slice(-19), `Day ${currentDay}: ${formatCoins(cpToCoins(incomeCp))} tribute from ${titleName} estates`],
+          };
+        }
+      }
+    }
+
     if (Object.keys(dayUpdates).length > 0) updateSave(dayUpdates);
   }
 
@@ -1783,13 +1812,29 @@ export default function Home() {
     questEncounter={questEncounter ?? undefined}
     playerFeats={leaderProg?.feats ?? save?.feats}
     playerWeapon={leaderProg?.equipment?.weapon ?? save?.equipment?.weapon}
+    playerArmorEffect={getItemById(leaderProg?.equipment?.armor ?? save?.equipment?.armor ?? "")?.effect}
+    playerShieldEffect={getItemById(leaderProg?.equipment?.shield ?? save?.equipment?.shield ?? "")?.effect}
     playerKnownSpells={leaderProg?.known_spells ?? save?.known_spells}
     playerPreparedSpells={leaderProg?.prepared_spells ?? save?.prepared_spells}
     playerSpellSlotsUsed={leaderProg?.spell_slots_used ?? save?.spell_slots_used}
     playerLevel={leaderProg?.total_level ?? save?.level}
     playerCurrentHp={leaderProg ? (leaderProg.current_hp < leaderProg.max_hp ? leaderProg.current_hp : undefined) : (save?.current_hp !== undefined && save.current_hp < save.max_hp ? save.current_hp : undefined)}
-    playerFollowers={save?.party?.heroes?.[0]?.followers}
+    playerFollowers={save?.party?.heroes?.flatMap(h => h.followers) ?? []}
     playerProgression={leaderProg}
+    extraHeroes={save?.party?.heroes?.filter(h => !h.isLeader).map(h => {
+      const hChar = characters?.find(c => c.contractAddress.toLowerCase() === h.nft_address);
+      if (!hChar) return null;
+      const hClass = h.progression ? getClassById(h.progression.class_levels[0]?.class_id ?? save?.class_id) : getClassById(save?.class_id);
+      return {
+        char: hChar,
+        charClass: hClass ?? undefined,
+        featIds: h.progression?.feats ?? [],
+        weaponName: h.progression?.equipment?.weapon,
+        currentHp: h.progression?.current_hp,
+        progression: h.progression,
+      };
+    }).filter(Boolean) as { char: import("@/hooks/useNftStats").NftCharacter; charClass?: import("@/lib/classes").CharacterClass; featIds?: string[]; weaponName?: string; currentHp?: number; progression?: EntityProgression }[]}
+    playerUseRopeBonus={(leaderProg?.skill_ranks?.["useRope"] ?? save?.skill_ranks?.["useRope"] ?? 0) + Math.floor(((activeCharacter?.stats?.dex ?? 10) - 10) / 2)}
     onExit={() => {
       setQuestEncounter(null);
       if (levelUpQueue.length > 0) {
@@ -1817,6 +1862,38 @@ export default function Home() {
         battleUpdates.current_hp = Math.max(0, Math.round(remainingHp));
       }
       if (Object.keys(battleUpdates).length > 0) updateSave(battleUpdates);
+      // Retreat: move back to previous hex, mark hex as territorial threat for 10 days
+      if (outcome === "retreat" && save) {
+        const retreatUpdates: Record<string, unknown> = {};
+        if (prevHex) {
+          retreatUpdates.map_hex = prevHex;
+          if (save.parties?.[save.active_party_index ?? 0]) {
+            const idx = save.active_party_index ?? 0;
+            retreatUpdates.parties = save.parties.map((p, i) => i === idx ? { ...p, map_hex: prevHex } : p);
+          }
+        }
+        // Save territorial threat on the hex for 10 in-game days
+        const currentDay = Math.floor((save.hour ?? 0) / 24) + 1;
+        const threatHex = save.map_hex;
+        const threatKey = `${threatHex.q},${threatHex.r}`;
+        const encounterKey = questEncounter?.questId ?? enemies.join(",");
+        retreatUpdates.hex_threats = {
+          ...(save.hex_threats ?? {}),
+          [threatKey]: { expires_day: currentDay + 10, encounter_key: encounterKey },
+        };
+        updateSave(retreatUpdates);
+        setPrevHex(null);
+        return null;
+      }
+      // Clear territorial hex threat on victory
+      if (outcome === "victory" && save) {
+        const hexKey = `${save.map_hex.q},${save.map_hex.r}`;
+        if ((save.hex_threats ?? {})[hexKey]) {
+          const cleaned = { ...(save.hex_threats ?? {}) };
+          delete cleaned[hexKey];
+          updateSave({ hex_threats: cleaned });
+        }
+      }
       // Quest completion: set cooldowns (repeatable) or flags (one-time rumors)
       if (outcome === "victory" && questEncounter && save) {
         const qid = questEncounter.questId;
@@ -2040,6 +2117,8 @@ export default function Home() {
   }
 
   if (view === "worldMap" && save) return subPage("Kardov's Gate", (
+    <div style={{ position: "relative", height: "100%" }}>
+    <TutorialOverlay save={save} onSetFlag={(flag) => updateSave({ quest_flags: { ...(save.quest_flags ?? {}), [flag]: true } })} />
     <WorldMap
       save={save}
       character={activeCharacter}
@@ -2060,7 +2139,26 @@ export default function Home() {
           parties: [...save.parties, newParty],
         });
       }}
+      onAddHero={(nftAddress) => {
+        if (save.party.heroes.length >= 4) return;
+        const newHeroes = [...save.party.heroes, { nft_address: nftAddress.toLowerCase(), isLeader: false, followers: [] as import("@/lib/party").Follower[] }];
+        const updatedParty = { ...save.party, heroes: newHeroes };
+        const activeIdx = save.active_party_index ?? 0;
+        const updatedParties = save.parties?.map((p, i) => i === activeIdx ? { ...p, heroes: newHeroes } : p);
+        updateSave({ party: updatedParty, ...(updatedParties ? { parties: updatedParties } : {}) });
+      }}
+      onRemoveHero={(nftAddress) => {
+        const hero = save.party.heroes.find(h => h.nft_address === nftAddress.toLowerCase());
+        if (!hero || hero.isLeader) return;
+        const newHeroes = save.party.heroes.filter(h => h.nft_address !== nftAddress.toLowerCase());
+        const updatedParty = { ...save.party, heroes: newHeroes };
+        const activeIdx = save.active_party_index ?? 0;
+        const updatedParties = save.parties?.map((p, i) => i === activeIdx ? { ...p, heroes: newHeroes } : p);
+        updateSave({ party: updatedParty, ...(updatedParties ? { parties: updatedParties } : {}) });
+      }}
       onTravel={(hex, result, destHex, encounter) => {
+        // Remember previous hex for retreat
+        setPrevHex(save.map_hex);
         const updates: Record<string, unknown> = {
           map_hex: hex,
           food: result.newFood,
@@ -2151,6 +2249,16 @@ export default function Home() {
             const spoilHour = gameHour + fresh.spoilDays * 24;
             // Fresh food doesn't stack (different spoil times) — add new entry
             inv.push({ id: fresh.id, name: fresh.name, qty: 1, spoilHour });
+          }
+          updates.inventory = inv;
+        }
+        // Add reward items (social encounters, etc.) to inventory
+        if (result.rewardItems && result.rewardItems.length > 0) {
+          let inv = [...((updates.inventory as typeof save.inventory) ?? save.inventory)];
+          for (const item of result.rewardItems) {
+            const existing = inv.find(i => i.id === item.id);
+            if (existing) { existing.qty += item.qty; }
+            else { inv.push({ id: item.id, name: item.name, qty: item.qty, itemWeight: item.itemWeight }); }
           }
           updates.inventory = inv;
         }
@@ -2384,9 +2492,99 @@ export default function Home() {
         );
         updateSave({ parties: updated });
       }}
+      onCollectMail={() => {
+        const mail = save.gate_mail;
+        if (!mail || (totalCp(mail.coins) === 0 && mail.messages.length === 0)) return;
+        // Transfer accumulated coins to party purse
+        const newCoins = addCoinsRaw(save.coins, mail.coins);
+        // Clear the mailbox
+        updateSave({
+          coins: newCoins,
+          gate_mail: { coins: { gp: 0, sp: 0, cp: 0 }, messages: [] },
+        });
+        setMailCollected(mail);
+      }}
+      onGiveGift={(followerIdx, heroIdx, itemId, result) => {
+        // Remove 1 of the gifted item from inventory
+        const newInv = save.inventory.map(it => it.id === itemId ? { ...it, qty: it.qty - 1 } : it).filter(it => it.qty > 0);
+        // Auto-equip if the gifted item is a weapon/armor/shield
+        const equippedFollower = autoEquipFollower(result.follower, itemId);
+        // Update the follower in the party
+        const newHeroes = save.party.heroes.map((h, hi) => {
+          if (hi !== heroIdx) return h;
+          return { ...h, followers: h.followers.map((f, fi) => fi === followerIdx ? equippedFollower : f) };
+        });
+        const updatedParty = { ...save.party, heroes: newHeroes };
+        const activeIdx = save.active_party_index ?? 0;
+        const updatedParties = save.parties?.map((p, i) => i === activeIdx ? { ...p, heroes: newHeroes } : p);
+        updateSave({ inventory: newInv, party: updatedParty, ...(updatedParties ? { parties: updatedParties } : {}) });
+      }}
+      onBuyShip={(shipId, shipName) => {
+        const template = getShip(shipId);
+        if (!template) return;
+        const costCp = template.costGp * 100;
+        if (totalCp(save.coins) < costCp) return;
+        const newShip = purchaseShip(shipId, shipName, save.map_hex);
+        if (!newShip) return;
+        const newCoins = addCp(save.coins, -costCp);
+        updateSave({ ships: [...(save.ships ?? []), newShip], coins: newCoins });
+      }}
+      onBoardShip={(shipIndex) => {
+        const ships = save.ships ?? [];
+        if (shipIndex < 0 || shipIndex >= ships.length) return;
+        updateSave({ active_ship_index: shipIndex });
+      }}
+      onDisembark={() => {
+        // Dock the ship at current hex
+        const ships = save.ships ?? [];
+        const idx = save.active_ship_index;
+        if (idx == null || idx < 0 || idx >= ships.length) return;
+        const updated = ships.map((s, i) => i === idx ? { ...s, dockedAt: save.map_hex } : s);
+        updateSave({ ships: updated, active_ship_index: null });
+      }}
       onBack={() => cycleView("adventure")}
       onPowerUp={() => cycleView("powerUp")}
     />
+    {/* ── Mail Collected Popup ── */}
+    {mailCollected && (
+      <div style={{
+        position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)",
+        background: "rgba(20,15,8,0.95)", border: "2px solid rgba(251,191,36,0.5)",
+        borderRadius: "12px", padding: "16px 20px", zIndex: 9999, maxWidth: "320px", width: "90%",
+        boxShadow: "0 0 30px rgba(251,191,36,0.15)",
+      }}>
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center gap-2">
+            <span style={{ fontSize: "1.2rem" }}>{"📬"}</span>
+            <span className="font-bold uppercase tracking-wider" style={{ fontSize: "0.55rem", color: "rgba(251,191,36,0.9)" }}>
+              Mail Collected
+            </span>
+          </div>
+          {totalCp(mailCollected.coins) > 0 && (
+            <div className="px-2 py-1.5 rounded" style={{ background: "rgba(251,191,36,0.08)", border: "1px solid rgba(251,191,36,0.2)" }}>
+              <span style={{ fontSize: "0.5rem", color: "rgba(251,191,36,0.9)" }}>
+                {"+"} {formatCoins(mailCollected.coins)} added to purse
+              </span>
+            </div>
+          )}
+          {mailCollected.messages.length > 0 && (
+            <div className="flex flex-col gap-0.5" style={{ maxHeight: "150px", overflowY: "auto" }}>
+              {mailCollected.messages.slice(-10).map((msg, i) => (
+                <div key={i} style={{ fontSize: "0.4rem", color: "rgba(232,213,176,0.5)", paddingLeft: "4px", borderLeft: "1px solid rgba(201,168,76,0.15)" }}>
+                  {msg}
+                </div>
+              ))}
+            </div>
+          )}
+          <button onClick={() => setMailCollected(null)}
+            className="mt-1 px-3 py-1.5 rounded font-bold uppercase tracking-wider transition-all hover:scale-105"
+            style={{ fontSize: "0.45rem", background: "rgba(251,191,36,0.15)", border: "1px solid rgba(251,191,36,0.3)", color: "rgba(251,191,36,0.9)" }}>
+            Done
+          </button>
+        </div>
+      </div>
+    )}
+    </div>
   ));
   // My Army page
   if (view === "army") {
@@ -2536,6 +2734,216 @@ export default function Home() {
 
 
   if (view === "powerUp") return subPage("Power Up", <PowerUp characters={characters} onBack={() => cycleView("menu")} onStatsRefresh={refreshStats} />);
+
+  // Token Powers reference page — which tokens give which stats and boons
+  if (view === "tokenPowers") {
+    const STAT_TOKENS_REF = [
+      { chain: "Base", tokens: [
+        { symbol: "EGP", stats: "DEX + INT + WIS", rate: "1x", color: "rgba(34,197,94,0.8)", type: "game", note: "Base + Polygon" },
+        { symbol: "BURGERS", stats: "CON + CON + CON", rate: "1.5x", color: "rgba(251,113,133,0.8)", type: "impact", boon: "🍔 Feast of the Burger",
+          boonTiers: ["$10: Half rations, +1 HP/rest", "$50: Auto-stabilize, 2x CON healing", "$100: Bonus action half-HP heal, 1/long rest", "$200: Short rest: allies +1 HP per CON mod"] },
+        { symbol: "TGN", stats: "WIS + CON + CHA", rate: "1.5x", color: "rgba(74,222,128,0.8)", type: "impact", boon: "🌲 Canopy Council",
+          boonTiers: ["$10: Adv Survival in forests", "$50: Speak with Plants 1/long rest", "$100: Tree Stride 1/long rest", "$200: Transport via Plants 1/long rest"] },
+        { symbol: "MfT", stats: "All 6 (split)", rate: "0.5x per stat", color: "rgba(251,191,36,0.8)", type: "hub", boon: "👑 Noble Birth",
+          boonTiers: ["$10: 5cp/day", "$25: 1sp/day", "$50: 3sp/day", "$100: 1gp/day", "$250: 3gp/day", "$500: 5gp/day", "$1k: 10gp/day", "$2.5k: 25gp/day", "$5k: 50gp/day", "$10k: 1000gp/day"] },
+        { symbol: "USDGLO", stats: "All 6 (split)", rate: "0.5x per stat", color: "rgba(96,165,250,0.8)", type: "stable" },
+        { symbol: "AZOS", stats: "All 6 (split)", rate: "0.5x per stat", color: "rgba(74,222,128,0.8)", type: "stable" },
+      ]},
+      { chain: "Polygon", tokens: [
+        { symbol: "DDD", stats: "STR + INT + CHA", rate: "1x", color: "rgba(251,191,36,0.8)", type: "game" },
+        { symbol: "OGC", stats: "STR + DEX + CON", rate: "1x", color: "rgba(251,146,60,0.8)", type: "game" },
+        { symbol: "IGS", stats: "CON + WIS + CHA", rate: "1x", color: "rgba(192,132,252,0.8)", type: "game" },
+        { symbol: "BTN", stats: "STR + CON + WIS", rate: "1x", color: "rgba(148,163,184,0.8)", type: "game" },
+        { symbol: "LGP", stats: "DEX + INT + CHA", rate: "1x", color: "rgba(56,189,248,0.8)", type: "game" },
+        { symbol: "DHG", stats: "STR + DEX + WIS", rate: "1x", color: "rgba(251,113,133,0.8)", type: "game" },
+        { symbol: "PKT", stats: "CON + INT + CHA", rate: "1x", color: "rgba(74,222,128,0.8)", type: "game" },
+        { symbol: "REGEN", stats: "DEX + CON + WIS", rate: "1.5x", color: "rgba(34,197,94,0.8)", type: "impact", boon: "♻️ Rebuilder's Resolve",
+          boonTiers: ["$10: Regen 1 HP/turn if above 0", "$50: Greater Restoration 1/long rest", "$100: Resist necrotic, immune aging", "$200: Revive at half HP on death, 1/long rest"] },
+        { symbol: "Grant Wizard", stats: "WIS + CHA + INT", rate: "1.5x", color: "rgba(167,139,250,0.8)", type: "impact", boon: "🧙 The Grantmaker",
+          boonTiers: ["$10: Proficiency in one extra skill", "$50: Reroll one d20, 1/short rest", "$100: +/-1d10 any roll, 1/short rest", "$200: Adv on saves vs spells"] },
+        { symbol: "USDGLO", stats: "All 6 (split)", rate: "0.5x per stat", color: "rgba(96,165,250,0.8)", type: "stable" },
+      ]},
+    ];
+    const BOON_ONLY_REF = [
+      { category: "Carbon Guardians", icon: "🌿", tokens: "CCC, CHAR, CRISP-M, NCT, BCT", color: "rgba(34,197,94,0.8)", unit: "effective lbs",
+        thresholds: ["220 lbs (0.1 CHAR / 220 CCC)", "1,102 lbs (0.5 CHAR / 1 CRISP-M)", "2,204 lbs (1 CHAR / 2 CRISP-M)", "4,408 lbs (2 CHAR / 4 CRISP-M)"],
+        tiers: ["Immune to poison condition", "Lesser Restoration 1/long rest", "Immune to disease & poison dmg", "Aura: allies adv CON saves"] },
+      { category: "Wardens of the Grove", icon: "🌳", tokens: "JCGWR, AU24T", color: "rgba(74,222,128,0.8)", unit: "trees",
+        thresholds: ["100 trees", "500 trees", "2,000 trees", "10,000 trees"],
+        tiers: ["+1 NA (natural armor)", "Entangle 1/long rest", "+2 NA (natural armor), resist bludgeoning", "Wall of Thorns 1/long rest"] },
+      { category: "Stormborn", icon: "⚡", tokens: "JLT-F24, JLT-B23", color: "rgba(250,204,21,0.8)", unit: "MWh",
+        thresholds: ["1 MWh", "5 MWh", "10 MWh", "20 MWh"],
+        tiers: ["+1d4 lightning on melee", "Resist lightning & thunder", "Call Lightning 1/long rest", "Immune lightning; 2d6 retaliation"] },
+      { category: "Lightbearers", icon: "🔥", tokens: "LANTERN", color: "rgba(249,115,22,0.8)", unit: "lanterns",
+        thresholds: ["0.25 lanterns", "1.25 lanterns", "2.5 lanterns", "6.25 lanterns"],
+        tiers: ["+1d4 fire on melee", "Resist fire, darkvision 60ft", "Daylight at will", "Immune fire; Fireball 1/short rest"] },
+      { category: "Tidekeepers", icon: "🛡️", tokens: "LTK, TB01", color: "rgba(96,165,250,0.8)", unit: "tokens",
+        thresholds: ["10 tokens", "100 tokens", "500 tokens", "2,000 tokens"],
+        tiers: ["+1 AC", "Resist one damage type", "Can't be grappled/restrained", "Resist all 1 round, 1/short rest"] },
+      { category: "Heralds of Hope", icon: "💨", tokens: "PR24, PR25", color: "rgba(167,139,250,0.8)", unit: "kids helped",
+        thresholds: ["1 kid", "5 kids", "10 kids", "25 kids"],
+        tiers: ["+5ft speed", "Misty Step 1/short rest", "+15ft speed, opp atks disadv", "Guardian teleport reaction"] },
+    ];
+    const TRADFI_REF = [
+      { category: "Vaults of Ether", icon: "💎", tokens: "WETH", color: "rgba(98,126,234,0.8)",
+        thresholds: ["$10", "$50", "$100", "$200"],
+        tiers: ["Arcana proficiency", "Spell Recall 1/long rest", "Counterspell 1/long rest", "Extra spell slot (5th)"] },
+      { category: "The Bitcoin Bastion", icon: "🪙", tokens: "WBTC", color: "rgba(247,147,26,0.8)",
+        thresholds: ["$10", "$50", "$100", "$200"],
+        tiers: ["+5 max HP", "+1 AC", "+20 max HP", "Drop to 1 HP instead of 0, 1/long rest"] },
+      { category: "Threads of Polygon", icon: "🕸️", tokens: "WPOL", color: "rgba(130,71,229,0.8)",
+        thresholds: ["$10", "$50", "$100", "$200"],
+        tiers: ["+5ft speed", "+2 initiative", "Evasion (half→none, fail→half)", "Action Surge 1/long rest"] },
+    ];
+    return subPage("Token Powers", (
+      <div className="flex flex-col items-center gap-6 px-2 relative max-w-lg w-full mx-auto">
+        <button onClick={() => cycleView("menu")}
+          className="fixed top-20 left-4 z-50 px-4 py-2 rounded-lg text-sm font-black uppercase tracking-widest"
+          style={{ background: 'rgba(10,6,8,0.95)', color: '#f0d070', border: '1px solid rgba(201,168,76,0.5)', boxShadow: '0 0 15px rgba(0,0,0,0.5)' }}>
+          &larr; Back
+        </button>
+
+        <p className="text-xs text-center max-w-sm" style={{ color: 'rgba(232,213,176,0.6)' }}>
+          Tokens deposited into NFT heroes give D20 ability scores and unlock powerful boons.
+          Impact tokens earn stats at 1.5x AND unlock boon tiers.
+        </p>
+
+        {/* ── STAT TOKENS ── */}
+        <div className="flex items-center gap-2 w-full">
+          <div className="flex-1 h-px" style={{ background: 'linear-gradient(to right, transparent, rgba(201,168,76,0.4))' }} />
+          <span className="text-xs font-black tracking-widest uppercase" style={{ color: 'rgba(201,168,76,0.8)' }}>Stat Tokens</span>
+          <div className="flex-1 h-px" style={{ background: 'linear-gradient(to left, transparent, rgba(201,168,76,0.4))' }} />
+        </div>
+
+        {/* Scaling curve */}
+        <div className="w-full rounded-lg px-4 py-3" style={{ background: 'rgba(201,168,76,0.06)', border: '1px solid rgba(201,168,76,0.15)' }}>
+          <p className="text-xs font-black tracking-widest uppercase mb-2" style={{ color: 'rgba(201,168,76,0.7)' }}>Scaling Curve</p>
+          <div className="flex flex-col gap-1">
+            <p style={{ fontSize: '0.6rem', color: 'rgba(232,213,176,0.6)' }}>First 10 points: <span style={{ color: 'rgba(74,222,128,0.9)' }}>$1 / point</span></p>
+            <p style={{ fontSize: '0.6rem', color: 'rgba(232,213,176,0.6)' }}>Next 10 points: <span style={{ color: 'rgba(251,191,36,0.9)' }}>$10 / point</span></p>
+            <p style={{ fontSize: '0.6rem', color: 'rgba(232,213,176,0.6)' }}>Next 10 points: <span style={{ color: 'rgba(251,113,133,0.9)' }}>$100 / point</span></p>
+            <p style={{ fontSize: '0.6rem', color: 'rgba(232,213,176,0.5)' }}>...exponential brackets continue</p>
+          </div>
+        </div>
+
+        {STAT_TOKENS_REF.map(chain => (
+          <div key={chain.chain} className="w-full">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="flex-1 h-px" style={{ background: 'linear-gradient(to right, transparent, rgba(201,168,76,0.2))' }} />
+              <span className="text-xs font-black tracking-widest uppercase" style={{ color: 'rgba(201,168,76,0.5)' }}>
+                {chain.chain}
+              </span>
+              <div className="flex-1 h-px" style={{ background: 'linear-gradient(to left, transparent, rgba(201,168,76,0.2))' }} />
+            </div>
+            <div className="flex flex-col gap-2">
+              {chain.tokens.map(t => (
+                <div key={`${chain.chain}-${t.symbol}`} className="flex flex-col px-3 py-2 rounded-lg"
+                  style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="font-black text-xs" style={{ color: t.color }}>{t.symbol}</span>
+                      {t.type === "impact" && <span className="px-1 rounded font-bold" style={{ fontSize: '0.4rem', background: 'rgba(34,197,94,0.15)', color: 'rgba(34,197,94,0.8)', border: '1px solid rgba(34,197,94,0.3)' }}>IMPACT</span>}
+                      {t.type === "stable" && <span className="px-1 rounded font-bold" style={{ fontSize: '0.4rem', background: 'rgba(96,165,250,0.15)', color: 'rgba(96,165,250,0.8)', border: '1px solid rgba(96,165,250,0.3)' }}>STABLE</span>}
+                      {t.type === "hub" && <span className="px-1 rounded font-bold" style={{ fontSize: '0.4rem', background: 'rgba(251,191,36,0.15)', color: 'rgba(251,191,36,0.8)', border: '1px solid rgba(251,191,36,0.3)' }}>HUB</span>}
+                      {"note" in t && (t as any).note && <span style={{ fontSize: '0.4rem', color: 'rgba(232,213,176,0.4)' }}>({(t as any).note})</span>}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold" style={{ color: 'rgba(232,213,176,0.8)' }}>{t.stats}</span>
+                      <span className="text-xs" style={{ color: t.rate.includes("1.5") ? 'rgba(34,197,94,0.7)' : 'rgba(232,213,176,0.4)' }}>{t.rate}</span>
+                    </div>
+                  </div>
+                  {"boon" in t && t.boon && (
+                    <div style={{ marginTop: '3px' }}>
+                      <p style={{ fontSize: '0.5rem', color: 'rgba(34,197,94,0.7)', fontWeight: 'bold' }}>+ {t.boon}</p>
+                      {"boonTiers" in t && (t as any).boonTiers && (
+                        <div className="flex flex-col gap-0.5 mt-1">
+                          {((t as any).boonTiers as string[]).map((tier: string, i: number) => (
+                            <p key={i} style={{ fontSize: '0.45rem', color: 'rgba(232,213,176,0.6)', paddingLeft: '8px' }}>{tier}</p>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+
+        {/* ── IMPACT BOONS ── */}
+        <div className="flex items-center gap-2 w-full mt-4">
+          <div className="flex-1 h-px" style={{ background: 'linear-gradient(to right, transparent, rgba(34,197,94,0.4))' }} />
+          <span className="text-xs font-black tracking-widest uppercase" style={{ color: 'rgba(34,197,94,0.8)' }}>Impact Boons</span>
+          <div className="flex-1 h-px" style={{ background: 'linear-gradient(to left, transparent, rgba(34,197,94,0.4))' }} />
+        </div>
+
+        <p className="text-xs text-center max-w-sm" style={{ color: 'rgba(232,213,176,0.5)' }}>
+          Count-based boons from impact tokens. Hold more tokens to unlock higher tiers.
+        </p>
+
+        {BOON_ONLY_REF.map(b => (
+          <div key={b.category} className="w-full rounded-lg px-3 py-3"
+            style={{ background: 'rgba(255,255,255,0.03)', border: `1px solid ${b.color.replace('0.8)', '0.15)')}` }}>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-lg">{b.icon}</span>
+              <div>
+                <span className="font-black text-xs" style={{ color: b.color }}>{b.category}</span>
+                <p style={{ fontSize: '0.45rem', color: 'rgba(232,213,176,0.4)' }}>Tokens: {b.tokens}</p>
+              </div>
+            </div>
+            <div className="flex flex-col gap-1">
+              {b.tiers.map((tier, i) => (
+                <div key={i} className="flex items-start gap-2 cursor-help" title={`Requires: ${b.thresholds[i]}`}>
+                  <span className="font-black shrink-0" style={{ fontSize: '0.5rem', color: b.color, opacity: 0.7 }}>T{i + 1}</span>
+                  <span style={{ fontSize: '0.5rem', color: 'rgba(232,213,176,0.7)' }}>{tier}</span>
+                  <span className="shrink-0 opacity-50" style={{ fontSize: '0.4rem', color: b.color }}>{b.thresholds[i]}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+
+        {/* ── TRADFI BOONS ── */}
+        <div className="flex items-center gap-2 w-full mt-2">
+          <div className="flex-1 h-px" style={{ background: 'linear-gradient(to right, transparent, rgba(247,147,26,0.4))' }} />
+          <span className="text-xs font-black tracking-widest uppercase" style={{ color: 'rgba(247,147,26,0.8)' }}>TradFi Boons</span>
+          <div className="flex-1 h-px" style={{ background: 'linear-gradient(to left, transparent, rgba(247,147,26,0.4))' }} />
+        </div>
+
+        <p className="text-xs text-center max-w-sm" style={{ color: 'rgba(232,213,176,0.5)' }}>
+          Dollar-value boons from traditional crypto. No base stats &mdash; boons only at $10/$50/$100/$200.
+        </p>
+
+        {TRADFI_REF.map(b => (
+          <div key={b.category} className="w-full rounded-lg px-3 py-3"
+            style={{ background: 'rgba(255,255,255,0.03)', border: `1px solid ${b.color.replace('0.8)', '0.15)')}` }}>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-lg">{b.icon}</span>
+              <div>
+                <span className="font-black text-xs" style={{ color: b.color }}>{b.category}</span>
+                <p style={{ fontSize: '0.45rem', color: 'rgba(232,213,176,0.4)' }}>Tokens: {b.tokens}</p>
+              </div>
+            </div>
+            <div className="flex flex-col gap-1">
+              {b.tiers.map((tier, i) => (
+                <div key={i} className="flex items-start gap-2 cursor-help" title={`Requires: ${b.thresholds[i]} USD value`}>
+                  <span className="font-black shrink-0" style={{ fontSize: '0.5rem', color: b.color, opacity: 0.7 }}>{b.thresholds[i]}</span>
+                  <span style={{ fontSize: '0.5rem', color: 'rgba(232,213,176,0.7)' }}>{tier}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+
+        {/* Link to Power Up */}
+        <button onClick={() => cycleView("powerUp")}
+          className="px-6 py-3 rounded-lg text-sm font-black uppercase tracking-widest mt-4"
+          style={{ background: 'rgba(139,92,246,0.15)', color: 'rgba(139,92,246,0.9)', border: '1px solid rgba(139,92,246,0.4)' }}>
+          Power Up Your Heroes
+        </button>
+      </div>
+    ));
+  }
 
   // Heroes gallery page
   if (view === "heroes") {
@@ -2786,6 +3194,15 @@ export default function Home() {
             <span className="text-4xl">⚡</span>
             <span className="text-sm font-black tracking-widest uppercase" style={{ color: 'rgba(139,92,246,0.9)' }}>Power Up</span>
             <span style={{ fontSize: '0.55rem', color: 'rgba(139,92,246,0.5)' }}>Boost hero stats with LP tokens</span>
+          </button>
+
+          {/* Token Powers */}
+          <button onClick={() => cycleView("tokenPowers")}
+            className="flex flex-col items-center gap-3 px-6 py-8 rounded-2xl transition-all hover:scale-[1.02]"
+            style={{ background: 'rgba(45,212,191,0.1)', border: '2px solid rgba(45,212,191,0.3)', boxShadow: '0 0 25px rgba(45,212,191,0.05)' }}>
+            <span className="text-4xl">📖</span>
+            <span className="text-sm font-black tracking-widest uppercase" style={{ color: 'rgba(45,212,191,0.9)' }}>Token Powers</span>
+            <span style={{ fontSize: '0.55rem', color: 'rgba(45,212,191,0.5)' }}>Stats & boons reference guide</span>
           </button>
 
           {/* Marketplace — external site */}

@@ -5,7 +5,7 @@ import { useAccount, usePublicClient } from "wagmi";
 import { base, polygon } from "viem/chains";
 import { ERC1155_ABI, GAME_NFTS } from "@/lib/contracts";
 import { supabase } from "@/lib/supabase";
-import { computeD20Stats } from "@/lib/computeD20Stats";
+import { computeD20Stats, DEFAULT_BOON_FIELDS } from "@/lib/computeD20Stats";
 
 const TOKEN_ID = BigInt(1);
 const MAX_TOKEN_ID = 200;
@@ -83,13 +83,14 @@ async function fetchFromSupabase(): Promise<any | null> {
     const characters = nftRows.map((r: any) => {
       const backing = r.data;
       const amounts = backing.tokenAmounts ?? [];
-      const { stats, subtypes } = computeD20Stats(amounts, tokenUsdPrices);
+      const { stats, subtypes, boons } = computeD20Stats(amounts, tokenUsdPrices);
       return {
         name: backing.name ?? r.key,
         contractAddress: backing.contractAddress ?? r.key,
         chain: backing.chain ?? "base",
         stats,
         subtypes,
+        boons,
         usdBacking: backing.usdBacking ?? 0,
         tokenAmounts: amounts,
       };
@@ -116,8 +117,9 @@ export type NftCharacter = {
   imageUrl?: string;
   owned: boolean;
   ownedCount: number;
-  stats: { str: number; dex: number; con: number; int: number; wis: number; cha: number; ac: number; atk: number; speed: number; lightningDmg: number; fireDmg: number };
+  stats: import("@/lib/computeD20Stats").D20Stats;
   subtypes: string[];
+  boons: import("@/lib/boons").Boon[];
   tokenAmounts: TokenAmount[];
   usdBacking: number;
 };
@@ -308,8 +310,9 @@ export function useNftStats() {
               name: nft.name,
               contractAddress: nft.contractAddress,
               chain: nft.chain,
-              stats: { str: 1, dex: 1, con: 1, int: 1, wis: 1, cha: 1, ac: 10, atk: 0, speed: 30, lightningDmg: 0, fireDmg: 0 },
+              stats: { str: 1, dex: 1, con: 1, int: 1, wis: 1, cha: 1, ac: 10, naturalArmor: 0, atk: 0, speed: 30, lightningDmg: 0, fireDmg: 0, ...DEFAULT_BOON_FIELDS },
               subtypes: [],
+              boons: [],
               tokenAmounts: [],
               usdBacking: 0,
             });
@@ -329,6 +332,7 @@ export function useNftStats() {
           ownedCount: ownershipMap.get(c.contractAddress.toLowerCase()) ?? 0,
           stats: floorStats(c.stats),
           subtypes: c.subtypes ?? [],
+          boons: c.boons ?? [],
           tokenAmounts: c.tokenAmounts ?? [],
           usdBacking: c.usdBacking ?? 0,
         }));
@@ -423,7 +427,7 @@ export function useNftStats() {
         tokenId: TOKEN_ID, metadataUri: c.metadataUri, imageUrl: c.imageUrl,
         owned: (ownershipMap.get(c.contractAddress.toLowerCase()) ?? 0) > 0,
         ownedCount: ownershipMap.get(c.contractAddress.toLowerCase()) ?? 0,
-        stats: floorStats(c.stats), subtypes: c.subtypes ?? [], tokenAmounts: c.tokenAmounts ?? [], usdBacking: c.usdBacking ?? 0,
+        stats: floorStats(c.stats), subtypes: c.subtypes ?? [], boons: c.boons ?? [], tokenAmounts: c.tokenAmounts ?? [], usdBacking: c.usdBacking ?? 0,
       }));
       setCharacters(updated);
       if (data.assetTotals) setAssetTotals(data.assetTotals);

@@ -93,7 +93,7 @@ function formatAmount(n: number): string {
 }
 
 export function CharacterCard({ character, maxStats, selectable, selected, onSelect }: Props) {
-  const { name, metadataUri, stats, contractAddress, tokenId, owned, tokenAmounts, subtypes } = character;
+  const { name, metadataUri, stats, contractAddress, tokenId, owned, tokenAmounts, subtypes, boons } = character;
 
   // Use pre-resolved imageUrl from API, fall back to client-side resolution
   const [imageUrl, setImageUrl] = useState<string | null>(character.imageUrl ?? null);
@@ -235,6 +235,47 @@ export function CharacterCard({ character, maxStats, selectable, selected, onSel
             </a>
           </div>
 
+          {/* Boon symbols — which boon categories this hero has unlocked */}
+          {boons.length > 0 && (() => {
+            // Keys match the short category ids used in boons.ts computeBoons()
+            const BOON_SYMBOLS: Record<string, { icon: string; label: string; color: string }> = {
+              carbon:      { icon: "🌿", label: "Carbon Guardians",    color: "rgba(34,197,94,0.9)" },
+              trees:       { icon: "🌳", label: "Wardens of the Grove", color: "rgba(74,222,128,0.9)" },
+              storm:       { icon: "⚡", label: "Stormborn",            color: "rgba(250,204,21,0.9)" },
+              light:       { icon: "🔥", label: "Lightbearers",         color: "rgba(249,115,22,0.9)" },
+              tide:        { icon: "🛡️", label: "Tidekeepers",          color: "rgba(96,165,250,0.9)" },
+              herald:      { icon: "💨", label: "Heralds of Hope",      color: "rgba(167,139,250,0.9)" },
+              burgers:     { icon: "🍔", label: "Feast of the Burger",  color: "rgba(251,113,133,0.9)" },
+              tgn:         { icon: "🌲", label: "Canopy Council",       color: "rgba(74,222,128,0.9)" },
+              regen:       { icon: "♻️", label: "Rebuilder's Resolve",  color: "rgba(34,197,94,0.9)" },
+              grantWizard: { icon: "🧙", label: "The Grantmaker",      color: "rgba(167,139,250,0.9)" },
+              mft:         { icon: "👑", label: "Noble Birth",          color: "rgba(251,191,36,0.9)" },
+              weth:        { icon: "💎", label: "Vaults of Ether",      color: "rgba(98,126,234,0.9)" },
+              wbtc:        { icon: "🪙", label: "The Bitcoin Bastion",  color: "rgba(247,147,26,0.9)" },
+              wpol:        { icon: "🕸️", label: "Threads of Polygon",   color: "rgba(130,71,229,0.9)" },
+            };
+            const seen = new Set<string>();
+            const tags: { category: string; label: string; icon: string; color: string }[] = [];
+            for (const b of boons) {
+              if (seen.has(b.category)) continue;
+              seen.add(b.category);
+              const sym = BOON_SYMBOLS[b.category];
+              if (sym) tags.push({ category: b.category, label: sym.label, icon: sym.icon, color: sym.color });
+            }
+            if (tags.length === 0) return null;
+            return (
+              <div className="flex flex-wrap gap-1 justify-center px-2 pb-1">
+                {tags.map(t => (
+                  <span key={t.category} className="px-1.5 py-0.5 rounded font-bold tracking-wider"
+                    style={{ fontSize: '0.4rem', background: t.color.replace('0.9)', '0.12)'), color: t.color, border: `1px solid ${t.color.replace('0.9)', '0.3)')}` }}
+                    title={t.label}>
+                    {t.icon} {t.label}
+                  </span>
+                ))}
+              </div>
+            );
+          })()}
+
           {/* Divider */}
           <div className="flex items-center gap-2 my-1.5 px-3 flex-shrink-0">
             <div className="flex-1 h-px" style={{ background: `linear-gradient(to right, transparent, ${borderColor})` }} />
@@ -251,11 +292,26 @@ export function CharacterCard({ character, maxStats, selectable, selected, onSel
             <StatBar label="WIS" value={stats.wis} max={maxStats.wis} color="bg-teal-400" />
             <StatBar label="CHA" value={stats.cha} max={maxStats.cha} color="bg-violet-400" />
             <StatBar label="AC" value={stats.ac} max={Math.max(stats.ac, 20)} color="bg-gray-300" />
-            {stats.atk > 0 && <StatBar label="ATK" value={stats.atk} max={Math.max(stats.atk, 10)} color="bg-red-500" />}
             <StatBar label={`SPD ${stats.speed}ft`} value={stats.speed} max={Math.max(stats.speed, 60)} color="bg-sky-400" />
-            {stats.lightningDmg > 0 && <StatBar label="⚡ LTN" value={stats.lightningDmg} max={Math.max(stats.lightningDmg, 10)} color="bg-yellow-400" />}
-            {stats.fireDmg > 0 && <StatBar label="🔥 FIR" value={stats.fireDmg} max={Math.max(stats.fireDmg, 10)} color="bg-orange-500" />}
           </div>
+
+          {/* Boons */}
+          {boons && boons.length > 0 && (
+            <div className="px-3 pb-2 flex flex-col gap-0.5">
+              <div className="flex items-center gap-2 mb-0.5">
+                <div className="flex-1 h-px" style={{ background: `linear-gradient(to right, transparent, rgba(34,197,94,0.3))` }} />
+                <span style={{ color: 'rgba(34,197,94,0.6)', fontSize: '0.45rem' }} className="uppercase tracking-widest font-bold">Boons</span>
+                <div className="flex-1 h-px" style={{ background: `linear-gradient(to left, transparent, rgba(34,197,94,0.3))` }} />
+              </div>
+              {boons.map((b, i) => (
+                <div key={i} className="px-1.5 py-0.5 rounded flex items-start gap-1"
+                  style={{ background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.12)' }}>
+                  <span style={{ color: 'rgba(34,197,94,0.8)', fontSize: '0.5rem' }} className="font-bold shrink-0">T{b.tier}</span>
+                  <span style={{ color: 'rgba(232,213,176,0.75)', fontSize: '0.5rem' }} className="leading-tight">{b.name}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* ── BACK ──────────────────────────────────────────────────────── */}
@@ -280,14 +336,22 @@ export function CharacterCard({ character, maxStats, selectable, selected, onSel
             <div className="flex-1 h-px" style={{ background: `linear-gradient(to left, transparent, ${borderColor})` }} />
           </div>
 
-          {/* Token list */}
+          {/* Token list — merge same-symbol entries (e.g. EGP on Base + Polygon) */}
           <div className="flex-1 px-3 flex flex-col gap-1.5">
             {tokenAmounts.length === 0 ? (
               <p className="text-center text-xs mt-6" style={{ color: 'rgba(200,190,210,0.3)' }}>
                 No LP positions found
               </p>
             ) : (
-              tokenAmounts.map(({ symbol, amount, stat }) => {
+              (() => {
+                const merged = new Map<string, { symbol: string; amount: number; stat: string }>();
+                for (const t of tokenAmounts) {
+                  const existing = merged.get(t.symbol);
+                  if (existing) existing.amount += t.amount;
+                  else merged.set(t.symbol, { ...t });
+                }
+                return Array.from(merged.values());
+              })().map(({ symbol, amount, stat }) => {
                 const meta = STAT_META[stat] ?? { label: stat.toUpperCase(), color: 'rgba(232,213,176,0.7)' };
                 return (
                   <div key={symbol}

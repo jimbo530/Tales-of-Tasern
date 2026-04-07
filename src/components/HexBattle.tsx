@@ -13,7 +13,7 @@ import {
   type HexCoord,
 } from "@/lib/hexGrid";
 import { CLASSES, type CharacterClass } from "@/lib/classes";
-import { isCharge, type EnemySpec, type SpellUnitInfo, abilityMod } from "@/lib/hexCombat";
+import { isCharge, isConscious, isAlive, isDead, isUnconscious, type EnemySpec, type SpellUnitInfo, abilityMod } from "@/lib/hexCombat";
 import { getSpell, getSpellSlots, bonusSpells, type Spell } from "@/lib/spells";
 
 export type QuestEncounter = {
@@ -36,6 +36,8 @@ type Props = {
   questEncounter?: QuestEncounter;   // if set, skip selection and auto-start
   playerFeats?: string[];           // feat IDs from save for combat bonuses
   playerWeapon?: string;            // equipped weapon name (determines range)
+  playerArmorEffect?: string;       // equipped armor effect string (e.g. "+4 AC, max Dex +4")
+  playerShieldEffect?: string;      // equipped shield effect string
   playerKnownSpells?: string[];     // spell IDs known/prepared
   playerPreparedSpells?: string[];  // prepared spells for prepared casters
   playerSpellSlotsUsed?: number[];  // current slots expended
@@ -43,9 +45,11 @@ type Props = {
   playerCurrentHp?: number;         // current HP (battle starts with this, not full)
   playerFollowers?: import("@/lib/party").Follower[];  // combat-capable followers
   playerProgression?: import("@/lib/party").EntityProgression;  // multiclass progression
+  extraHeroes?: { char: NftCharacter; charClass?: import("@/lib/classes").CharacterClass; featIds?: string[]; weaponName?: string; currentHp?: number; progression?: import("@/lib/party").EntityProgression }[];  // additional NFT heroes in party
   onExit: () => void;
-  onBattleEnd?: (outcome: "victory" | "defeat" | "retreat", difficulty: "easy" | "medium" | "hard" | "deadly", enemies: string[], rounds: number, spellSlotsUsed?: number[], remainingHp?: number) => Promise<{ xp: number; goldCp: number; loot: { name: string }[]; levelsGained: number; newLevel: number } | null> | void;
+  onBattleEnd?: (outcome: "victory" | "defeat" | "retreat", difficulty: "easy" | "medium" | "hard" | "deadly", enemies: string[], rounds: number, spellSlotsUsed?: number[], remainingHp?: number, prisoners?: string[]) => Promise<{ xp: number; goldCp: number; loot: { name: string }[]; levelsGained: number; newLevel: number } | null> | void;
   onDefeatChoice?: (choice: "perish" | "rescue") => void;  // death penalty choice
+  playerUseRopeBonus?: number;  // Use Rope skill ranks + DEX mod for binding prisoners
 };
 
 // ── D20 Roll Animation ──────────────────────────────────────────────────────
@@ -124,7 +128,7 @@ function phaseLabel(phase: BattlePhase): string {
 
 // ── Main Component ───────────────────────────────────────────────────────────
 
-export function HexBattle({ characters, questEncounter, playerFeats, playerWeapon, playerKnownSpells, playerPreparedSpells, playerSpellSlotsUsed, playerLevel, playerCurrentHp, playerFollowers, playerProgression, onExit, onBattleEnd, onDefeatChoice }: Props) {
+export function HexBattle({ characters, questEncounter, playerFeats, playerWeapon, playerArmorEffect, playerShieldEffect, playerKnownSpells, playerPreparedSpells, playerSpellSlotsUsed, playerLevel, playerCurrentHp, playerFollowers, playerProgression, extraHeroes, onExit, onBattleEnd, onDefeatChoice, playerUseRopeBonus }: Props) {
   const ownedChars = useMemo(() => characters.filter(c => c.owned && c.stats.con > 0), [characters]);
   const [selectedChar, setSelectedChar] = useState<NftCharacter | null>(null);
   const [selectedClass, setSelectedClass] = useState<CharacterClass | null>(null);
@@ -132,11 +136,13 @@ export function HexBattle({ characters, questEncounter, playerFeats, playerWeapo
   const [battleRewards, setBattleRewards] = useState<{ xp: number; goldCp: number; loot: { name: string }[]; levelsGained: number; newLevel: number } | null>(null);
   const [collectingRewards, setCollectingRewards] = useState(false);
   const [showSpellPicker, setShowSpellPicker] = useState(false);
+  const [boundPrisoners, setBoundPrisoners] = useState<string[]>([]);
+  const [bindResults, setBindResults] = useState<Record<string, { roll: number; total: number; success: boolean }>>({});
   const [pendingSpell, setPendingSpell] = useState<Spell | null>(null);
   const logEndRef = useRef<HTMLDivElement>(null);
   const questStarted = useRef(false);
 
-  const { state, activeUnit, isPlayerTurn, startBattle, startQuestBattle, clickHex, playerRoll, skipMove, readyAttack, endTurn, castSpell, takeAoO, passAoO } = useHexBattle();
+  const { state, activeUnit, isPlayerTurn, startBattle, startQuestBattle, clickHex, playerRoll, skipMove, readyAttack, endTurn, castSpell, attemptRetreat, takeAoO, passAoO } = useHexBattle();
 
   /** Build SpellUnitInfo from props + selected class */
   const buildSpellInfo = useCallback((char: NftCharacter, cls: CharacterClass): SpellUnitInfo | undefined => {
@@ -172,7 +178,7 @@ export function HexBattle({ characters, questEncounter, playerFeats, playerWeapo
       if (char && cls) {
         questStarted.current = true;
         const si = buildSpellInfo(char, cls);
-        startQuestBattle(char, questEncounter.enemies, cls, questEncounter.playerFeats ?? playerFeats, questEncounter.playerWeapon ?? playerWeapon, si, playerCurrentHp, playerFollowers, playerProgression);
+        startQuestBattle(char, questEncounter.enemies, cls, questEncounter.playerFeats ?? playerFeats, questEncounter.playerWeapon ?? playerWeapon, si, playerCurrentHp, playerFollowers, playerProgression, extraHeroes, playerArmorEffect, playerShieldEffect);
       }
     }
   }, [questEncounter, selectedChar, selectedClass, state.phase, startQuestBattle, buildSpellInfo]);
@@ -181,7 +187,7 @@ export function HexBattle({ characters, questEncounter, playerFeats, playerWeapo
   useEffect(() => {
     if (!questEncounter && selectedChar && selectedClass && difficulty && state.phase === "setup") {
       const si = buildSpellInfo(selectedChar, selectedClass);
-      startBattle(selectedChar, difficulty, selectedClass, characters, playerFeats, playerWeapon, si, playerCurrentHp, playerFollowers, playerProgression);
+      startBattle(selectedChar, difficulty, selectedClass, characters, playerFeats, playerWeapon, si, playerCurrentHp, playerFollowers, playerProgression, extraHeroes, playerArmorEffect, playerShieldEffect);
     }
   }, [questEncounter, selectedChar, selectedClass, difficulty, state.phase, startBattle, characters, buildSpellInfo]);
 
@@ -225,7 +231,7 @@ export function HexBattle({ characters, questEncounter, playerFeats, playerWeapo
           setPendingSpell(null);
         }
       } else {
-        const enemy = state.units.find(u => u.position.q === hex.q && u.position.r === hex.r && !u.isPlayer && u.currentHp > 0);
+        const enemy = state.units.find(u => u.position.q === hex.q && u.position.r === hex.r && !u.isPlayer && isConscious(u));
         if (enemy) {
           const dist = hexDistance(playerUnit.position, enemy.position);
           if (dist <= (battle.hexRange ?? 1)) {
@@ -262,7 +268,7 @@ export function HexBattle({ characters, questEncounter, playerFeats, playerWeapo
       return new Set([`${playerUnit.position.q},${playerUnit.position.r}`]);
     }
     return new Set(
-      state.units.filter(u => !u.isPlayer && u.currentHp > 0 && hexDistance(playerUnit.position, u.position) <= range)
+      state.units.filter(u => !u.isPlayer && isConscious(u) && hexDistance(playerUnit.position, u.position) <= range)
         .map(u => `${u.position.q},${u.position.r}`)
     );
   }, [pendingSpell, playerUnit, state.units]);
@@ -377,10 +383,23 @@ export function HexBattle({ characters, questEncounter, playerFeats, playerWeapo
     <div className="flex flex-col gap-3">
       {/* Header bar */}
       <div className="flex items-center justify-between px-4 py-2 rounded-lg" style={{ background: "rgba(0,0,0,0.3)", border: "1px solid rgba(201,168,76,0.15)" }}>
-        <button onClick={onExit} className="px-3 py-1 rounded text-xs font-bold uppercase tracking-widest"
-          style={{ background: "rgba(255,255,255,0.05)", color: "rgba(201,168,76,0.5)", border: "1px solid rgba(201,168,76,0.15)" }}>
-          Retreat
-        </button>
+        {isPlayerTurn && state.phase === "playerTurn" ? (
+          <button onClick={() => {
+            // Retreat DC based on enemy motivation: territorial=5, food=12, default=15
+            const enemies = state.units.filter(u => !u.isPlayer && isConscious(u));
+            const motivation = enemies[0]?.motivation;
+            const dc = motivation === "territorial" ? 5 : motivation === "food" ? 12 : 15;
+            const au = state.units.find(u => u.id === state.turnOrder[state.currentTurnIndex]);
+            const dexMod = au ? Math.floor((au.rawAbilities.dex - 10) / 2) : 0;
+            const roll = Math.floor(Math.random() * 20) + 1;
+            attemptRetreat(roll + dexMod, dc);
+          }} className="px-3 py-1 rounded text-xs font-bold uppercase tracking-widest"
+            style={{ background: "rgba(251,191,36,0.1)", color: "rgba(251,191,36,0.6)", border: "1px solid rgba(251,191,36,0.2)" }}>
+            Retreat
+          </button>
+        ) : (
+          <div style={{ width: 70 }} />
+        )}
         <span className="text-sm font-black tracking-widest uppercase" style={{ color: "#f0d070", fontFamily: "'Cinzel Decorative', 'Cinzel', serif" }}>
           {questEncounter ? questEncounter.questName : selectedClass!.emoji} — Round {state.round} — {phaseLabel(state.phase)}
         </span>
@@ -409,7 +428,7 @@ export function HexBattle({ characters, questEncounter, playerFeats, playerWeapo
               const key = `${hex.q},${hex.r}`;
               const isReachable = reachableSet.has(key);
               const isAttackable = attackablePositions.has(key);
-              const unit = state.units.find(u => u.currentHp > 0 && u.position.q === hex.q && u.position.r === hex.r);
+              const unit = state.units.find(u => isAlive(u) && u.position.q === hex.q && u.position.r === hex.r);
               const isActiveUnit = unit && activeUnit && unit.id === activeUnit.id;
 
               const isRangedTarget = isAttackable && activeUnit && hexDistance(activeUnit.position, hex) > 1;
@@ -439,12 +458,13 @@ export function HexBattle({ characters, questEncounter, playerFeats, playerWeapo
             })}
 
             {/* Unit tokens */}
-            {state.units.filter(u => u.currentHp > 0).map(unit => {
+            {state.units.filter(u => isAlive(u)).map(unit => {
               const { x, y } = hexToPixel(unit.position);
               const r = HEX_SIZE * 0.55;
-              const hpPct = unit.currentHp / unit.maxHp;
-              const hpColor = hpPct > 0.5 ? "rgba(74,222,128,0.9)" : hpPct > 0.25 ? "rgba(251,191,36,0.9)" : "rgba(220,38,38,0.9)";
-              const borderColor = unit.isPlayer ? "rgba(96,165,250,0.8)" : "rgba(220,38,38,0.8)";
+              const hpPct = Math.max(0, unit.currentHp) / unit.maxHp;
+              const unconscious = isUnconscious(unit);
+              const hpColor = unconscious ? "rgba(120,80,80,0.9)" : hpPct > 0.5 ? "rgba(74,222,128,0.9)" : hpPct > 0.25 ? "rgba(251,191,36,0.9)" : "rgba(220,38,38,0.9)";
+              const borderColor = unconscious ? "rgba(120,80,80,0.5)" : unit.isPlayer ? "rgba(96,165,250,0.8)" : "rgba(220,38,38,0.8)";
 
               // Resolve image URL: local paths stay as-is, external URLs get proxied
               const imgSrc = unit.imageUrl
@@ -454,7 +474,7 @@ export function HexBattle({ characters, questEncounter, playerFeats, playerWeapo
                 : null;
 
               return (
-                <g key={unit.id} onClick={() => handleHexClick(unit.position)}>
+                <g key={unit.id} onClick={() => handleHexClick(unit.position)} opacity={unconscious ? 0.5 : 1}>
                   {/* Token circle background */}
                   <circle cx={x} cy={y} r={r} fill="rgba(0,0,0,0.6)" stroke={borderColor} strokeWidth={2.5} />
                   {/* Character image or emoji */}
@@ -485,6 +505,12 @@ export function HexBattle({ characters, questEncounter, playerFeats, playerWeapo
                   <text x={x} y={y + r + 13} textAnchor="middle" fontSize={7} fill="rgba(232,213,176,0.6)" fontFamily="'Cinzel', serif">
                     {unit.name.length > 12 ? unit.name.slice(0, 10) + ".." : unit.name}
                   </text>
+                  {/* Unconscious indicator */}
+                  {unconscious && (
+                    <text x={x} y={y + r + 21} textAnchor="middle" fontSize={6} fill="rgba(220,38,38,0.8)" fontWeight="bold">
+                      {unit.stabilized ? "Stable" : `Dying (${unit.currentHp})`}
+                    </text>
+                  )}
                 </g>
               );
             })}
@@ -514,8 +540,8 @@ export function HexBattle({ characters, questEncounter, playerFeats, playerWeapo
               </div>
               {activeUnit.subtypes.length > 0 && (
                 <div className="flex gap-1 mt-2 justify-center">
-                  {activeUnit.subtypes.includes("electric") && <span className="px-1 rounded" style={{ fontSize: "0.5rem", background: "rgba(250,204,21,0.2)", color: "rgba(250,204,21,0.9)", border: "1px solid rgba(250,204,21,0.4)" }}>Lightning +{Math.round(activeUnit.stats.lightningDmg)}</span>}
-                  {activeUnit.subtypes.includes("fire") && <span className="px-1 rounded" style={{ fontSize: "0.5rem", background: "rgba(249,115,22,0.2)", color: "rgba(249,115,22,0.9)", border: "1px solid rgba(249,115,22,0.4)" }}>Fire +{Math.round(activeUnit.stats.fireDmg)}</span>}
+                  {activeUnit.subtypes.includes("electric") && <span className="px-1 rounded" style={{ fontSize: "0.5rem", background: "rgba(250,204,21,0.2)", color: "rgba(250,204,21,0.9)", border: "1px solid rgba(250,204,21,0.4)" }}>Lightning +{activeUnit.stats.lightningDice ? `${activeUnit.stats.lightningDice.n}d${activeUnit.stats.lightningDice.sides}` : Math.round(activeUnit.stats.lightningDmg)}</span>}
+                  {activeUnit.subtypes.includes("fire") && <span className="px-1 rounded" style={{ fontSize: "0.5rem", background: "rgba(249,115,22,0.2)", color: "rgba(249,115,22,0.9)", border: "1px solid rgba(249,115,22,0.4)" }}>Fire +{activeUnit.stats.fireDice ? `${activeUnit.stats.fireDice.n}d${activeUnit.stats.fireDice.sides}` : Math.round(activeUnit.stats.fireDmg)}</span>}
                 </div>
               )}
               {activeUnit.activeEffects.length > 0 && (
@@ -729,6 +755,64 @@ export function HexBattle({ characters, questEncounter, playerFeats, playerWeapo
               <span className="text-2xl font-black tracking-widest uppercase" style={{ color: "rgba(74,222,128,0.9)", fontFamily: "'Cinzel Decorative', 'Cinzel', serif" }}>
                 Victory!
               </span>
+
+              {/* Prisoner binding — unconscious enemies can be tied up */}
+              {(() => {
+                const survivors = state.units.filter(u => !u.isPlayer && isUnconscious(u));
+                if (survivors.length === 0) return null;
+                const BIND_DC = 15;
+                const ropeBonus = playerUseRopeBonus ?? 0;
+                return (
+                  <div className="w-full px-3 py-2 rounded-lg" style={{ background: "rgba(201,168,76,0.08)", border: "1px solid rgba(201,168,76,0.2)" }}>
+                    <div className="text-xs font-bold uppercase tracking-widest mb-1 text-center" style={{ color: "rgba(201,168,76,0.6)", fontSize: "0.5rem" }}>
+                      Unconscious Survivors
+                    </div>
+                    <p className="text-center mb-2" style={{ fontSize: "0.55rem", color: "rgba(232,213,176,0.5)" }}>
+                      Bind prisoners for questioning or turn them in to the authorities. (Use Rope DC {BIND_DC})
+                    </p>
+                    {survivors.map(u => {
+                      const isBound = boundPrisoners.includes(u.id);
+                      const result = bindResults[u.id];
+                      return (
+                        <div key={u.id} className="flex items-center gap-2 py-1" style={{ borderBottom: "1px solid rgba(201,168,76,0.08)" }}>
+                          <span style={{ fontSize: "0.6rem" }}>{u.imageEmoji ?? "\u2694\uFE0F"}</span>
+                          <span className="flex-1 text-xs" style={{ color: "rgba(232,213,176,0.7)" }}>
+                            {u.name} <span style={{ color: "rgba(220,38,38,0.5)" }}>({u.currentHp} HP)</span>
+                          </span>
+                          {isBound ? (
+                            <span className="text-xs font-bold px-2 py-0.5 rounded" style={{ background: "rgba(74,222,128,0.15)", color: "rgba(74,222,128,0.8)", border: "1px solid rgba(74,222,128,0.3)", fontSize: "0.5rem" }}>
+                              Bound
+                            </span>
+                          ) : result && !result.success ? (
+                            <span className="text-xs px-2 py-0.5 rounded" style={{ background: "rgba(220,38,38,0.1)", color: "rgba(220,38,38,0.7)", border: "1px solid rgba(220,38,38,0.2)", fontSize: "0.5rem" }}>
+                              Failed (d20:{result.roll}+{ropeBonus}={result.total} vs DC {BIND_DC})
+                            </span>
+                          ) : (
+                            <button
+                              onClick={() => {
+                                const roll = Math.floor(Math.random() * 20) + 1;
+                                const total = roll + ropeBonus;
+                                const success = total >= BIND_DC;
+                                setBindResults(prev => ({ ...prev, [u.id]: { roll, total, success } }));
+                                if (success) setBoundPrisoners(prev => [...prev, u.id]);
+                              }}
+                              className="text-xs font-bold px-2 py-0.5 rounded uppercase tracking-widest"
+                              style={{ background: "rgba(201,168,76,0.1)", color: "rgba(201,168,76,0.8)", border: "1px solid rgba(201,168,76,0.3)", fontSize: "0.5rem", cursor: "pointer" }}>
+                              Bind ({ropeBonus >= 0 ? "+" : ""}{ropeBonus})
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                    {boundPrisoners.length > 0 && (
+                      <div className="text-center mt-1" style={{ fontSize: "0.5rem", color: "rgba(74,222,128,0.6)" }}>
+                        {boundPrisoners.length} prisoner{boundPrisoners.length > 1 ? "s" : ""} bound
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
               {battleRewards ? (
                 <>
                   <div className="flex flex-col items-center gap-1 text-sm" style={{ color: "rgba(232,213,176,0.9)" }}>
@@ -763,7 +847,8 @@ export function HexBattle({ characters, questEncounter, playerFeats, playerWeapo
                   setCollectingRewards(true);
                   if (onBattleEnd) {
                     const enemyNames = state.units.filter(u => !u.isPlayer).map(u => u.name);
-                    const result = await onBattleEnd("victory", effectiveDifficulty, enemyNames, state.round, playerUnit?.spellSlotsUsed, playerUnit?.currentHp);
+                    const prisonerNames = boundPrisoners.map(pid => state.units.find(u => u.id === pid)?.name).filter(Boolean) as string[];
+                    const result = await onBattleEnd("victory", effectiveDifficulty, enemyNames, state.round, playerUnit?.spellSlotsUsed, playerUnit?.currentHp, prisonerNames);
                     if (result) { setBattleRewards(result); setCollectingRewards(false); return; }
                   }
                   setCollectingRewards(false);
@@ -817,22 +902,46 @@ export function HexBattle({ characters, questEncounter, playerFeats, playerWeapo
             </div>
           )}
 
+          {state.phase === "retreat" && (
+            <div className="flex flex-col items-center gap-3 px-4 py-6 rounded-lg" style={{ background: "rgba(251,191,36,0.1)", border: "1px solid rgba(251,191,36,0.4)" }}>
+              <span className="text-2xl font-black tracking-widest uppercase" style={{ color: "rgba(251,191,36,0.9)", fontFamily: "'Cinzel Decorative', 'Cinzel', serif" }}>
+                Retreated!
+              </span>
+              <p className="text-xs text-center max-w-xs" style={{ color: "rgba(232,213,176,0.7)" }}>
+                Your party disengages and falls back to safety.
+              </p>
+              <button onClick={async () => {
+                if (onBattleEnd) {
+                  const enemyNames = state.units.filter(u => !u.isPlayer).map(u => u.name);
+                  await onBattleEnd("retreat", effectiveDifficulty, enemyNames, state.round, playerUnit?.spellSlotsUsed, playerUnit?.currentHp);
+                }
+                onExit();
+              }} className="px-6 py-2 rounded text-sm font-bold uppercase tracking-widest"
+                style={{ background: "rgba(251,191,36,0.2)", color: "rgba(251,191,36,0.9)", border: "1px solid rgba(251,191,36,0.4)" }}>
+                Continue
+              </button>
+            </div>
+          )}
+
           {/* All units HP summary */}
           <div className="px-3 py-2 rounded-lg" style={{ background: "rgba(0,0,0,0.2)", border: "1px solid rgba(201,168,76,0.1)" }}>
             <div className="text-xs font-bold tracking-widest uppercase mb-1" style={{ color: "rgba(201,168,76,0.5)", fontSize: "0.5rem" }}>Units</div>
-            {state.units.map(u => (
-              <div key={u.id} className="flex items-center gap-2 py-0.5">
-                <span style={{ fontSize: "0.6rem", color: u.isPlayer ? "rgba(96,165,250,0.8)" : "rgba(220,38,38,0.7)" }}>
-                  {u.imageEmoji ?? "\u2694\uFE0F"}
-                </span>
-                <span className="flex-1 text-xs" style={{ color: u.currentHp > 0 ? "rgba(232,213,176,0.6)" : "rgba(232,213,176,0.25)", textDecoration: u.currentHp <= 0 ? "line-through" : undefined }}>
-                  {u.name}
-                </span>
-                <span className="text-xs font-bold" style={{ color: u.currentHp > 0 ? "rgba(251,113,133,0.8)" : "rgba(251,113,133,0.3)" }}>
-                  {Math.round(u.currentHp)}/{Math.round(u.maxHp)}
-                </span>
-              </div>
-            ))}
+            {state.units.map(u => {
+              const status = isDead(u) ? "dead" : isUnconscious(u) ? "unconscious" : "alive";
+              return (
+                <div key={u.id} className="flex items-center gap-2 py-0.5">
+                  <span style={{ fontSize: "0.6rem", color: u.isPlayer ? "rgba(96,165,250,0.8)" : "rgba(220,38,38,0.7)" }}>
+                    {status === "dead" ? "\u2620\uFE0F" : u.imageEmoji ?? "\u2694\uFE0F"}
+                  </span>
+                  <span className="flex-1 text-xs" style={{ color: status === "alive" ? "rgba(232,213,176,0.6)" : "rgba(232,213,176,0.25)", textDecoration: status === "dead" ? "line-through" : undefined }}>
+                    {u.name}{status === "unconscious" ? (u.stabilized ? " (stable)" : " (dying)") : ""}
+                  </span>
+                  <span className="text-xs font-bold" style={{ color: status === "alive" ? "rgba(251,113,133,0.8)" : "rgba(251,113,133,0.3)" }}>
+                    {Math.round(u.currentHp)}/{Math.round(u.maxHp)}
+                  </span>
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>

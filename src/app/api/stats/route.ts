@@ -1,6 +1,8 @@
 import { createPublicClient, http, formatUnits } from "viem";
 import { base, polygon } from "viem/chains";
-import { GAME_NFTS as HARDCODED_NFTS, KNOWN_LP_PAIRS as HARDCODED_LP_PAIRS, V2_PAIR_ABI, ERC1155_ABI, STAT_TOKENS, type GameNft } from "@/lib/contracts";
+import { GAME_NFTS as HARDCODED_NFTS, KNOWN_LP_PAIRS as HARDCODED_LP_PAIRS, V2_PAIR_ABI, ERC1155_ABI, type GameNft } from "@/lib/contracts";
+import { computeD20Stats } from "@/lib/computeD20Stats";
+import type { Boon } from "@/lib/boons";
 import { getSharedNfts, getSharedLpPairs } from "@/lib/supabase";
 import { NextResponse } from "next/server";
 
@@ -122,6 +124,7 @@ export type StatsResponse = {
     chain: string;
     stats: { str: number; dex: number; con: number; int: number; wis: number; cha: number; ac: number; atk: number; speed: number; lightningDmg: number; fireDmg: number };
     subtypes: string[];
+    boons: Boon[];
     tokenAmounts: Array<{ symbol: string; amount: number; stat: string; addr?: string }>;
     usdBacking: number;
   }>;
@@ -215,29 +218,7 @@ export async function computeAllStats(batch?: { index: number; total: number }):
       "0x72e4327f592e9cb09d5730a55d1d68de144af53c": { price: 1, decimals: 10 },
     };
 
-    // Build D20 stat token lookups (combine base + polygon)
-    const strTokens = [...STAT_TOKENS.base.str, ...STAT_TOKENS.polygon.str].map(t => t.toLowerCase());
-    const dexTokens = [...STAT_TOKENS.base.dex, ...STAT_TOKENS.polygon.dex].map(t => t.toLowerCase());
-    const conTokens = [...STAT_TOKENS.base.con, ...STAT_TOKENS.polygon.con].map(t => t.toLowerCase());
-    const intTokens = [...STAT_TOKENS.base.int, ...STAT_TOKENS.polygon.int].map(t => t.toLowerCase());
-    const wisTokens = [...STAT_TOKENS.base.wis, ...STAT_TOKENS.polygon.wis].map(t => t.toLowerCase());
-    const chaTokens = [...STAT_TOKENS.base.cha, ...STAT_TOKENS.polygon.cha].map(t => t.toLowerCase());
-    const btcTokens = [...(STAT_TOKENS.base as any).btc ?? [], ...(STAT_TOKENS.polygon as any).btc ?? []].map((t: string) => t.toLowerCase());
-    const ethTokens = [...(STAT_TOKENS.base as any).eth ?? [], ...(STAT_TOKENS.polygon as any).eth ?? []].map((t: string) => t.toLowerCase());
-    const egpTokens = [...(STAT_TOKENS.base as any).egp ?? [], ...(STAT_TOKENS.polygon as any).egp ?? []].map((t: string) => t.toLowerCase());
-    const dddTokens = [...(STAT_TOKENS.polygon as any).ddd ?? []].map((t: string) => t.toLowerCase());
-    const ogcTokens = [...(STAT_TOKENS.polygon as any).ogc ?? []].map((t: string) => t.toLowerCase());
-    const igsTokens = [...(STAT_TOKENS.polygon as any).igs ?? []].map((t: string) => t.toLowerCase());
-    const btnTokens = [...(STAT_TOKENS.polygon as any).btn ?? []].map((t: string) => t.toLowerCase());
-    const lgpTokens = [...(STAT_TOKENS.polygon as any).lgp ?? []].map((t: string) => t.toLowerCase());
-    const dhgTokens = [...(STAT_TOKENS.polygon as any).dhg ?? []].map((t: string) => t.toLowerCase());
-    const pktTokens = [...(STAT_TOKENS.polygon as any).pkt ?? []].map((t: string) => t.toLowerCase());
-    const atkBonusTokens = [...(STAT_TOKENS.base as any).atkBonus ?? [], ...(STAT_TOKENS.polygon as any).atkBonus ?? []].map((t: string) => t.toLowerCase());
-    const acTokens = [...(STAT_TOKENS.polygon as any).ac ?? []].map((t: string) => t.toLowerCase());
-    const speedTokens = [...(STAT_TOKENS.polygon as any).speed ?? []].map((t: string) => t.toLowerCase());
-    const lightningTokens = [...(STAT_TOKENS.polygon as any).lightning ?? []].map((t: string) => t.toLowerCase());
-    const fireTokens = [...(STAT_TOKENS.polygon as any).fire ?? []].map((t: string) => t.toLowerCase());
-    const stablecoinTokens = [...STAT_TOKENS.base.stablecoin, ...STAT_TOKENS.polygon.stablecoin].map(t => t.toLowerCase());
+    // Stat computation now uses shared computeD20Stats (imported at top)
 
     // Pair static data
     const basePairStaticCalls = KNOWN_LP_PAIRS.base.flatMap((pair) => [
@@ -462,10 +443,9 @@ export async function computeAllStats(batch?: { index: number; total: number }):
         const share = (lpHeld * BigInt(1e18)) / p.totalSupply;
         const amt0 = (p.reserve0 * share) / BigInt(1e18) / supplyDiv;
         const amt1 = (p.reserve1 * share) / BigInt(1e18) / supplyDiv;
-        // Accumulate any recognized D20 stat token
-        const allStatTokens = [...strTokens, ...dexTokens, ...conTokens, ...intTokens, ...wisTokens, ...chaTokens, ...btcTokens, ...ethTokens, ...egpTokens, ...dddTokens, ...ogcTokens, ...igsTokens, ...btnTokens, ...lgpTokens, ...dhgTokens, ...pktTokens, ...acTokens, ...atkBonusTokens, ...speedTokens, ...lightningTokens, ...fireTokens, ...stablecoinTokens];
-        if (allStatTokens.includes(p.token0)) { accum(p.token0, amt0); }
-        if (allStatTokens.includes(p.token1)) { accum(p.token1, amt1); }
+        // Accumulate all recognized tokens
+        accum(p.token0, amt0);
+        accum(p.token1, amt1);
       });
 
       // Polygon LP
@@ -479,154 +459,36 @@ export async function computeAllStats(batch?: { index: number; total: number }):
         const share = (lpHeld * BigInt(1e18)) / p.totalSupply;
         const amt0 = (p.reserve0 * share) / BigInt(1e18) / supplyDiv;
         const amt1 = (p.reserve1 * share) / BigInt(1e18) / supplyDiv;
-        const allStatTokens = [...strTokens, ...dexTokens, ...conTokens, ...intTokens, ...wisTokens, ...chaTokens, ...btcTokens, ...ethTokens, ...egpTokens, ...dddTokens, ...ogcTokens, ...igsTokens, ...btnTokens, ...lgpTokens, ...dhgTokens, ...pktTokens, ...acTokens, ...atkBonusTokens, ...speedTokens, ...lightningTokens, ...fireTokens, ...stablecoinTokens];
-        for (const [token, amt] of [[p.token0, amt0], [p.token1, amt1]] as [string, bigint][]) {
-          if (allStatTokens.includes(token)) accum(token, amt);
-        }
+        accum(p.token0, amt0);
+        accum(p.token1, amt1);
       });
 
-      // Accumulate raw USD value per stat, then apply scaling curve
-      let strUsd = 0, dexUsd = 0, conUsd = 0, intUsd = 0, wisUsd = 0, chaUsd = 0, acUsd = 0, atkUsd = 0, speedUsd = 0, lightningUsd = 0, fireUsd = 0;
-
+      // Build tokenAmounts from all accumulated tokens
       const tokenAmounts: { symbol: string; amount: number; stat: string; addr?: string }[] = [];
-
       for (const [addr, amount] of tokenMap.entries()) {
         if (amount === 0n) continue;
         const decimals = tokenPriceConfig[addr]?.decimals ?? 18;
         const rawAmount = parseFloat(formatUnits(amount, decimals));
-        const usdPrice = tokenUsdPrices[addr] ?? 0;
-        const usdValue = rawAmount * usdPrice;
-        let stat: string;
-
-        if (btcTokens.includes(addr)) {
-          // BTC → STR, DEX, CON
-          strUsd += usdValue; dexUsd += usdValue; conUsd += usdValue;
-          stat = "btc";
-        } else if (ethTokens.includes(addr)) {
-          // ETH → INT, WIS, CHA
-          intUsd += usdValue; wisUsd += usdValue; chaUsd += usdValue;
-          stat = "eth";
-        } else if (dddTokens.includes(addr)) {
-          // DDD → STR, INT, CHA
-          strUsd += usdValue; intUsd += usdValue; chaUsd += usdValue;
-          stat = "ddd";
-        } else if (egpTokens.includes(addr)) {
-          // EGP → DEX, INT, WIS
-          dexUsd += usdValue; intUsd += usdValue; wisUsd += usdValue;
-          stat = "egp";
-        } else if (ogcTokens.includes(addr)) {
-          // OGC → STR, DEX, CON
-          strUsd += usdValue; dexUsd += usdValue; conUsd += usdValue;
-          stat = "ogc";
-        } else if (igsTokens.includes(addr)) {
-          // IGS → CON, WIS, CHA
-          conUsd += usdValue; wisUsd += usdValue; chaUsd += usdValue;
-          stat = "igs";
-        } else if (btnTokens.includes(addr)) {
-          // BTN → STR, CON, WIS
-          strUsd += usdValue; conUsd += usdValue; wisUsd += usdValue;
-          stat = "btn";
-        } else if (lgpTokens.includes(addr)) {
-          // LGP → DEX, INT, CHA
-          dexUsd += usdValue; intUsd += usdValue; chaUsd += usdValue;
-          stat = "lgp";
-        } else if (dhgTokens.includes(addr)) {
-          // DHG → STR, DEX, WIS
-          strUsd += usdValue; dexUsd += usdValue; wisUsd += usdValue;
-          stat = "dhg";
-        } else if (pktTokens.includes(addr)) {
-          // PKT → CON, INT, CHA
-          conUsd += usdValue; intUsd += usdValue; chaUsd += usdValue;
-          stat = "pkt";
-        } else if (atkBonusTokens.includes(addr)) {
-          // CHAR & CCC → atk bonus
-          stat = "atk"; atkUsd += usdValue;
-        } else if (stablecoinTokens.includes(addr)) {
-          // Stablecoins → 0.5x to all 6
-          const each = usdValue * 0.5;
-          strUsd += each; dexUsd += each; conUsd += each; intUsd += each; wisUsd += each; chaUsd += each;
-          stat = "all";
-        } else if (acTokens.includes(addr)) {
-          stat = "ac"; acUsd += usdValue;
-        } else if (speedTokens.includes(addr)) {
-          stat = "speed"; speedUsd += usdValue;
-        } else if (lightningTokens.includes(addr)) {
-          stat = "lightning"; lightningUsd += usdValue;
-        } else if (fireTokens.includes(addr)) {
-          stat = "fire"; fireUsd += usdValue;
-        } else if (strTokens.includes(addr) || dexTokens.includes(addr) || conTokens.includes(addr) || intTokens.includes(addr) || wisTokens.includes(addr) || chaTokens.includes(addr)) {
-          // Single-stat tokens — a token can appear in multiple lists (e.g. REGEN → con+dex+wis)
-          const hits: string[] = [];
-          if (strTokens.includes(addr)) { strUsd += usdValue; hits.push("str"); }
-          if (dexTokens.includes(addr)) { dexUsd += usdValue; hits.push("dex"); }
-          if (conTokens.includes(addr)) { conUsd += usdValue; hits.push("con"); }
-          if (intTokens.includes(addr)) { intUsd += usdValue; hits.push("int"); }
-          if (wisTokens.includes(addr)) { wisUsd += usdValue; hits.push("wis"); }
-          if (chaTokens.includes(addr)) { chaUsd += usdValue; hits.push("cha"); }
-          stat = hits.join("+");
-        } else {
-          // Unrecognized tokens → CON (general hardiness)
-          stat = "con"; conUsd += usdValue;
-        }
-
-        tokenAmounts.push({ symbol: TOKEN_SYMBOLS[addr] ?? addr.slice(0, 8), amount: rawAmount, stat, addr });
+        tokenAmounts.push({ symbol: TOKEN_SYMBOLS[addr] ?? addr.slice(0, 8), amount: rawAmount, stat: "", addr });
       }
 
-      // Scaling curve: first 10 pts = $1/pt, next 10 = $10/pt, next 10 = $100/pt, etc.
-      function usdToPoints(usd: number): number {
-        let pts = 0;
-        let remaining = usd;
-        let bracket = 0;
-        while (remaining > 0) {
-          const costPerPoint = Math.pow(10, bracket);
-          const bracketCost = 10 * costPerPoint; // $10, $100, $1000, ...
-          if (remaining >= bracketCost) {
-            pts += 10;
-            remaining -= bracketCost;
-          } else {
-            pts += remaining / costPerPoint;
-            remaining = 0;
-          }
-          bracket++;
-        }
-        return pts;
-      }
-
-      const str = Math.max(1, usdToPoints(strUsd));
-      const dex = Math.max(1, usdToPoints(dexUsd));
-      const con = Math.max(1, usdToPoints(conUsd));
-      const int_ = Math.max(1, usdToPoints(intUsd));
-      const wis = Math.max(1, usdToPoints(wisUsd));
-      const cha = Math.max(1, usdToPoints(chaUsd));
-      const ac = 10 + usdToPoints(acUsd); // base AC 10 + bonus from TB01/LTK
-      const atk = usdToPoints(atkUsd); // atk bonus from CHAR/CCC
-      const speed = 30 + Math.floor(speedUsd / 20) * 5; // base 30ft + 5ft per $20 of PR24/PR25
-      const lightningDmg = usdToPoints(lightningUsd);
-      const fireDmg = usdToPoints(fireUsd);
+      // Compute stats, subtypes, and boons via shared function
+      const { stats, subtypes, boons } = computeD20Stats(tokenAmounts, tokenUsdPrices);
 
       // USD backing total
       let totalUsdBacking = 0;
-      for (const [addr, amount] of tokenMap.entries()) {
-        if (amount === 0n) continue;
-        const decimals = tokenPriceConfig[addr]?.decimals ?? 18;
-        const rawAmount = parseFloat(formatUnits(amount, decimals));
-        const usdPrice = tokenUsdPrices[addr] ?? 0;
-        if (usdPrice > 0) totalUsdBacking += rawAmount * usdPrice;
-      }
-
-      // Elemental subtype: 10%+ of portfolio in elemental tokens
-      const subtypes: string[] = [];
-      if (totalUsdBacking > 0) {
-        if (lightningUsd / totalUsdBacking >= 0.10) subtypes.push("electric");
-        if (fireUsd / totalUsdBacking >= 0.10) subtypes.push("fire");
+      for (const ta of tokenAmounts) {
+        const usdPrice = tokenUsdPrices[ta.addr ?? ""] ?? 0;
+        if (usdPrice > 0) totalUsdBacking += ta.amount * usdPrice;
       }
 
       return {
         name: nft.name,
         contractAddress: nft.contractAddress,
         chain: nft.chain,
-        stats: { str, dex, con, int: int_, wis, cha, ac, atk, speed, lightningDmg, fireDmg },
+        stats,
         subtypes,
+        boons,
         tokenAmounts: tokenAmounts.sort((a, b) => b.amount - a.amount),
         usdBacking: totalUsdBacking,
       };
