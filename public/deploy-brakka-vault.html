@@ -1,0 +1,799 @@
+<!DOCTYPE html><html lang="en"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Brakka Greasefang Vault — MfT/BURGERS</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.1/ethers.umd.min.js"></script>
+<script src="vault-contracts.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #08060a; color: #ddd; font-family: 'Segoe UI', system-ui, sans-serif; min-height: 100vh; }
+
+  /* ── NFT background ── */
+  #nftBg {
+    position: fixed; inset: 0; z-index: -2;
+    background-size: contain; background-position: center; background-repeat: no-repeat;
+    opacity: 0; transition: opacity 1.5s ease;
+  }
+  #nftBg.loaded { opacity: 0.7; }
+
+  .wrap { max-width: 460px; margin: 0; padding: 24px 24px 60px 48px; }
+
+  /* ── header ── */
+  .hdr { text-align: left; padding: 24px 0 20px; }
+  .hdr h1 { font-size: 22px; font-weight: 700; color: #f0d070; letter-spacing: 0.5px; }
+  .hdr p { color: #998; font-size: 13px; margin-top: 4px; }
+
+  /* ── connect button ── */
+  .connect-area { text-align: left; margin-bottom: 8px; }
+  .btn-connect {
+    background: linear-gradient(135deg, #c9a84c, #a8872e); color: #0a0608;
+    border: none; padding: 10px 32px; font-size: 14px; font-weight: 700;
+    border-radius: 20px; cursor: pointer; transition: all 0.2s;
+    box-shadow: 0 2px 12px #c9a84c33;
+  }
+  .btn-connect:hover { transform: translateY(-1px); box-shadow: 0 4px 20px #c9a84c55; }
+  .btn-connect:disabled { opacity: 0.6; cursor: default; transform: none; }
+  .btn-connect.connected { background: #16a34a; box-shadow: 0 2px 12px #16a34a33; }
+  #walletStatus { color: #666; font-size: 11px; margin-top: 6px; min-height: 18px; }
+
+  /* ── metal cards ── */
+  .card {
+    background: linear-gradient(160deg, #1a1820ee 0%, #12111aee 100%);
+    border: 1px solid #555544; border-radius: 6px;
+    padding: 16px 18px; margin-top: 14px;
+    box-shadow:
+      inset 0 1px 0 #ffffff12,
+      inset 0 -1px 0 #00000044,
+      0 2px 8px #00000066;
+    position: relative;
+  }
+  /* rivets */
+  .card::before, .card::after {
+    content: ''; position: absolute; width: 6px; height: 6px; border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, #888 0%, #444 60%, #222 100%);
+    box-shadow: inset 0 1px 1px #aaa8, 0 1px 2px #0008;
+  }
+  .card::before { top: 8px; left: 8px; }
+  .card::after { top: 8px; right: 8px; }
+
+  .card-title {
+    font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 1.5px;
+    margin-bottom: 10px; display: flex; align-items: center; gap: 8px;
+    color: #aaa;
+  }
+  .card-title .dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
+
+  /* ── nft badges ── */
+  .nft-badges { display: flex; flex-wrap: wrap; gap: 6px; }
+  .nft-badge {
+    background: linear-gradient(135deg, #2a2520, #1a1815);
+    border: 1px solid #665; border-radius: 4px;
+    padding: 3px 10px; font-family: monospace; font-size: 12px; color: #f0d070;
+    box-shadow: inset 0 1px 0 #ffffff0a, 0 1px 2px #0005;
+  }
+  .nft-none { color: #f97316; font-size: 12px; }
+
+  /* ── form rows ── */
+  .form-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .form-row label { width: 60px; text-align: right; color: #999; font-size: 12px; flex-shrink: 0; text-transform: uppercase; letter-spacing: 0.5px; }
+  .form-row select, .form-row input {
+    flex: 1; background: #0a0a0f; color: #eee;
+    border: 1px solid #555544; border-top-color: #333; border-bottom-color: #777766;
+    padding: 9px 10px; border-radius: 4px; font-size: 13px; font-family: monospace;
+    outline: none; transition: border 0.2s;
+    box-shadow: inset 0 2px 4px #00000044, 0 1px 0 #ffffff08;
+  }
+  .form-row select:focus, .form-row input:focus { border-color: #c9a84c88; }
+  .form-row .bal { color: #777; font-size: 10px; white-space: nowrap; margin-left: 2px; }
+  .btn-max {
+    background: linear-gradient(135deg, #2a2520, #1a1815);
+    color: #ef4444; border: 1px solid #555544;
+    padding: 7px 8px; border-radius: 4px; cursor: pointer; font-size: 10px; font-weight: 600;
+    box-shadow: inset 0 1px 0 #ffffff0a, 0 1px 2px #0005;
+  }
+  .btn-max:hover { border-color: #ef444466; }
+
+  /* ── action buttons ── */
+  .action-area { text-align: center; margin-top: 14px; }
+  .btn-action {
+    border: 1px solid #555544; padding: 10px 40px; font-size: 14px; font-weight: 700;
+    border-radius: 4px; cursor: pointer; transition: all 0.2s;
+    letter-spacing: 0.5px; text-transform: uppercase;
+    box-shadow: inset 0 1px 0 #ffffff15, 0 2px 6px #00000055;
+  }
+  .btn-action:hover { transform: translateY(-1px); }
+  .btn-action:disabled { opacity: 0.5; cursor: default; transform: none; }
+  .btn-up {
+    background: linear-gradient(180deg, #2a5a35, #1a3a22); color: #4ade80;
+    border-color: #4ade8044;
+  }
+  .btn-down {
+    background: linear-gradient(180deg, #5a2a2a, #3a1a1a); color: #ef4444;
+    border-color: #ef444444;
+  }
+  .btn-deploy {
+    background: linear-gradient(180deg, #3a2a5a, #2a1a3a); color: #a78bfa;
+    border-color: #8b5cf644;
+  }
+  .status { text-align: center; color: #888; font-size: 12px; margin-top: 8px; min-height: 18px; }
+  .status.ok { color: #4ade80; font-weight: 600; }
+  .status.err { color: #ef4444; }
+
+  /* ── stats grid ── */
+  .stats-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; text-align: center; }
+  .stat-box {
+    background: #0a0a0f; border: 1px solid #444433; border-radius: 4px; padding: 10px 6px;
+    box-shadow: inset 0 2px 4px #00000044, 0 1px 0 #ffffff08;
+  }
+  .stat-label { font-size: 9px; text-transform: uppercase; letter-spacing: 0.8px; color: #777; margin-bottom: 3px; }
+  .stat-val { font-size: 15px; font-weight: 700; font-family: monospace; }
+  .stat-val.green { color: #4ade80; }
+  .stat-val.purple { color: #a78bfa; }
+  .stat-val.orange { color: #fb923c; }
+
+  /* ── breakdown table ── */
+  .breakdown-table { width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 12px; }
+  .breakdown-table th { color: #888; font-weight: 500; text-align: center; padding: 5px; border-bottom: 1px solid #444433; }
+  .breakdown-table th:first-child { text-align: left; }
+  .breakdown-table td { padding: 6px 5px; text-align: center; border-bottom: 1px solid #333322; }
+  .breakdown-table td:first-child { text-align: left; color: #f0d070; font-family: monospace; }
+  .breakdown-table .g { color: #4ade80; }
+  .breakdown-table .o { color: #fb923c; }
+  .breakdown-table .y { color: #f0d070; }
+
+  /* ── route diagram ── */
+  .route { display: flex; align-items: center; justify-content: center; gap: 4px; padding: 8px 0 4px; flex-wrap: wrap; }
+  .route span { font-size: 10px; padding: 2px 6px; border-radius: 3px; font-weight: 600; }
+  .route .tok { background: #ffffff08; color: #ccc; border: 1px solid #333322; }
+  .route .arr { color: #555; font-size: 12px; background: none; padding: 0; border: none; }
+  .route .v4 { background: #8b5cf615; color: #a78bfa; font-size: 8px; border: 1px solid #8b5cf622; }
+  .route .v2 { background: #f9731615; color: #fb923c; font-size: 8px; border: 1px solid #f9731622; }
+
+  /* ── footer ── */
+  .footer { margin-top: 24px; padding-top: 12px; border-top: 1px solid #333322; }
+  .footer a { color: #666; font-size: 10px; text-decoration: none; }
+  .footer a:hover { color: #c9a84c; }
+</style>
+</head>
+<body>
+<div id="nftBg"></div>
+<div class="wrap">
+
+  <div class="hdr">
+    <h1>Brakka Greasefang Vault</h1>
+    <p>Deposit WETH &middot; Earn MfT/BURGERS LP &middot; Power your NFT</p>
+  </div>
+
+  <div class="connect-area">
+    <button onclick="connectAndLoad()" id="btnConnect" class="btn-connect">Connect Wallet</button>
+  </div>
+  <div id="walletStatus">Connect wallet to begin</div>
+
+  <div id="mainSection" style="display:none;">
+
+    <!-- NFTs -->
+    <div class="card">
+      <div class="card-title"><span class="dot" style="background:#f0d070;"></span> Your NFTs</div>
+      <div id="nftList" class="nft-badges"><span style="color:#666;">Scanning...</span></div>
+    </div>
+
+    <!-- Power Up -->
+    <div id="powerUpSection" style="display:none;">
+      <div class="card">
+        <div class="card-title"><span class="dot" style="background:#22c55e;"></span> Power Up</div>
+        <div class="route">
+          <span class="tok">WETH</span><span class="arr">&rarr;</span>
+          <span class="v4">V4</span><span class="arr">&rarr;</span>
+          <span class="tok">MfT</span><span class="arr">&rarr;</span>
+          <span class="v2">V2</span><span class="arr">&rarr;</span>
+          <span class="tok">BURGERS+MfT</span><span class="arr">&rarr;</span>
+          <span class="tok">LP</span><span class="arr">&rarr;</span>
+          <span class="tok" style="color:#f0d070;">Vault</span>
+        </div>
+        <div class="form-row">
+          <label>Token</label>
+          <select id="puTokenId"></select>
+        </div>
+        <div class="form-row">
+          <label>WETH</label>
+          <input id="puAmount" value="0.0005">
+          <span id="wethBalance" class="bal">--</span>
+        </div>
+        <div class="action-area">
+          <button onclick="doPowerUp()" id="btnPowerUp" class="btn-action btn-up">Power Up</button>
+        </div>
+        <div id="puStatus" class="status"></div>
+      </div>
+    </div>
+
+    <!-- Power Down -->
+    <div id="powerDownSection" style="display:none;">
+      <div class="card">
+        <div class="card-title"><span class="dot" style="background:#ef4444;"></span> Power Down</div>
+        <div class="route">
+          <span class="tok" style="color:#f0d070;">Vault</span><span class="arr">&rarr;</span>
+          <span class="tok">LP</span><span class="arr">&rarr;</span>
+          <span class="tok">BURGERS+MfT</span><span class="arr">&rarr;</span>
+          <span class="v2">V2</span><span class="arr">&rarr;</span>
+          <span class="tok">MfT</span><span class="arr">&rarr;</span>
+          <span class="v4">V4</span><span class="arr">&rarr;</span>
+          <span class="tok">WETH</span>
+        </div>
+        <div class="form-row">
+          <label>Token</label>
+          <select id="pdTokenId" onchange="updatePDStake()"></select>
+        </div>
+        <div class="form-row">
+          <label>LP</label>
+          <input id="pdAmount" placeholder="0.0">
+          <button onclick="maxPD()" class="btn-max">MAX</button>
+        </div>
+        <div style="text-align:right;padding-right:4px;">
+          <span id="pdStake" class="bal">Stake: --</span>
+        </div>
+        <div class="action-area">
+          <button onclick="doPowerDown()" id="btnPowerDown" class="btn-action btn-down">Power Down</button>
+        </div>
+        <div id="pdStatus" class="status"></div>
+      </div>
+    </div>
+
+    <!-- Stats -->
+    <div id="statsSection" style="display:none;">
+      <div class="card">
+        <div class="card-title"><span class="dot" style="background:#c9a84c;"></span> Your Position</div>
+        <div class="stats-grid">
+          <div class="stat-box"><div class="stat-label">WETH In</div><div id="statWethIn" class="stat-val green">-</div></div>
+          <div class="stat-box"><div class="stat-label">~ETH Value</div><div id="statEthValue" class="stat-val purple">-</div></div>
+          <div class="stat-box"><div class="stat-label">P/L</div><div id="statPL" class="stat-val orange">-</div></div>
+        </div>
+        <div id="tokenBreakdown"></div>
+      </div>
+      <div class="card">
+        <div class="card-title"><span class="dot" style="background:#888;"></span> Vault Totals</div>
+        <div class="stats-grid">
+          <div class="stat-box"><div class="stat-label">Total Staked</div><div id="statTotalStaked" class="stat-val green">-</div></div>
+          <div class="stat-box"><div class="stat-label">Community</div><div id="statCommunity" class="stat-val purple">-</div></div>
+          <div class="stat-box"><div class="stat-label">Locked</div><div id="statLocked" class="stat-val orange">-</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Admin Deploy -->
+    <div id="adminSection" style="display:none;">
+      <div class="card" style="border-color: #8b5cf622;">
+        <div class="card-title"><span class="dot" style="background:#8b5cf6;"></span> First-Time Setup</div>
+        <p style="color:#888;font-size:12px;margin-bottom:12px;">Deploy the vault contract for this NFT collection (owner only, one time).</p>
+        <div class="action-area">
+          <button onclick="adminDeployVault()" id="btnAdminVault" class="btn-action btn-deploy">Deploy Vault</button>
+        </div>
+        <div id="adminStatus" class="status"></div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="footer">
+    <a href="https://basescan.org/address/" id="vaultLink" style="display:none;">View vault on BaseScan</a>
+  </div>
+
+</div>
+
+<script>
+// ╔══════════════════════════════════════════════════════════════════════╗
+// ║  VAULT CONFIG — change these lines to create a vault for any NFT   ║
+// ╚══════════════════════════════════════════════════════════════════════╝
+var VAULT_NAME  = "Brakka Greasefang";        // Display name
+var NFT_ADDR    = "0x4ada15ea83765c25ABA9aFce1C1d1b15b27C7d70";  // ERC1155 NFT
+var FEE_BPS     = 100;                       // 1% fee (50 community / 50 locked)
+var STORAGE_KEY = "brakka_vault_addr";       // localStorage key for deployed vault
+
+// ── Shared Base addresses (same for all MfT/BURGERS vaults) ──
+var LP_PAIR     = "0xa2A61fD7816951A0bCf8C67eA8f153C1AB5De288";
+var WETH_ADDR   = "0x4200000000000000000000000000000000000006";
+var MFT_ADDR    = "0x8FB87d13B40B1A67B22ED1a17e2835fe7e3a9bA3";
+var BURGERS     = "0x06A05043eb2C1691b19c2C13219dB9212269dDc5";
+var V4_SWAPPER  = "0xD2ea238E82637Ba3052600eDCc4109822644Fcb0";
+var V2_SWAPPER  = "0xa9ca96a4dcfb3898d028008489f689b20918b842";
+var LP_MANAGER  = "0xfe64b7366194cfac02fbe1478b67665bcb2f3117";
+var FACTORY     = "0x1db674DB0F83578a9AaD7BE30B59F61c8C9b82D0";
+// ═══════════════════════════════════════════════════════════════════════
+
+var ERC20_ABI = [
+  "function approve(address,uint256) returns (bool)",
+  "function balanceOf(address) view returns (uint256)",
+  "function allowance(address,address) view returns (uint256)",
+  "function totalSupply() view returns (uint256)"
+];
+var ERC1155_ABI = [
+  "function balanceOfBatch(address[],uint256[]) view returns (uint256[])",
+  "function uri(uint256) view returns (string)"
+];
+var PAIR_ABI = [
+  "function getReserves() view returns (uint112,uint112,uint32)",
+  "function token0() view returns (address)",
+  "function totalSupply() view returns (uint256)"
+];
+var V2R_ABI = [
+  "function getAmountsOut(uint256 amountIn, address[] path) view returns (uint256[])"
+];
+var V4S_ABI = V4Swapper_ABI;
+var V2S_ABI = V2Swapper_ABI;
+var LPM_ABI = LPManager_ABI;
+var VAULT_ABI = [
+  "function deposit(uint256,uint256)","function withdraw(uint256,uint256)",
+  "function userStake(uint256,address) view returns (uint256)",
+  "function tokenStake(uint256) view returns (uint256)",
+  "function lockedStake(uint256) view returns (uint256)",
+  "function totalBacking(uint256) view returns (uint256)",
+  "function communityPool() view returns (uint256)",
+  "function totalLocked() view returns (uint256)",
+  "function totalStaked() view returns (uint256)",
+  "function NFT() view returns (address)"
+];
+
+function saveVault(a) { localStorage.setItem(STORAGE_KEY, a); }
+function loadVault() { return localStorage.getItem(STORAGE_KEY) || ""; }
+
+var V2_ROUTER = "0x4752ba5DBc23f44D87826276BF6Fd6b1C372aD24";
+
+var signer, userAddr;
+var vaultAddr, vaultContract;
+var wethC, mftC, burgersC, lpC, nftC, v4C, v2C, lpmC, pairC, v2rC;
+var userTokenIds = [];
+
+// ── WETH deposit tracking (localStorage) ──
+var DEPOSIT_KEY;
+function loadDeposits() {
+  try { return JSON.parse(localStorage.getItem(DEPOSIT_KEY) || "{}"); } catch(e) { return {}; }
+}
+function saveDeposits(d) { localStorage.setItem(DEPOSIT_KEY, JSON.stringify(d)); }
+function addDeposit(tid, wethAmt) {
+  var d = loadDeposits();
+  var prev = parseFloat(d[tid] || 0);
+  var added = parseFloat(wethAmt);
+  d[tid] = (prev + added).toString();
+  saveDeposits(d);
+  console.log("Deposit tracked: #" + tid + " +" + added.toFixed(6) + " WETH (total: " + d[tid] + ")");
+}
+function subDeposit(tid, fraction) {
+  // fraction = LP withdrawn / total LP staked (0-1)
+  var d = loadDeposits();
+  var cur = parseFloat(d[tid] || 0);
+  d[tid] = Math.max(0, cur * (1 - fraction)).toString();
+  saveDeposits(d);
+}
+function getDeposit(tid) { return parseFloat(loadDeposits()[tid] || 0); }
+
+// ── LP → approximate WETH value ──
+var lpToWethRate = 0; // cached rate: 1 LP ≈ X WETH
+async function refreshLpRate() {
+  try {
+    var [r0, r1] = await pairC.getReserves();
+    var t0 = await pairC.token0();
+    var supply = await lpC.totalSupply();
+    // LP pair has BURGERS and MfT. Figure out which is which.
+    var isBurgersT0 = t0.toLowerCase() === BURGERS.toLowerCase();
+    var resBurgers = isBurgersT0 ? r0 : r1;
+    var resMft = isBurgersT0 ? r1 : r0;
+    // Total MfT value of 1 LP token = proportional MfT + convert proportional BURGERS → MfT
+    // Use V2 Router getAmountsOut for BURGERS → MfT
+    var oneLp = ethers.parseEther("1");
+    var mftPer = (oneLp * resMft) / supply;
+    var burgersPer = (oneLp * resBurgers) / supply;
+    // Convert burgers portion to MfT via V2 quote
+    var totalMft = mftPer;
+    if (burgersPer > 0n) {
+      try {
+        var amts = await v2rC.getAmountsOut(burgersPer, [BURGERS, MFT_ADDR]);
+        totalMft += amts[1];
+      } catch(e) { totalMft += mftPer; } // fallback: assume ~equal
+    }
+    // Convert total MfT to WETH — try V2 path first, then V4 quote
+    if (totalMft > 0n) {
+      try {
+        var wAmts = await v2rC.getAmountsOut(totalMft, [MFT_ADDR, WETH_ADDR]);
+        lpToWethRate = parseFloat(ethers.formatEther(wAmts[1]));
+      } catch(e) {
+        // No V2 MfT/WETH pool — try BURGERS as intermediary
+        try {
+          var wAmts2 = await v2rC.getAmountsOut(totalMft, [MFT_ADDR, BURGERS, WETH_ADDR]);
+          lpToWethRate = parseFloat(ethers.formatEther(wAmts2[2]));
+        } catch(e2) { lpToWethRate = 0; }
+      }
+    }
+    console.log("LP→WETH rate:", lpToWethRate);
+  } catch(e) { console.warn("LP rate calc failed:", e.message); }
+}
+function lpToWeth(lpWei) {
+  if (lpToWethRate <= 0) return 0;
+  return parseFloat(ethers.formatEther(lpWei)) * lpToWethRate;
+}
+
+// ── Connect ──
+async function connectAndLoad() {
+  var btn = document.getElementById("btnConnect");
+  btn.disabled = true; btn.innerText = "Connecting...";
+  try {
+    if (!window.ethereum) { alert("No wallet detected. Install MetaMask or use a Web3 browser."); btn.disabled = false; btn.innerText = "Connect Wallet"; return; }
+    await window.ethereum.request({ method: "eth_requestAccounts" });
+    try {
+      await window.ethereum.request({ method: "wallet_switchEthereumChain", params: [{ chainId: "0x2105" }] });
+    } catch(switchErr) {
+      if (switchErr.code === 4902) {
+        await window.ethereum.request({ method: "wallet_addEthereumChain", params: [{
+          chainId: "0x2105", chainName: "Base",
+          nativeCurrency: { name: "ETH", symbol: "ETH", decimals: 18 },
+          rpcUrls: ["https://mainnet.base.org"],
+          blockExplorerUrls: ["https://basescan.org"]
+        }] });
+      } else { throw new Error("Must switch to Base network."); }
+    }
+    var chainId = await window.ethereum.request({ method: "eth_chainId" });
+    if (chainId !== "0x2105") { throw new Error("Wrong network. Please switch to Base."); }
+
+    var p = new ethers.BrowserProvider(window.ethereum);
+    signer = await p.getSigner();
+    userAddr = await signer.getAddress();
+    btn.innerText = userAddr.slice(0,6) + "..." + userAddr.slice(-4);
+    btn.classList.add("connected");
+    document.getElementById("walletStatus").innerHTML = '<span style="color:#4ade80;">Base</span> &middot; ' + userAddr;
+
+    wethC = new ethers.Contract(WETH_ADDR, ERC20_ABI, signer);
+    mftC = new ethers.Contract(MFT_ADDR, ERC20_ABI, signer);
+    burgersC = new ethers.Contract(BURGERS, ERC20_ABI, signer);
+    lpC = new ethers.Contract(LP_PAIR, ERC20_ABI, signer);
+    nftC = new ethers.Contract(NFT_ADDR, ERC1155_ABI, signer);
+    v4C = new ethers.Contract(V4_SWAPPER, V4S_ABI, signer);
+    v2C = new ethers.Contract(V2_SWAPPER, V2S_ABI, signer);
+    lpmC = new ethers.Contract(LP_MANAGER, LPM_ABI, signer);
+    pairC = new ethers.Contract(LP_PAIR, PAIR_ABI, signer);
+    v2rC = new ethers.Contract(V2_ROUTER, V2R_ABI, signer);
+    DEPOSIT_KEY = STORAGE_KEY + "_deposits";
+
+    document.getElementById("mainSection").style.display = "block";
+    await scanNFTs();
+    loadNftBackground();
+    await refreshWETH();
+    await findVault();
+  } catch(e) {
+    btn.disabled = false; btn.innerText = "Connect Wallet"; btn.classList.remove("connected");
+    document.getElementById("walletStatus").innerHTML = '<span style="color:#ef4444;">'+e.message+'</span>';
+  }
+}
+
+// ── Find vault ──
+async function findVault() {
+  var candidates = [];
+  var s1 = localStorage.getItem(STORAGE_KEY);
+  if (s1) candidates.push(s1);
+  try {
+    var s2 = JSON.parse(localStorage.getItem(STORAGE_KEY + "s") || "{}");
+    if (s2.vault) candidates.push(s2.vault);
+  } catch(e) {}
+  try {
+    var fc = new ethers.Contract(FACTORY, ["function vaultFor(address,address) view returns (address)"], signer);
+    var fv = await fc.vaultFor(NFT_ADDR, LP_PAIR);
+    if (fv && fv !== ethers.ZeroAddress) candidates.push(fv);
+  } catch(e) {}
+  for (var i = 0; i < candidates.length; i++) {
+    try {
+      var vc = new ethers.Contract(candidates[i], VAULT_ABI, signer);
+      var n = await vc.NFT();
+      if (n.toLowerCase() === NFT_ADDR.toLowerCase()) {
+        vaultAddr = candidates[i]; vaultContract = vc; saveVault(vaultAddr);
+        var vl = document.getElementById("vaultLink");
+        vl.href = "https://basescan.org/address/" + vaultAddr; vl.style.display = "inline";
+        activateUI(); return;
+      }
+    } catch(e) {}
+  }
+  document.getElementById("adminSection").style.display = "block";
+}
+
+async function activateUI() {
+  document.getElementById("adminSection").style.display = "none";
+  document.getElementById("powerUpSection").style.display = "block";
+  document.getElementById("powerDownSection").style.display = "block";
+  document.getElementById("statsSection").style.display = "block";
+  // Pre-approve everything at connect time so power up/down is frictionless
+  var ss = document.getElementById("puStatus");
+  await ensureAllApprovals(ss);
+  ss.innerText = "";
+  refreshAll();
+}
+
+// ── Admin deploy ──
+async function adminDeployVault() {
+  var btn = document.getElementById("btnAdminVault"); var ss = document.getElementById("adminStatus");
+  btn.disabled = true; btn.innerText = "Deploying...";
+  try {
+    ss.innerText = "Deploying PowerVault...";
+    var f = new ethers.ContractFactory(PowerVault_ABI, PowerVault_BIN, signer);
+    var c = await f.deploy(LP_PAIR, NFT_ADDR, NFT_ADDR, FEE_BPS);
+    ss.innerText = "Tx sent, waiting..."; await c.waitForDeployment();
+    vaultAddr = await c.getAddress();
+    vaultContract = new ethers.Contract(vaultAddr, VAULT_ABI, signer);
+    saveVault(vaultAddr);
+    btn.innerText = "Deployed!"; btn.disabled = true;
+    ss.innerHTML = '<span class="ok">Vault: ' + vaultAddr.slice(0,10) + '...</span>';
+    var vl = document.getElementById("vaultLink");
+    vl.href = "https://basescan.org/address/" + vaultAddr; vl.style.display = "inline";
+    activateUI();
+  } catch(e) { btn.disabled = false; btn.innerText = "Deploy Vault"; ss.innerHTML = '<span class="err">'+e.message+'</span>'; }
+}
+
+// ── NFT scan ──
+async function scanNFTs() {
+  var list = document.getElementById("nftList");
+  list.innerHTML = '<span style="color:#666;">Scanning...</span>';
+  userTokenIds = [];
+  try {
+    for (var batch = 0; batch < 2; batch++) {
+      var ids = [], addrs = [], start = batch * 50 + 1;
+      for (var i = start; i < start + 50; i++) { ids.push(i); addrs.push(userAddr); }
+      var bals = await nftC.balanceOfBatch(addrs, ids);
+      for (var i = 0; i < bals.length; i++) { if (bals[i] > 0n) userTokenIds.push(ids[i]); }
+      if (batch === 0 && userTokenIds.length > 0) break;
+    }
+    list.innerHTML = "";
+    if (userTokenIds.length === 0) {
+      list.innerHTML = '<span class="nft-none">No ' + VAULT_NAME + ' NFTs found (1-100)</span>';
+    } else {
+      userTokenIds.forEach(function(id) {
+        list.innerHTML += '<span class="nft-badge">#' + id + '</span>';
+      });
+    }
+    populateDropdowns();
+  } catch(e) { list.innerHTML = '<span class="nft-none">' + e.message + '</span>'; }
+}
+
+// ── Load NFT image as background ──
+async function loadNftBackground() {
+  if (userTokenIds.length === 0) return;
+  try {
+    var tid = userTokenIds[0];
+    var rawUri = await nftC.uri(tid);
+    // Replace {id} placeholder per ERC1155 spec
+    var uri = rawUri.replace("{id}", tid.toString());
+    // Handle IPFS URIs
+    if (uri.startsWith("ipfs://")) uri = "https://ipfs.io/ipfs/" + uri.slice(7);
+    // Handle base64 JSON
+    var imgUrl;
+    if (uri.startsWith("data:application/json;base64,")) {
+      var json = JSON.parse(atob(uri.split(",")[1]));
+      imgUrl = json.image;
+    } else if (uri.startsWith("data:image")) {
+      imgUrl = uri;
+    } else {
+      // Fetch metadata JSON
+      var resp = await fetch(uri);
+      var json = await resp.json();
+      imgUrl = json.image;
+    }
+    if (!imgUrl) return;
+    if (imgUrl.startsWith("ipfs://")) imgUrl = "https://ipfs.io/ipfs/" + imgUrl.slice(7);
+    var bg = document.getElementById("nftBg");
+    bg.style.backgroundImage = "url('" + imgUrl + "')";
+    // Wait for image to load, then fade in
+    var img = new Image();
+    img.onload = function() { bg.classList.add("loaded"); };
+    img.src = imgUrl;
+    console.log("NFT background:", imgUrl);
+  } catch(e) { console.warn("NFT bg failed:", e.message); }
+}
+
+function populateDropdowns() {
+  ["puTokenId","pdTokenId"].forEach(function(id) {
+    var sel = document.getElementById(id); sel.innerHTML = "";
+    if (userTokenIds.length === 0) { sel.innerHTML = '<option value="">--</option>'; return; }
+    userTokenIds.forEach(function(tid) { sel.innerHTML += '<option value="'+tid+'">#'+tid+'</option>'; });
+  });
+}
+
+// ── Refresh ──
+async function refreshWETH() {
+  try {
+    var b = await wethC.balanceOf(userAddr);
+    document.getElementById("wethBalance").innerText = parseFloat(ethers.formatEther(b)).toFixed(6) + " WETH";
+  } catch(e) {}
+}
+
+async function refreshStats() {
+  if (!vaultContract) return;
+  try {
+    var [ts,cp,tl] = await Promise.all([vaultContract.totalStaked(), vaultContract.communityPool(), vaultContract.totalLocked()]);
+    document.getElementById("statTotalStaked").innerText = parseFloat(ethers.formatEther(ts)).toFixed(4);
+    document.getElementById("statCommunity").innerText = parseFloat(ethers.formatEther(cp)).toFixed(4);
+    document.getElementById("statLocked").innerText = parseFloat(ethers.formatEther(tl)).toFixed(4);
+  } catch(e) {}
+}
+
+async function refreshBreakdown() {
+  if (!vaultContract || userTokenIds.length === 0) return;
+  var div = document.getElementById("tokenBreakdown");
+  var html = '<table class="breakdown-table"><tr><th style="text-align:left;">ID</th><th>WETH In</th><th>~ETH Val</th><th>Your LP</th><th>Total LP</th></tr>';
+  var totalWethIn = 0, totalEthVal = 0;
+  for (var i = 0; i < userTokenIds.length; i++) {
+    var tid = userTokenIds[i];
+    try {
+      var [us,ts2] = await Promise.all([
+        vaultContract.userStake(tid, userAddr), vaultContract.tokenStake(tid)
+      ]);
+      var ethVal = lpToWeth(us);
+      var wIn = getDeposit(tid);
+
+      // Auto-seed: if LP is staked but no deposit record, use current ETH value as baseline
+      if (us > 0n && wIn === 0 && ethVal > 0) {
+        addDeposit(tid, ethVal.toString());
+        wIn = ethVal;
+        console.log("Auto-seeded deposit for #" + tid + ": " + ethVal.toFixed(6) + " WETH");
+      }
+
+      totalWethIn += wIn;
+      totalEthVal += ethVal;
+      var plClass = ethVal >= wIn ? 'g' : 'o';
+      html += '<tr><td>#'+tid+'</td>';
+      html += '<td class="g">'+(wIn > 0 ? wIn.toFixed(6) : '-')+'</td>';
+      html += '<td class="'+plClass+'">'+(ethVal > 0 ? ethVal.toFixed(6) : '-')+'</td>';
+      html += '<td>'+parseFloat(ethers.formatEther(us)).toFixed(6)+'</td>';
+      html += '<td>'+parseFloat(ethers.formatEther(ts2)).toFixed(6)+'</td></tr>';
+    } catch(e) {}
+  }
+  div.innerHTML = html + '</table>';
+
+  // Update position summary
+  document.getElementById("statWethIn").innerText = totalWethIn > 0 ? totalWethIn.toFixed(6) : "-";
+  document.getElementById("statEthValue").innerText = totalEthVal > 0 ? totalEthVal.toFixed(6) : "-";
+  var pl = totalEthVal - totalWethIn;
+  var plEl = document.getElementById("statPL");
+  if (totalWethIn > 0 && totalEthVal > 0) {
+    var pct = ((totalEthVal / totalWethIn - 1) * 100).toFixed(1);
+    plEl.innerText = (pl >= 0 ? "+" : "") + pl.toFixed(6);
+    plEl.style.color = pl >= 0 ? "#4ade80" : "#ef4444";
+    plEl.innerHTML += '<div style="font-size:10px;color:#888;">(' + (pl >= 0 ? "+" : "") + pct + '%)</div>';
+  } else { plEl.innerText = "-"; plEl.style.color = "#fb923c"; }
+}
+
+async function refreshAll() { await refreshLpRate(); await Promise.all([refreshWETH(), refreshStats(), refreshBreakdown()]); updatePDStake(); }
+
+async function updatePDStake() {
+  var tid = document.getElementById("pdTokenId").value;
+  if (!tid || !vaultContract) { document.getElementById("pdStake").innerText = "Stake: --"; return; }
+  try {
+    var s = await vaultContract.userStake(parseInt(tid), userAddr);
+    document.getElementById("pdStake").innerText = "Stake: " + ethers.formatEther(s) + " LP";
+  } catch(e) { document.getElementById("pdStake").innerText = "Stake: error"; }
+}
+
+function maxPD() {
+  document.getElementById("pdAmount").value = document.getElementById("pdStake").innerText.replace("Stake: ","").replace(" LP","");
+}
+
+// ── Approvals (infinite, one-time) ──
+async function ensureApproval(token, spender, label, ss) {
+  var allow = await token.allowance(userAddr, spender);
+  if (allow < ethers.parseEther("1000000")) {
+    ss.innerText = "Approving " + label + "...";
+    var tx = await token.approve(spender, ethers.MaxUint256);
+    await tx.wait();
+  }
+}
+async function ensureAllApprovals(ss) {
+  await ensureApproval(wethC, V4_SWAPPER, "WETH", ss);
+  await ensureApproval(mftC, V2_SWAPPER, "MfT (V2)", ss);
+  await ensureApproval(mftC, LP_MANAGER, "MfT (LP)", ss);
+  await ensureApproval(burgersC, LP_MANAGER, "BURGERS", ss);
+  await ensureApproval(lpC, vaultAddr, "LP (vault)", ss);
+  await ensureApproval(lpC, LP_MANAGER, "LP (remove)", ss);
+  await ensureApproval(burgersC, V2_SWAPPER, "BURGERS (V2)", ss);
+  await ensureApproval(mftC, V4_SWAPPER, "MfT (V4)", ss);
+}
+
+// ── Power Up ──
+async function doPowerUp() {
+  var btn = document.getElementById("btnPowerUp"); var ss = document.getElementById("puStatus");
+  if (!vaultContract) { alert("No vault"); return; }
+  var tid = document.getElementById("puTokenId").value;
+  if (!tid) { alert("Select a token"); return; }
+  var amt = document.getElementById("puAmount").value;
+  if (!amt || parseFloat(amt) <= 0) { alert("Enter WETH amount"); return; }
+  btn.disabled = true; btn.innerText = "Working..."; ss.className = "status";
+
+  try {
+    var wethAmt = ethers.parseEther(amt);
+    var wethBal = await wethC.balanceOf(userAddr);
+    if (wethBal < wethAmt) { throw new Error("Not enough WETH. Have " + ethers.formatEther(wethBal) + ", need " + amt); }
+
+    await ensureAllApprovals(ss);
+
+    ss.innerText = "Swapping WETH \u2192 MfT...";
+    var tx1;
+    try { tx1 = await v4C.swapWETHforMFT(wethAmt, 0); }
+    catch(e1) { tx1 = await v4C.swapWETHforMFT(wethAmt, 0, {gasLimit: 500000}); }
+    await tx1.wait();
+
+    var mftBal = await mftC.balanceOf(userAddr);
+    ss.innerText = "Swapping MfT \u2192 BURGERS...";
+    var tx2 = await v2C.swapMFTforBURGERS(mftBal / 2n, 0, userAddr);
+    await tx2.wait();
+
+    var bBal = await burgersC.balanceOf(userAddr);
+    var mBal = await mftC.balanceOf(userAddr);
+    ss.innerText = "Adding liquidity...";
+    var tx3 = await lpmC.addLiq(bBal, mBal, 0, 0, userAddr);
+    await tx3.wait();
+
+    var lpBal = await lpC.balanceOf(userAddr);
+    ss.innerText = "Depositing to vault...";
+    var tx4 = await vaultContract.deposit(parseInt(tid), lpBal);
+    await tx4.wait();
+
+    addDeposit(tid, amt);
+    ss.className = "status ok";
+    ss.innerHTML = "Done! " + amt + " WETH \u2192 #" + tid + " (" + parseFloat(ethers.formatEther(lpBal)).toFixed(6) + " LP)";
+    await refreshAll();
+    btn.innerText = "Power Up"; btn.disabled = false;
+  } catch(e) {
+    btn.disabled = false; btn.innerText = "Power Up";
+    ss.className = "status err"; ss.innerText = e.message;
+    console.error(e);
+  }
+}
+
+// ── Power Down ──
+async function doPowerDown() {
+  var btn = document.getElementById("btnPowerDown"); var ss = document.getElementById("pdStatus");
+  if (!vaultContract) { alert("No vault"); return; }
+  var tid = document.getElementById("pdTokenId").value;
+  if (!tid) { alert("Select a token"); return; }
+  var amt = document.getElementById("pdAmount").value;
+  if (!amt || parseFloat(amt) <= 0) { alert("Enter LP amount"); return; }
+  btn.disabled = true; btn.innerText = "Working..."; ss.className = "status";
+
+  try {
+    var lpAmt = ethers.parseEther(amt);
+    // Track fraction being withdrawn for deposit tracking
+    var totalStake = await vaultContract.userStake(parseInt(tid), userAddr);
+    var fraction = totalStake > 0n ? parseFloat(ethers.formatEther(lpAmt)) / parseFloat(ethers.formatEther(totalStake)) : 1;
+
+    await ensureAllApprovals(ss);
+
+    ss.innerText = "Withdrawing from vault...";
+    var tx1 = await vaultContract.withdraw(parseInt(tid), lpAmt);
+    await tx1.wait();
+
+    ss.innerText = "Removing liquidity...";
+    var tx2 = await lpmC.removeLiq(lpAmt, 0, 0, userAddr);
+    await tx2.wait();
+
+    var bBal = await burgersC.balanceOf(userAddr);
+    ss.innerText = "Swapping BURGERS \u2192 MfT...";
+    var tx3 = await v2C.swapBURGERSforMFT(bBal, 0, userAddr);
+    await tx3.wait();
+
+    var mBal = await mftC.balanceOf(userAddr);
+    ss.innerText = "Swapping MfT \u2192 WETH...";
+    var tx4;
+    try { tx4 = await v4C.swapMFTforWETH(mBal, 0); }
+    catch(e4) { tx4 = await v4C.swapMFTforWETH(mBal, 0, {gasLimit: 500000}); }
+    await tx4.wait();
+
+    subDeposit(tid, fraction);
+    ss.className = "status ok";
+    ss.innerHTML = "WETH received!";
+    await refreshAll();
+    btn.innerText = "Power Down"; btn.disabled = false;
+  } catch(e) {
+    btn.disabled = false; btn.innerText = "Power Down";
+    ss.className = "status err"; ss.innerText = e.message;
+    console.error(e);
+  }
+}
+
+if (window.ethereum) {
+  window.ethereum.on("accountsChanged", function() { location.reload(); });
+  window.ethereum.on("chainChanged", function() { location.reload(); });
+}
+</script>
+</body></html>

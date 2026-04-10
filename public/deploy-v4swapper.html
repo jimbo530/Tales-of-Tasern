@@ -1,0 +1,118 @@
+<!DOCTYPE html><html><head><title>Deploy V4 Swapper (WETH/MfT)</title><script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.1/ethers.umd.min.js"></script></head>
+<body style="background:#0a0608;color:#e8d5b0;font-family:Georgia;padding:30px;text-align:center;max-width:700px;margin:0 auto;">
+<h1 style="color:#c9a84c;">Deploy V4 Swapper</h1>
+<p>WETH &harr; MfT via Uniswap V4 on Base</p>
+<p style="color:#4ade80;">Contract 1 of 4 &mdash; Vault System</p>
+
+<button onclick="deploy()" id="btnDeploy" style="background:#c9a84c;color:#0a0608;border:none;padding:15px 35px;font-size:16px;font-weight:bold;border-radius:8px;cursor:pointer;margin:20px;">Connect &amp; Deploy</button>
+<p id="status" style="margin:20px;color:#888;">Click above to deploy</p>
+<div style="margin:30px 0;padding:15px;background:#1a1418;border:1px solid #c9a84c44;border-radius:8px;">
+<p>Contract Address:</p>
+<p id="addr" style="color:#f0d070;font-family:monospace;font-size:16px;word-break:break-all;user-select:all;">-</p>
+</div>
+
+<hr style="border-color:#c9a84c44;margin:30px 0;">
+<h2 style="color:#c9a84c;font-size:18px;">Test Swap</h2>
+<p style="color:#888;font-size:13px;">After deploy, paste the contract address and test a small swap.</p>
+
+<div style="margin:15px 0;">
+<input id="contractAddr" placeholder="Paste deployed address" style="background:#1a1418;color:#e8d5b0;border:1px solid #c9a84c44;padding:10px;width:90%;font-family:monospace;border-radius:4px;">
+</div>
+<div style="margin:15px 0;">
+<input id="amountIn" placeholder="Amount of WETH (e.g. 0.001)" value="0.001" style="background:#1a1418;color:#e8d5b0;border:1px solid #c9a84c44;padding:10px;width:200px;font-family:monospace;border-radius:4px;">
+</div>
+<div style="display:flex;gap:10px;justify-content:center;margin:15px 0;">
+<button onclick="testSwap(true)" id="btnSwapWM" style="background:#2563eb;color:#fff;border:none;padding:12px 25px;font-size:14px;font-weight:bold;border-radius:8px;cursor:pointer;">Swap WETH &rarr; MfT</button>
+<button onclick="testSwap(false)" id="btnSwapMW" style="background:#7c3aed;color:#fff;border:none;padding:12px 25px;font-size:14px;font-weight:bold;border-radius:8px;cursor:pointer;">Swap MfT &rarr; WETH</button>
+</div>
+<p id="swapStatus" style="margin:15px;color:#888;">-</p>
+
+<script>
+var BYTECODE="0x6080604052348015600e575f5ffd5b50600380546001600160a01b031990811633179091556040805160a081018252734200000000000000000000000000000000000006808252738fb87d13b40b1a67b22ed1a17e2835fe7e3a9ba36020830152628000009282019290925260c8606082015273bb7784a4d481184283ed89619a3e3ed143e1adc060809091018190525f805484169092179091556001805477c88000008fb87d13b40b1a67b22ed1a17e2835fe7e3a9ba36001600160d01b031990911617905560028054909216179055610e0d806100dd5f395ff3fe608060405234801561000f575f5ffd5b5060043610610090575f3560e01c8063839006f211610063578063839006f2146101755780638da5cb5b1461018857806391dd73461461019b578063ad5c4648146101bb578063ce8e4603146101c9575f5ffd5b8063182148ef14610094578063443617721461011257806362308e851461012757806369ebbe2e1461015a575b5f5ffd5b5f54600154600280546100cd936001600160a01b03908116938082169362ffffff600160a01b83041693600160b81b909204900b911685565b604080516001600160a01b039687168152948616602086015262ffffff9093169284019290925260020b606083015291909116608082015260a0015b60405180910390f35b610125610120366004610aca565b6101dc565b005b61014273498581ff718922c3f8e6a244956af099b2652b2b81565b6040516001600160a01b039091168152602001610109565b610142738fb87d13b40b1a67b22ed1a17e2835fe7e3a9ba381565b610125610183366004610b01565b6103bb565b600354610142906001600160a01b031681565b6101ae6101a9366004610b23565b6104eb565b6040516101099190610bbf565b6101426006602160991b0181565b6101256101d7366004610aca565b610913565b5f821161021e5760405162461bcd60e51b815260206004820152600b60248201526a1e995c9bc8185b5bdd5b9d60aa1b60448201526064015b60405180910390fd5b6040516323b872dd60e01b815233600482015230602482015260448101839052738fb87d13b40b1a67b22ed1a17e2835fe7e3a9ba3906323b872dd906064016020604051808303815f875af1158015610279573d5f5f3e3d5ffd5b505050506040513d601f19601f8201168201806040525081019061029d9190610bde565b50604080515f602082018190529181018490526060810183905233608082015273498581ff718922c3f8e6a244956af099b2652b2b906348c894919060a0016040516020818303038152906040526040518263ffffffff1660e01b81526004016103079190610bbf565b5f604051808303815f875af1158015610322573d5f5f3e3d5ffd5b505050506040513d5f823e601f3d908101601f191682016040526103499190810190610c0d565b90505f818060200190518101906103609190610cc0565b6040805186815260208101839052919250738fb87d13b40b1a67b22ed1a17e2835fe7e3a9ba39133917fa078c4190abe07940190effc1846be0ccf03ad6007bc9e93f9697d0b460befbb91015b60405180910390a350505050565b6003546001600160a01b031633146104015760405162461bcd60e51b81526020600482015260096024820152683737ba1037bbb732b960b91b6044820152606401610215565b6040516370a0823160e01b81523060048201525f906001600160a01b038316906370a0823190602401602060405180830381865afa158015610445573d5f5f3e3d5ffd5b505050506040513d601f19601f820116820180604052508101906104699190610cc0565b905080156104e75760035460405163a9059cbb60e01b81526001600160a01b039182166004820152602481018390529083169063a9059cbb906044016020604051808303815f875af11580156104c1573d5f5f3e3d5ffd5b505050506040513d601f19601f820116820180604052508101906104e59190610bde565b505b5050565b60603373498581ff718922c3f8e6a244956af099b2652b2b1461053a5760405162461bcd60e51b81526020600482015260076024820152666f6e6c7920504d60c81b6044820152606401610215565b5f80808061054a86880188610cd7565b93509350935093505f8461057257738fb87d13b40b1a67b22ed1a17e2835fe7e3a9ba361057b565b6006602160991b015b90505f85610590576006602160991b016105a6565b738fb87d13b40b1a67b22ed1a17e2835fe7e3a9ba35b90505f73498581ff718922c3f8e6a244956af099b2652b2b6001600160a01b031663f3cd914c5f60405180606001604052808b151581526020018a6105ea90610d1e565b81526020018b61060e5773fffd8963efd1fc6a506488495d951d5263988d25610615565b6001600160a01b03169052604080516020810182525f815290516001600160e01b031960e086901b16815261064f93929190600401610d44565b6020604051808303815f875af115801561066b573d5f5f3e3d5ffd5b505050506040513d601f19601f8201168201806040525081019061068f9190610cc0565b9050608081901d815f89156106eb575f82600f0b136106db5760405162461bcd60e51b8152602060048201526008602482015267062616420737761760c41b6044820152606401610215565b506001600160801b038116610734565b5f83600f0b136107285760405162461bcd60e51b8152602060048201526008602482015267062616420737761760c41b6044820152606401610215565b506001600160801b0382165b8781101561076f5760405162461bcd60e51b8152602060048201526008602482015267736c69707061676560c01b6044820152606401610215565b60405163a9059cbb60e01b815273498581ff718922c3f8e6a244956af099b2652b2b6004820152602481018a90526001600160a01b0387169063a9059cbb906044016020604051808303815f875af11580156107cd573d5f5f3e3d5ffd5b505050506040513d601f19601f820116820180604052508101906107f19190610bde565b5073498581ff718922c3f8e6a244956af099b2652b2b6001600160a01b03166311da60b46040518163ffffffff1660e01b81526004016020604051808303815f875af1158015610843573d5f5f3e3d5ffd5b505050506040513d601f19601f820116820180604052508101906108679190610cc0565b50604051630b0d9c0960e01b81526001600160a01b038087166004830152881660248201526044810182905273498581ff718922c3f8e6a244956af099b2652b2b90630b0d9c09906064015f604051808303815f87803b1580156108c9575f5ffd5b505af11580156108db573d5f5f3e3d5ffd5b50505050806040516020016108f291815260200190565b6040516020818303038152906040529a505050505050505050505092915050565b5f82116109505760405162461bcd60e51b815260206004820152600b60248201526a1e995c9bc8185b5bdd5b9d60aa1b6044820152606401610215565b6040516323b872dd60e01b8152336004820152306024820152604481018390526006602160991b01906323b872dd906064016020604051808303815f875af115801561099e573d5f5f3e3d5ffd5b505050506040513d601f19601f820116820180604052508101906109c29190610bde565b506040805160016020820152908101839052606081018290523360808201525f9073498581ff718922c3f8e6a244956af099b2652b2b906348c894919060a0016040516020818303038152906040526040518263ffffffff1660e01b8152600401610a2d9190610bbf565b5f604051808303815f875af1158015610a48573d5f5f3e3d5ffd5b505050506040513d5f823e601f3d908101601f19168201604052610a6f9190810190610c0d565b90505f81806020019051810190610a869190610cc0565b60408051868152602081018390529192506006602160991b019133917fa078c4190abe07940190effc1846be0ccf03ad6007bc9e93f9697d0b460befbb91016103ad565b5f5f60408385031215610adb575f5ffd5b50508035926020909101359150565b6001600160a01b0381168114610afe575f5ffd5b50565b5f60208284031215610b11575f5ffd5b8135610b1c81610aea565b9392505050565b5f5f60208385031215610b34575f5ffd5b823567ffffffffffffffff811115610b4a575f5ffd5b8301601f81018513610b5a575f5ffd5b803567ffffffffffffffff811115610b70575f5ffd5b856020828401011115610b81575f5ffd5b6020919091019590945092505050565b5f81518084528060208401602086015e5f602082860101526020601f19601f83011685010191505092915050565b602081525f610b1c6020830184610b91565b8015158114610afe575f5ffd5b5f60208284031215610bee575f5ffd5b8151610b1c81610bd1565b634e487b7160e01b5f52604160045260245ffd5b5f60208284031215610c1d575f5ffd5b815167ffffffffffffffff811115610c33575f5ffd5b8201601f81018413610c43575f5ffd5b805167ffffffffffffffff811115610c5d57610c5d610bf9565b604051601f8201601f19908116603f0116810167ffffffffffffffff81118282101715610c8c57610c8c610bf9565b604052818152828201602001861015610ca3575f5ffd5b8160208401602083015e5f91810160200191909152949350505050565b5f60208284031215610cd0575f5ffd5b5051919050565b5f5f5f5f60808587031215610cea575f5ffd5b8435610cf581610bd1565b935060208501359250604085013591506060850135610d1381610aea565b939692955090935050565b5f600160ff1b8201610d3e57634e487b7160e01b5f52601160045260245ffd5b505f0390565b83546001600160a01b0390811682526001850154808216602084015260a081811c62ffffff16604085015260b89190911c600290810b606085015286015490911660808301525f90610db790830185805115158252602080820151908301526040908101516001600160a01b0316910152565b610120610100830152610dce610120830184610b91565b9594505050505056fea2646970667358221220e8bce62ec6b6f25fd3bd9b9faa8e45130bf7e3e45c052719d306385e5e38277f64736f6c63430008220033";
+
+var ABI=[{"inputs":[],"stateMutability":"nonpayable","type":"constructor"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"user","type":"address"},{"indexed":true,"internalType":"address","name":"tokenIn","type":"address"},{"indexed":false,"internalType":"uint256","name":"amountIn","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"amountOut","type":"uint256"}],"name":"Swapped","type":"event"},{"inputs":[],"name":"MFT","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"POOL_MANAGER","outputs":[{"internalType":"contract IPoolManager","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"WETH","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"owner","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"poolKey","outputs":[{"internalType":"address","name":"currency0","type":"address"},{"internalType":"address","name":"currency1","type":"address"},{"internalType":"uint24","name":"fee","type":"uint24"},{"internalType":"int24","name":"tickSpacing","type":"int24"},{"internalType":"address","name":"hooks","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"token","type":"address"}],"name":"rescue","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint256","name":"amountIn","type":"uint256"},{"internalType":"uint256","name":"minOut","type":"uint256"}],"name":"swapMFTforWETH","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint256","name":"amountIn","type":"uint256"},{"internalType":"uint256","name":"minOut","type":"uint256"}],"name":"swapWETHforMFT","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"bytes","name":"data","type":"bytes"}],"name":"unlockCallback","outputs":[{"internalType":"bytes","name":"","type":"bytes"}],"stateMutability":"nonpayable","type":"function"}];
+
+var ERC20_ABI=[
+  "function approve(address spender, uint256 amount) returns (bool)",
+  "function allowance(address owner, address spender) view returns (uint256)",
+  "function balanceOf(address account) view returns (uint256)",
+  "function decimals() view returns (uint8)"
+];
+
+var WETH="0x4200000000000000000000000000000000000006";
+var MFT="0x8FB87d13B40B1A67B22ED1a17e2835fe7e3a9bA3";
+
+async function deploy(){
+  var s=document.getElementById("status");
+  document.getElementById("btnDeploy").disabled=true;
+  if(!window.ethereum){s.innerHTML="No wallet found";return;}
+  try{
+    s.innerText="Connecting...";
+    await window.ethereum.request({method:"eth_requestAccounts"});
+    try{await window.ethereum.request({method:"wallet_switchEthereumChain",params:[{chainId:"0x2105"}]});}catch(e){}
+    var p=new ethers.BrowserProvider(window.ethereum);
+    var sg=await p.getSigner();
+    s.innerText="Deploying V4 Swapper... confirm in wallet";
+    var f=new ethers.ContractFactory(ABI,BYTECODE,sg);
+    var c=await f.deploy();
+    s.innerText="Waiting for confirmation...";
+    await c.waitForDeployment();
+    var a=await c.getAddress();
+    document.getElementById("addr").innerText=a;
+    document.getElementById("contractAddr").value=a;
+    s.innerHTML='<span style="color:#4ade80;">Deployed!</span> Copy the address. Now test a swap below.';
+  }catch(e){s.innerHTML="Error: "+e.message;document.getElementById("btnDeploy").disabled=false;}
+}
+
+async function testSwap(wethToMft){
+  var ss=document.getElementById("swapStatus");
+  var addr=document.getElementById("contractAddr").value.trim();
+  var amt=document.getElementById("amountIn").value.trim();
+  if(!addr){ss.innerText="Paste contract address first";return;}
+  if(!amt||parseFloat(amt)<=0){ss.innerText="Enter an amount";return;}
+  try{
+    ss.innerText="Connecting...";
+    await window.ethereum.request({method:"eth_requestAccounts"});
+    var p=new ethers.BrowserProvider(window.ethereum);
+    var sg=await p.getSigner();
+    var swapper=new ethers.Contract(addr,ABI,sg);
+    var tokenIn=wethToMft?WETH:MFT;
+    var token=new ethers.Contract(tokenIn,ERC20_ABI,sg);
+    var dec=await token.decimals();
+    var amountWei=ethers.parseUnits(amt,dec);
+
+    // Check and set approval
+    var myAddr=await sg.getAddress();
+    var allowance=await token.allowance(myAddr,addr);
+    if(allowance<amountWei){
+      ss.innerText="Approving token spend... confirm in wallet";
+      var tx=await token.approve(addr,ethers.MaxUint256);
+      await tx.wait();
+    }
+
+    // Execute swap (minOut = 0 for testing — NEVER do this in production)
+    ss.innerText=(wethToMft?"Swapping WETH -> MfT":"Swapping MfT -> WETH")+"... confirm in wallet";
+    var tx2;
+    if(wethToMft){
+      tx2=await swapper.swapWETHforMFT(amountWei,0);
+    }else{
+      tx2=await swapper.swapMFTforWETH(amountWei,0);
+    }
+    ss.innerText="Waiting for confirmation...";
+    var receipt=await tx2.wait();
+
+    // Parse Swapped event
+    var swapLog=receipt.logs.find(function(l){try{return swapper.interface.parseLog(l)?.name==="Swapped";}catch(e){return false;}});
+    if(swapLog){
+      var parsed=swapper.interface.parseLog(swapLog);
+      var outDec=wethToMft?18:18;
+      ss.innerHTML='<span style="color:#4ade80;">Swap success!</span> Got '+ethers.formatUnits(parsed.args.amountOut,outDec)+(wethToMft?" MfT":" WETH")+'<br>Tx: <a href="https://basescan.org/tx/'+receipt.hash+'" target="_blank" style="color:#c9a84c;">'+receipt.hash.slice(0,16)+'...</a>';
+    }else{
+      ss.innerHTML='<span style="color:#4ade80;">Tx confirmed!</span> <a href="https://basescan.org/tx/'+receipt.hash+'" target="_blank" style="color:#c9a84c;">View on BaseScan</a>';
+    }
+  }catch(e){
+    ss.innerHTML='<span style="color:#ef4444;">Error:</span> '+e.message;
+  }
+}
+</script>
+</body></html>

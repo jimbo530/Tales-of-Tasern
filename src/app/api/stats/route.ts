@@ -426,6 +426,61 @@ export async function computeAllStats(batch?: { index: number; total: number }):
     console.log("[API] Derived USD prices for", pricedCount, "tokens:", Object.entries(tokenUsdPrices).filter(([,v]) => v > 0).map(([k, v]) => `${TOKEN_SYMBOLS[k] ?? k.slice(0,8)}: $${v.toFixed(6)}`).join(", "));
     if (ethHigh24h === 0) console.log("[API] WARNING: CoinGecko ETH price = $0, using on-chain derivation only");
 
+    // ── Vault stakes: read from factory, map NFT→vault LP at 0.5x rate ──
+    const VAULT_FACTORY = "0x00EEeB923BDe1Af9a3DbBE41cE7a6bFD84BB75A0" as const;
+    const VAULT_RATE = 0.5; // vault stakes count at half value for stats
+
+    // nftAddr (lowercase) → { lpPair, totalStakedByNft: Map<nftContract, bigint> }
+    type VaultEntry = { lpPair: string; totalStaked: bigint };
+    const nftVaults = new Map<string, VaultEntry[]>(); // nftContract → vault entries
+
+    try {
+      const factoryAbi = [
+        { name: "totalVaults", type: "function", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
+        { name: "allVaults", type: "function", stateMutability: "view", inputs: [{ name: "", type: "uint256" }], outputs: [{ name: "", type: "address" }] },
+        { name: "isCrossChain", type: "function", stateMutability: "view", inputs: [{ name: "", type: "uint256" }], outputs: [{ name: "", type: "bool" }] },
+      ] as const;
+      const vaultAbi = [
+        { name: "NFT", type: "function", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "address" }] },
+        { name: "NFT_REF", type: "function", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "address" }] },
+        { name: "LP_PAIR", type: "function", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "address" }] },
+        { name: "totalStaked", type: "function", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
+      ] as const;
+
+      const vaultCount = await baseClient.readContract({ address: VAULT_FACTORY, abi: factoryAbi, functionName: "totalVaults" }) as bigint;
+      console.log("[API] VaultFactory has", Number(vaultCount), "vaults");
+
+      for (let i = 0; i < Number(vaultCount); i++) {
+        try {
+          const [vAddr, cc] = await Promise.all([
+            baseClient.readContract({ address: VAULT_FACTORY, abi: factoryAbi, functionName: "allVaults", args: [BigInt(i)] }),
+            baseClient.readContract({ address: VAULT_FACTORY, abi: factoryAbi, functionName: "isCrossChain", args: [BigInt(i)] }),
+          ]);
+          const va = vAddr as `0x${string}`;
+
+          // Read NFT address (NFT for same-chain, NFT_REF for cross-chain)
+          let nftAddr: string;
+          if (cc) {
+            nftAddr = (await baseClient.readContract({ address: va, abi: vaultAbi, functionName: "NFT_REF" }) as string).toLowerCase();
+          } else {
+            nftAddr = (await baseClient.readContract({ address: va, abi: vaultAbi, functionName: "NFT" }) as string).toLowerCase();
+          }
+
+          const [lpPair, totalStaked] = await Promise.all([
+            baseClient.readContract({ address: va, abi: vaultAbi, functionName: "LP_PAIR" }),
+            baseClient.readContract({ address: va, abi: vaultAbi, functionName: "totalStaked" }),
+          ]);
+
+          if ((totalStaked as bigint) > 0n) {
+            const entries = nftVaults.get(nftAddr) ?? [];
+            entries.push({ lpPair: (lpPair as string).toLowerCase(), totalStaked: totalStaked as bigint });
+            nftVaults.set(nftAddr, entries);
+            console.log("[API] Vault", va.slice(0, 10), "→ NFT", nftAddr.slice(0, 10), "LP staked:", Number(totalStaked));
+          }
+        } catch (e) { console.error("[API] vault read error index", i, e); }
+      }
+    } catch (e) { console.error("[API] VaultFactory read error:", e); }
+
     // Assemble stats for each NFT (only batch NFTs have LP balance data)
     const characters = NFT_BATCH.map((nft, nftIdx) => {
       const supplyDiv = BigInt(nftSupplyDivisor[nft.contractAddress.toLowerCase()] ?? 1);
@@ -464,12 +519,41 @@ export async function computeAllStats(batch?: { index: number; total: number }):
       });
 
       // Build tokenAmounts from all accumulated tokens
-      const tokenAmounts: { symbol: string; amount: number; stat: string; addr?: string }[] = [];
+      const tokenAmounts: { symbol: string; amount: number; stat: string; addr?: string; rate?: number }[] = [];
       for (const [addr, amount] of tokenMap.entries()) {
         if (amount === 0n) continue;
         const decimals = tokenPriceConfig[addr]?.decimals ?? 18;
         const rawAmount = parseFloat(formatUnits(amount, decimals));
         tokenAmounts.push({ symbol: TOKEN_SYMBOLS[addr] ?? addr.slice(0, 8), amount: rawAmount, stat: "", addr });
+      }
+
+      // Vault stakes → decompose LP into tokens at VAULT_RATE (0.5x)
+      const vaultEntries = nftVaults.get(nft.contractAddress.toLowerCase());
+      if (vaultEntries) {
+        for (const ve of vaultEntries) {
+          // Match vault's LP pair to our known pair infos
+          let matchedPair: typeof basePairInfos[0] | null = null;
+          for (let pi = 0; pi < KNOWN_LP_PAIRS.base.length; pi++) {
+            if (KNOWN_LP_PAIRS.base[pi].toLowerCase() === ve.lpPair) { matchedPair = basePairInfos[pi]; break; }
+          }
+          if (!matchedPair) {
+            for (let pi = 0; pi < KNOWN_LP_PAIRS.polygon.length; pi++) {
+              if (KNOWN_LP_PAIRS.polygon[pi].toLowerCase() === ve.lpPair) { matchedPair = polyPairInfos[pi]; break; }
+            }
+          }
+
+          if (matchedPair && matchedPair.totalSupply > 0n) {
+            const share = (ve.totalStaked * BigInt(1e18)) / matchedPair.totalSupply;
+            const amt0 = (matchedPair.reserve0 * share) / BigInt(1e18);
+            const amt1 = (matchedPair.reserve1 * share) / BigInt(1e18);
+            const dec0 = tokenPriceConfig[matchedPair.token0]?.decimals ?? 18;
+            const dec1 = tokenPriceConfig[matchedPair.token1]?.decimals ?? 18;
+            const raw0 = parseFloat(formatUnits(amt0, dec0));
+            const raw1 = parseFloat(formatUnits(amt1, dec1));
+            if (raw0 > 0) tokenAmounts.push({ symbol: (TOKEN_SYMBOLS[matchedPair.token0] ?? matchedPair.token0.slice(0, 8)) + " (vault)", amount: raw0, stat: "", addr: matchedPair.token0, rate: VAULT_RATE });
+            if (raw1 > 0) tokenAmounts.push({ symbol: (TOKEN_SYMBOLS[matchedPair.token1] ?? matchedPair.token1.slice(0, 8)) + " (vault)", amount: raw1, stat: "", addr: matchedPair.token1, rate: VAULT_RATE });
+          }
+        }
       }
 
       // Compute stats, subtypes, and boons via shared function

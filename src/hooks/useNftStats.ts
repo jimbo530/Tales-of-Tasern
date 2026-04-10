@@ -13,6 +13,7 @@ const STATS_CACHE_KEY = "tot-stats-cache-v2"; // v2: D20 ability scores
 const STATS_CACHE_TTL = 48 * 60 * 60 * 1000; // 48 hours — markets are slow, reduce API calls
 
 const OWNERSHIP_CACHE_KEY = "tot-ownership-cache";
+const OWNERSHIP_CACHE_TTL = 5 * 60 * 1000; // 5 minutes — avoid hitting Alchemy on every page load
 
 function getCachedStats(): { data: any; timestamp: number } | null {
   if (typeof window === "undefined") return null;
@@ -283,19 +284,23 @@ export function useNftStats() {
         }
 
         if (isConnected && address) {
-          // Always check chain for fresh ownership (multicall is fast)
-          await checkOwnership(baseClient, GAME_NFTS.filter(n => n.chain === "base"), "Base");
-          await checkOwnership(polygonClient, GAME_NFTS.filter(n => n.chain === "polygon"), "Polygon");
-          // Fall back to cache only if RPC returned nothing
-          if (ownershipMap.size === 0) {
-            const cachedOwn = getCachedOwnership(address);
-            if (cachedOwn) {
-              Object.entries(cachedOwn.map).forEach(([k, v]) => ownershipMap.set(k, v));
-              console.log("[ToT] RPC failed, using cached ownership");
-            }
+          // Use cached ownership if fresh enough (saves Alchemy calls on repeated page loads)
+          const cachedOwn = getCachedOwnership(address);
+          if (cachedOwn && (Date.now() - cachedOwn.timestamp) < OWNERSHIP_CACHE_TTL) {
+            Object.entries(cachedOwn.map).forEach(([k, v]) => ownershipMap.set(k, v));
+            console.log("[ToT] Using cached ownership (age:", Math.round((Date.now() - cachedOwn.timestamp) / 1000), "s)");
           } else {
-            setCachedOwnership(address, ownershipMap);
-            console.log("[ToT] Fresh ownership:", [...ownershipMap.entries()].filter(([,v]) => v > 0).length, "owned NFTs");
+            // Cache expired or missing — fetch fresh from chain
+            await checkOwnership(baseClient, GAME_NFTS.filter(n => n.chain === "base"), "Base");
+            await checkOwnership(polygonClient, GAME_NFTS.filter(n => n.chain === "polygon"), "Polygon");
+            if (ownershipMap.size === 0 && cachedOwn) {
+              // RPC failed, fall back to stale cache
+              Object.entries(cachedOwn.map).forEach(([k, v]) => ownershipMap.set(k, v));
+              console.log("[ToT] RPC failed, using stale cached ownership");
+            } else if (ownershipMap.size > 0) {
+              setCachedOwnership(address, ownershipMap);
+              console.log("[ToT] Fresh ownership:", [...ownershipMap.entries()].filter(([,v]) => v > 0).length, "owned NFTs");
+            }
           }
         }
 

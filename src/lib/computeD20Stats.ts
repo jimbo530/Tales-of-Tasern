@@ -28,6 +28,7 @@ type TokenAmount = {
   amount: number;
   stat: string;
   addr?: string;
+  rate?: number; // multiplier for stat value (default 1.0, vault stakes use 0.5)
 };
 
 export type D20Stats = {
@@ -149,7 +150,7 @@ export function computeD20Stats(
     if (BOON_ONLY_TOKENS.has(addr)) continue;
 
     const usdPrice = tokenUsdPrices[addr] ?? 0;
-    const usdValue = ta.amount * usdPrice;
+    const usdValue = ta.amount * usdPrice * (ta.rate ?? 1);
 
     // ── Game tokens (1x, 3 stats) ──
     if (dddTokens.includes(addr)) {

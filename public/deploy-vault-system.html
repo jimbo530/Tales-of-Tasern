@@ -1,0 +1,954 @@
+<!DOCTYPE html><html><head><title>Deploy Ork Vault System</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.1/ethers.umd.min.js"></script>
+<script src="vault-contracts.js"></script>
+</head>
+<body style="background:#0a0608;color:#e8d5b0;font-family:Georgia;padding:30px;max-width:800px;margin:0 auto;">
+<h1 style="color:#c9a84c;text-align:center;">Deploy Ork Vault System</h1>
+<p style="text-align:center;color:#888;">5 contracts on Base: V4 Swapper &rarr; V2 Swapper &rarr; LP Manager &rarr; Vault &rarr; Router</p>
+
+<div id="steps" style="margin:20px 0;"></div>
+
+<button onclick="deployAll()" id="btnDeploy" style="display:block;margin:20px auto;background:#c9a84c;color:#0a0608;border:none;padding:15px 40px;font-size:16px;font-weight:bold;border-radius:8px;cursor:pointer;">Connect &amp; Deploy All</button>
+
+<hr style="border-color:#c9a84c44;margin:30px 0;">
+<h2 style="color:#c9a84c;font-size:18px;text-align:center;">Load Existing Contracts</h2>
+<p style="text-align:center;color:#888;font-size:13px;">Already deployed? Paste addresses below and click Load.</p>
+<div style="max-width:600px;margin:0 auto;">
+<div style="display:grid;grid-template-columns:140px 1fr;gap:6px 10px;align-items:center;">
+<label style="color:#888;text-align:right;">V4 Swapper:</label><input id="addrV4Swapper" value="0xD2ea238E82637Ba3052600eDCc4109822644Fcb0" style="background:#1a1418;color:#f0d070;border:1px solid #c9a84c44;padding:6px 8px;font-family:monospace;font-size:12px;border-radius:4px;" placeholder="0x...">
+<label style="color:#888;text-align:right;">V2 Swapper:</label><input id="addrV2Swapper" value="0xa9ca96a4dcfb3898d028008489f689b20918b842" style="background:#1a1418;color:#f0d070;border:1px solid #c9a84c44;padding:6px 8px;font-family:monospace;font-size:12px;border-radius:4px;" placeholder="0x...">
+<label style="color:#888;text-align:right;">LP Manager:</label><input id="addrLPManager" value="0xfe64b7366194cfac02fbe1478b67665bcb2f3117" style="background:#1a1418;color:#f0d070;border:1px solid #c9a84c44;padding:6px 8px;font-family:monospace;font-size:12px;border-radius:4px;" placeholder="0x...">
+<label style="color:#888;text-align:right;">Ork Vault:</label><input id="addrOrkVault" value="0x54472c14be2c96020ad57ff157991a1c6a7954ff" style="background:#1a1418;color:#f0d070;border:1px solid #c9a84c44;padding:6px 8px;font-family:monospace;font-size:12px;border-radius:4px;" placeholder="0x...">
+<label style="color:#888;text-align:right;">Router:</label><input id="addrVaultRouter" value="" style="background:#1a1418;color:#f0d070;border:1px solid #c9a84c44;padding:6px 8px;font-family:monospace;font-size:12px;border-radius:4px;" placeholder="0x...">
+</div>
+<div style="text-align:center;margin:12px 0;display:flex;gap:10px;justify-content:center;">
+<button onclick="loadAddresses()" style="background:#c9a84c;color:#0a0608;border:none;padding:10px 30px;font-size:14px;font-weight:bold;border-radius:6px;cursor:pointer;">Load &amp; Connect</button>
+<button onclick="redeployV4AndRouter()" id="btnRedeploy" style="background:#f97316;color:#fff;border:none;padding:10px 30px;font-size:14px;font-weight:bold;border-radius:6px;cursor:pointer;">Redeploy V4 + Router Only</button>
+<button onclick="redeployVaultAndRouter()" style="background:#ef4444;color:#fff;border:none;padding:10px 30px;font-size:14px;font-weight:bold;border-radius:6px;cursor:pointer;">Redeploy Vault + Router (NFT key fix)</button>
+</div>
+</div>
+
+<hr style="border-color:#c9a84c44;margin:30px 0;">
+<h2 style="color:#c9a84c;font-size:18px;text-align:center;">Test Full Flow</h2>
+
+<div style="text-align:center;margin:15px 0;">
+<div style="margin:10px 0;">
+<label style="color:#888;">Your Mountain Orks:</label>
+<select id="testTokenId" style="background:#1a1418;color:#e8d5b0;border:1px solid #c9a84c44;padding:8px 15px;font-family:monospace;border-radius:4px;margin:0 10px;min-width:200px;">
+<option value="">-- scanning... --</option>
+</select>
+<button onclick="scanOrks()" style="background:#333;color:#c9a84c;border:1px solid #c9a84c44;padding:8px 12px;border-radius:4px;cursor:pointer;font-size:12px;">Refresh</button>
+</div>
+<div style="margin:10px 0;">
+<label style="color:#888;">WETH Amount:</label>
+<input id="testAmt" value="0.0005" style="background:#1a1418;color:#e8d5b0;border:1px solid #c9a84c44;padding:8px;width:120px;font-family:monospace;border-radius:4px;margin:0 10px;">
+</div>
+</div>
+<p id="orkStatus" style="text-align:center;margin:5px;color:#888;font-size:13px;">Connect wallet to see your Orks</p>
+
+<h3 style="color:#f97316;text-align:center;margin-top:20px;">Step-by-Step Diagnostics</h3>
+<p style="text-align:center;color:#888;font-size:13px;">Test each piece individually to find what works</p>
+<div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin:10px 0;">
+<button onclick="stepApproveWETH()" id="btnApprove" style="background:#3b82f6;color:#fff;border:none;padding:10px 18px;font-size:13px;font-weight:bold;border-radius:6px;cursor:pointer;">1. Approve WETH</button>
+<button onclick="stepTestV4()" id="btnTestV4" style="background:#8b5cf6;color:#fff;border:none;padding:10px 18px;font-size:13px;font-weight:bold;border-radius:6px;cursor:pointer;">2. Test V4 Swap</button>
+<button onclick="stepTestV2()" id="btnTestV2" style="background:#8b5cf6;color:#fff;border:none;padding:10px 18px;font-size:13px;font-weight:bold;border-radius:6px;cursor:pointer;">3. Test V2 Swap</button>
+<button onclick="stepTestLP()" id="btnTestLP" style="background:#8b5cf6;color:#fff;border:none;padding:10px 18px;font-size:13px;font-weight:bold;border-radius:6px;cursor:pointer;">4. Test Add LP</button>
+</div>
+<p id="diagStatus" style="text-align:center;margin:10px;color:#888;font-size:13px;">Load contracts first</p>
+
+<hr style="border-color:#c9a84c22;margin:20px 0;">
+<h3 style="color:#c9a84c;text-align:center;">Full Flow (after diagnostics pass)</h3>
+<div style="display:flex;gap:10px;justify-content:center;margin:15px 0;">
+<button onclick="testPowerUp()" id="btnPU" style="background:#16a34a;color:#fff;border:none;padding:12px 25px;font-size:14px;font-weight:bold;border-radius:8px;cursor:pointer;" disabled>Power Up</button>
+<button onclick="testPowerDown()" id="btnPD" style="background:#dc2626;color:#fff;border:none;padding:12px 25px;font-size:14px;font-weight:bold;border-radius:8px;cursor:pointer;" disabled>Power Down</button>
+</div>
+<p id="testStatus" style="text-align:center;margin:15px;color:#888;">Deploy first, then test</p>
+
+<hr style="border-color:#8b5cf644;margin:30px 0;">
+<h2 style="color:#8b5cf6;font-size:18px;text-align:center;">Vault Factory</h2>
+<p style="text-align:center;color:#888;font-size:13px;">Deploy once, then create vaults for any ERC1155 collection through it.</p>
+<div style="max-width:600px;margin:0 auto;">
+
+<div style="display:grid;grid-template-columns:170px 1fr;gap:6px 10px;align-items:center;margin-bottom:10px;">
+<label style="color:#888;text-align:right;">Factory Address:</label><input id="factoryAddr" value="0x1db674DB0F83578a9AaD7BE30B59F61c8C9b82D0" style="background:#1a1418;color:#f0d070;border:1px solid #8b5cf644;padding:6px 8px;font-family:monospace;font-size:12px;border-radius:4px;" placeholder="0x... (deploy first or paste existing)">
+</div>
+<div style="text-align:center;margin:8px 0;display:flex;gap:10px;justify-content:center;">
+<button onclick="deployFactory()" id="btnFactory" style="background:#8b5cf6;color:#fff;border:none;padding:10px 25px;font-size:13px;font-weight:bold;border-radius:6px;cursor:pointer;">Deploy Factory</button>
+<button onclick="loadFactory()" style="background:#333;color:#8b5cf6;border:1px solid #8b5cf644;padding:10px 25px;font-size:13px;font-weight:bold;border-radius:6px;cursor:pointer;">Load Factory</button>
+</div>
+<p id="factoryStatus" style="text-align:center;color:#888;font-size:13px;margin:5px 0;"></p>
+
+<hr style="border-color:#8b5cf622;margin:15px 0;">
+<h3 style="color:#8b5cf6;font-size:15px;text-align:center;">Create Vault via Factory</h3>
+<div style="display:grid;grid-template-columns:170px 1fr;gap:6px 10px;align-items:center;">
+<label style="color:#888;text-align:right;">ERC1155 NFT Address:</label><input id="pvNft" value="" style="background:#1a1418;color:#f0d070;border:1px solid #8b5cf644;padding:6px 8px;font-family:monospace;font-size:12px;border-radius:4px;" placeholder="0x...">
+<label style="color:#888;text-align:right;">LP Pair Address:</label><input id="pvLp" value="" style="background:#1a1418;color:#f0d070;border:1px solid #8b5cf644;padding:6px 8px;font-family:monospace;font-size:12px;border-radius:4px;" placeholder="0x...">
+<label style="color:#888;text-align:right;">Fee BPS:</label><input id="pvBps" value="100" style="background:#1a1418;color:#f0d070;border:1px solid #8b5cf644;padding:6px 8px;font-family:monospace;font-size:12px;border-radius:4px;width:80px;" placeholder="100 = 1%">
+<span></span><span style="color:#666;font-size:11px;">100 = 1%. Community LP auto-sends to NFT address.</span>
+</div>
+<div style="text-align:center;margin:12px 0;">
+<button onclick="createVaultViaFactory()" id="btnCreateVault" style="background:#8b5cf6;color:#fff;border:none;padding:12px 30px;font-size:14px;font-weight:bold;border-radius:6px;cursor:pointer;">Create Vault</button>
+</div>
+<p id="pvStatus" style="text-align:center;color:#888;font-size:13px;">Deploy or load factory first</p>
+
+<hr style="border-color:#f9731622;margin:15px 0;">
+<h3 style="color:#f97316;font-size:15px;text-align:center;">Create Cross-Chain Vault (NFT on Polygon/other chain)</h3>
+<p style="text-align:center;color:#888;font-size:11px;">For NFTs on another chain. You manage token ownership via setTokenOwner().</p>
+<div style="display:grid;grid-template-columns:170px 1fr;gap:6px 10px;align-items:center;">
+<label style="color:#888;text-align:right;">NFT Ref Address:</label><input id="ccNft" value="" style="background:#1a1418;color:#f0d070;border:1px solid #f9731644;padding:6px 8px;font-family:monospace;font-size:12px;border-radius:4px;" placeholder="0x... (NFT CA on other chain)">
+<label style="color:#888;text-align:right;">LP Pair (Base):</label><input id="ccLp" value="" style="background:#1a1418;color:#f0d070;border:1px solid #f9731644;padding:6px 8px;font-family:monospace;font-size:12px;border-radius:4px;" placeholder="0x...">
+<label style="color:#888;text-align:right;">Fee BPS:</label><input id="ccBps" value="100" style="background:#1a1418;color:#f0d070;border:1px solid #f9731644;padding:6px 8px;font-family:monospace;font-size:12px;border-radius:4px;width:80px;">
+</div>
+<div style="text-align:center;margin:12px 0;">
+<button onclick="createCrossChainVault()" id="btnCC" style="background:#f97316;color:#fff;border:none;padding:12px 30px;font-size:14px;font-weight:bold;border-radius:6px;cursor:pointer;">Create Cross-Chain Vault</button>
+</div>
+<p id="ccStatus" style="text-align:center;color:#888;font-size:13px;"></p>
+
+<hr style="border-color:#f9731622;margin:15px 0;">
+<h3 style="color:#f97316;font-size:15px;text-align:center;">Set Token Owners (Cross-Chain Vault)</h3>
+<div style="display:grid;grid-template-columns:170px 1fr;gap:6px 10px;align-items:center;">
+<label style="color:#888;text-align:right;">Vault Address:</label><input id="ccVaultAddr" value="" style="background:#1a1418;color:#f0d070;border:1px solid #f9731644;padding:6px 8px;font-family:monospace;font-size:12px;border-radius:4px;" placeholder="0x...">
+<label style="color:#888;text-align:right;">Token ID:</label><input id="ccTokenId" value="" style="background:#1a1418;color:#f0d070;border:1px solid #f9731644;padding:6px 8px;font-family:monospace;font-size:12px;border-radius:4px;width:80px;" placeholder="1">
+<label style="color:#888;text-align:right;">Owner Wallet:</label><input id="ccWallet" value="" style="background:#1a1418;color:#f0d070;border:1px solid #f9731644;padding:6px 8px;font-family:monospace;font-size:12px;border-radius:4px;" placeholder="0x...">
+</div>
+<div style="text-align:center;margin:12px 0;">
+<button onclick="setTokenOwner()" style="background:#f97316;color:#fff;border:none;padding:10px 25px;font-size:13px;font-weight:bold;border-radius:6px;cursor:pointer;">Set Owner</button>
+</div>
+<p id="ccOwnerStatus" style="text-align:center;color:#888;font-size:13px;"></p>
+
+<hr style="border-color:#3b82f622;margin:15px 0;">
+<h3 style="color:#3b82f6;font-size:15px;text-align:center;">Sync Polygon NFT Ownership</h3>
+<p style="text-align:center;color:#888;font-size:11px;">Reads all holders from Polygon and batch-sets them on the Base cross-chain vault.</p>
+<div style="display:grid;grid-template-columns:170px 1fr;gap:6px 10px;align-items:center;">
+<label style="color:#888;text-align:right;">Cross-Chain Vault:</label><input id="syncVault" value="0x4E6cCBA2c4bE1063649e9A867472116b5fABdA80" style="background:#1a1418;color:#f0d070;border:1px solid #3b82f644;padding:6px 8px;font-family:monospace;font-size:12px;border-radius:4px;" placeholder="0x... (Base)">
+<label style="color:#888;text-align:right;">NFT Contract (POL):</label><input id="syncNft" value="0xFfAaD6598B865C4F51bEeC4fc701356A667BE2B4" style="background:#1a1418;color:#f0d070;border:1px solid #3b82f644;padding:6px 8px;font-family:monospace;font-size:12px;border-radius:4px;" placeholder="0x... (Polygon)">
+</div>
+<div style="text-align:center;margin:12px 0;display:flex;gap:10px;justify-content:center;">
+<button onclick="scanPolygonOwners()" style="background:#3b82f6;color:#fff;border:none;padding:10px 25px;font-size:13px;font-weight:bold;border-radius:6px;cursor:pointer;">1. Scan Polygon</button>
+<button onclick="syncOwnersToBase()" id="btnSync" disabled style="background:#22c55e;color:#fff;border:none;padding:10px 25px;font-size:13px;font-weight:bold;border-radius:6px;cursor:pointer;opacity:0.4;">2. Sync to Base</button>
+</div>
+<div id="syncResults" style="color:#888;font-size:12px;max-height:300px;overflow-y:auto;margin:10px 0;"></div>
+<p id="syncStatus" style="text-align:center;color:#888;font-size:13px;"></p>
+
+<hr style="border-color:#8b5cf622;margin:15px 0;">
+<h3 style="color:#8b5cf6;font-size:15px;text-align:center;">All Vaults</h3>
+<div id="vaultList" style="color:#888;font-size:13px;text-align:center;">Load factory to see vaults</div>
+</div>
+
+<script>
+var WETH="0x4200000000000000000000000000000000000006";
+var MFT="0x8FB87d13B40B1A67B22ED1a17e2835fe7e3a9bA3";
+var BURGERS="0x06A05043eb2C1691b19c2C13219dB9212269dDc5";
+var LP_PAIR="0xa2A61fD7816951A0bCf8C67eA8f153C1AB5De288";
+var ORK_NFT="0xCd43D8eB17736bFDBd8862B7E03b6B5a4ad476A2";
+var ERC20_ABI=["function approve(address,uint256) returns (bool)","function allowance(address,address) view returns (uint256)","function balanceOf(address) view returns (uint256)"];
+var ERC1155_ABI=["function balanceOfBatch(address[] accounts, uint256[] ids) view returns (uint256[])"];
+
+var contracts=CONTRACTS;
+var deployed={};
+var signer=null;
+
+var STEPS=[
+  {key:"V4Swapper",name:"V4 Swapper (WETH↔MfT)",args:[]},
+  {key:"V2Swapper",name:"V2 Swapper (MfT↔BURGERS)",args:[]},
+  {key:"LPManager",name:"LP Manager (Add/Remove Liquidity)",args:[]},
+  {key:"OrkVault",name:"Ork Vault (10% Community Split)",args:[]},
+  {key:"VaultRouter",name:"Router (One-Click Power Up/Down)",args:["V4Swapper","V2Swapper","LPManager","OrkVault"]}
+];
+
+function renderSteps(){
+  var html="";
+  STEPS.forEach(function(s,i){
+    var addr=deployed[s.key]||"";
+    var status=addr?"deployed":"pending";
+    var color=addr?"#4ade80":"#888";
+    var icon=addr?"&#10003;":"&#9679;";
+    html+='<div style="display:flex;align-items:center;gap:12px;padding:10px 15px;margin:5px 0;background:#1a1418;border:1px solid '+(addr?'#4ade8044':'#c9a84c22')+';border-radius:6px;">';
+    html+='<span style="color:'+color+';font-size:20px;">'+icon+'</span>';
+    html+='<div style="flex:1;"><div style="font-weight:bold;color:#e8d5b0;">'+(i+1)+'. '+s.name+'</div>';
+    if(addr) html+='<div style="font-family:monospace;font-size:12px;color:#f0d070;word-break:break-all;user-select:all;">'+addr+'</div>';
+    html+='</div></div>';
+  });
+  document.getElementById("steps").innerHTML=html;
+}
+renderSteps();
+
+async function loadAddresses(){
+  try{
+    var keys=["V4Swapper","V2Swapper","LPManager","OrkVault","VaultRouter"];
+    var allFilled=true;
+    keys.forEach(function(k){
+      var val=document.getElementById("addr"+k).value.trim();
+      if(val) deployed[k]=val; else allFilled=false;
+    });
+    if(!allFilled){alert("Fill in all 5 addresses");return;}
+
+    if(!window.ethereum){alert("No wallet");return;}
+    await window.ethereum.request({method:"eth_requestAccounts"});
+    try{await window.ethereum.request({method:"wallet_switchEthereumChain",params:[{chainId:"0x2105"}]});}catch(e){}
+    var p=new ethers.BrowserProvider(window.ethereum);
+    signer=await p.getSigner();
+
+    renderSteps();
+    document.getElementById("btnPU").disabled=false;
+    document.getElementById("btnPD").disabled=false;
+    document.getElementById("testStatus").innerText="Loaded! Scanning your Orks...";
+    await scanOrks();
+    document.getElementById("testStatus").innerText="Ready to test!";
+  }catch(e){
+    alert("Error: "+e.message);
+    console.error(e);
+  }
+}
+
+async function redeployV4AndRouter(){
+  var btn=document.getElementById("btnRedeploy");
+  btn.disabled=true;
+  btn.innerText="Redeploying...";
+  try{
+    if(!signer){
+      if(!window.ethereum){alert("No wallet");return;}
+      await window.ethereum.request({method:"eth_requestAccounts"});
+      try{await window.ethereum.request({method:"wallet_switchEthereumChain",params:[{chainId:"0x2105"}]});}catch(e){}
+      var p=new ethers.BrowserProvider(window.ethereum);
+      signer=await p.getSigner();
+    }
+    // Load existing addresses for contracts we keep
+    ["V2Swapper","LPManager","OrkVault"].forEach(function(k){
+      var val=document.getElementById("addr"+k).value.trim();
+      if(val) deployed[k]=val;
+    });
+    if(!deployed["V2Swapper"]||!deployed["LPManager"]||!deployed["OrkVault"]){
+      alert("Need V2Swapper, LPManager, OrkVault addresses filled in");btn.disabled=false;return;
+    }
+
+    btn.innerText="Deploying new V4 Swapper...";
+    await deploySingle("V4Swapper",[]);
+    document.getElementById("addrV4Swapper").value=deployed["V4Swapper"];
+
+    btn.innerText="Deploying new Router...";
+    await deploySingle("VaultRouter",[deployed["V4Swapper"],deployed["V2Swapper"],deployed["LPManager"],deployed["OrkVault"]]);
+    document.getElementById("addrVaultRouter").value=deployed["VaultRouter"];
+
+    btn.innerText="Done! V4+Router redeployed";
+    btn.style.background="#4ade80";
+    document.getElementById("btnPU").disabled=false;
+    document.getElementById("btnPD").disabled=false;
+    renderSteps();
+    await scanOrks();
+    document.getElementById("testStatus").innerText="Ready to test with fixed V4!";
+
+    console.log("=== Redeployed Addresses ===");
+    for(var k in deployed) console.log(k+":",deployed[k]);
+  }catch(e){
+    btn.innerText="Error — Try Again";
+    btn.style.background="#dc2626";
+    btn.disabled=false;
+    alert("Redeploy failed: "+e.message);
+    console.error(e);
+  }
+}
+
+async function redeployVaultAndRouter(){
+  try{
+    if(!signer){ await ensureSigner(); }
+    // Load existing addresses for contracts we keep
+    ["V4Swapper","V2Swapper","LPManager"].forEach(function(k){
+      var val=document.getElementById("addr"+k).value.trim();
+      if(val) deployed[k]=val;
+    });
+    if(!deployed["V4Swapper"]||!deployed["V2Swapper"]||!deployed["LPManager"]){
+      alert("Need V4Swapper, V2Swapper, LPManager addresses filled in");return;
+    }
+    document.getElementById("testStatus").innerText="Deploying new OrkVault (NFT ownership check)...";
+    await deploySingle("OrkVault",[]);
+    document.getElementById("addrOrkVault").value=deployed["OrkVault"];
+
+    document.getElementById("testStatus").innerText="Deploying new Router (depositFor fix)...";
+    await deploySingle("VaultRouter",[deployed["V4Swapper"],deployed["V2Swapper"],deployed["LPManager"],deployed["OrkVault"]]);
+    document.getElementById("addrVaultRouter").value=deployed["VaultRouter"];
+
+    document.getElementById("testStatus").innerText="Done! Vault+Router redeployed with NFT key fix.";
+    document.getElementById("btnPU").disabled=false;
+    document.getElementById("btnPD").disabled=false;
+    renderSteps();
+    await scanOrks();
+
+    console.log("=== Redeployed Vault+Router ===");
+    for(var k in deployed) console.log(k+":",deployed[k]);
+  }catch(e){
+    document.getElementById("testStatus").innerText="Error: "+e.message;
+    alert("Redeploy failed: "+e.message);
+    console.error(e);
+  }
+}
+
+async function deploySingle(key,constructorArgs){
+  var c=contracts[key];
+  var factory=new ethers.ContractFactory(c.abi,"0x"+c.bin,signer);
+  var contract=await factory.deploy(...constructorArgs);
+  await contract.waitForDeployment();
+  var addr=await contract.getAddress();
+  deployed[key]=addr;
+  renderSteps();
+  return addr;
+}
+
+async function deployAll(){
+  var btn=document.getElementById("btnDeploy");
+  btn.disabled=true;
+  btn.innerText="Deploying...";
+  try{
+    if(!window.ethereum){alert("No wallet");return;}
+    await window.ethereum.request({method:"eth_requestAccounts"});
+    try{await window.ethereum.request({method:"wallet_switchEthereumChain",params:[{chainId:"0x2105"}]});}catch(e){}
+    var p=new ethers.BrowserProvider(window.ethereum);
+    signer=await p.getSigner();
+
+    // Deploy 1-4 (no constructor args)
+    for(var i=0;i<4;i++){
+      btn.innerText="Deploying "+(i+1)+"/5: "+STEPS[i].name+"...";
+      await deploySingle(STEPS[i].key,[]);
+    }
+
+    // Deploy 5 (Router) with addresses of 1-4
+    btn.innerText="Deploying 5/5: Router...";
+    var routerArgs=STEPS[4].args.map(function(k){return deployed[k];});
+    await deploySingle("VaultRouter",routerArgs);
+
+    btn.innerText="All 5 Deployed!";
+    btn.style.background="#4ade80";
+    document.getElementById("btnPU").disabled=false;
+    document.getElementById("btnPD").disabled=false;
+    document.getElementById("testStatus").innerText="Ready to test! Enter WETH amount and token ID.";
+
+    // Log all addresses
+    console.log("=== Deployed Addresses ===");
+    for(var k in deployed) console.log(k+":",deployed[k]);
+
+    // Auto-scan owned Orks
+    await scanOrks();
+
+  }catch(e){
+    btn.innerText="Error — Try Again";
+    btn.style.background="#dc2626";
+    btn.disabled=false;
+    alert("Deploy failed: "+e.message);
+    console.error(e);
+  }
+}
+
+async function ensureSigner(){
+  if(!window.ethereum){alert("No wallet");throw new Error("no wallet");}
+  await window.ethereum.request({method:"eth_requestAccounts"});
+  await window.ethereum.request({method:"wallet_switchEthereumChain",params:[{chainId:"0x2105"}]});
+  var p=new ethers.BrowserProvider(window.ethereum);
+  signer=await p.getSigner();
+  var net=await p.getNetwork();
+  console.log("Connected: chain="+net.chainId+" addr="+await signer.getAddress());
+  if(net.chainId!==8453n){alert("Wrong chain! Expected Base (8453), got "+net.chainId);throw new Error("wrong chain");}
+}
+
+async function approveIfNeeded(token,spender,amount){
+  var t=new ethers.Contract(token,ERC20_ABI,signer);
+  var me=await signer.getAddress();
+  var allow=await t.allowance(me,spender);
+  if(allow<amount){
+    var tx=await t.approve(spender,ethers.MaxUint256);
+    await tx.wait();
+    return true;
+  }
+  return false;
+}
+
+// ── Step-by-step diagnostics ──
+
+async function stepApproveWETH(){
+  var ds=document.getElementById("diagStatus");
+  try{
+    await ensureSigner();
+    var amt=ethers.parseEther(document.getElementById("testAmt").value);
+    var v4Addr=deployed["V4Swapper"]||document.getElementById("addrV4Swapper").value.trim();
+    var routerAddr=deployed["VaultRouter"]||document.getElementById("addrVaultRouter").value.trim();
+    if(!v4Addr||!routerAddr){ds.innerText="Need V4Swapper and Router addresses";return;}
+
+    ds.innerHTML="Approving WETH for V4Swapper ("+v4Addr.slice(0,8)+"...)...";
+    var did1=await approveIfNeeded(WETH,v4Addr,amt);
+    ds.innerHTML="Approving WETH for Router ("+routerAddr.slice(0,8)+"...)...";
+    var did2=await approveIfNeeded(WETH,routerAddr,amt);
+
+    var t=new ethers.Contract(WETH,ERC20_ABI,signer);
+    var me=await signer.getAddress();
+    var bal=await t.balanceOf(me);
+    ds.innerHTML='<span style="color:#4ade80;">Approvals done!</span> WETH balance: '+ethers.formatEther(bal)+
+      ' | V4Swapper: '+(did1?'NEW':'already ok')+' | Router: '+(did2?'NEW':'already ok');
+  }catch(e){
+    ds.innerHTML='<span style="color:#ef4444;">Approve failed:</span> '+e.message;
+    console.error(e);
+  }
+}
+
+async function stepTestV4(){
+  var ds=document.getElementById("diagStatus");
+  try{
+    await ensureSigner();
+    var v4Addr=deployed["V4Swapper"]||document.getElementById("addrV4Swapper").value.trim();
+    if(!v4Addr){ds.innerText="Need V4Swapper address";return;}
+
+    var amt=ethers.parseEther(document.getElementById("testAmt").value);
+    var me=await signer.getAddress();
+    var wethC=new ethers.Contract(WETH,ERC20_ABI,signer);
+
+    // Pre-flight checks
+    var wethBal=await wethC.balanceOf(me);
+    var wethAllow=await wethC.allowance(me,v4Addr);
+    ds.innerHTML='Preflight: WETH bal='+ethers.formatEther(wethBal)+' | allowance for V4Swapper='+ethers.formatEther(wethAllow)+' | need='+ethers.formatEther(amt);
+    console.log("V4 Preflight:",{v4Addr,wethBal:wethBal.toString(),wethAllow:wethAllow.toString(),amt:amt.toString()});
+
+    if(wethBal<amt){ds.innerHTML='<span style="color:#ef4444;">Not enough WETH!</span> Have '+ethers.formatEther(wethBal)+', need '+ethers.formatEther(amt);return;}
+
+    if(wethAllow<amt){
+      ds.innerText="Approving WETH for V4Swapper...";
+      var atx=await wethC.approve(v4Addr,ethers.MaxUint256);
+      await atx.wait();
+      ds.innerText="Approved! Now swapping...";
+    }
+
+    // Read pool key from deployed contract to verify it's correct
+    var v4=new ethers.Contract(v4Addr,contracts["V4Swapper"].abi,signer);
+    try{
+      var pk=await v4.poolKey();
+      console.log("Pool key from contract:",{c0:pk.currency0,c1:pk.currency1,fee:pk.fee.toString(),tick:pk.tickSpacing.toString(),hooks:pk.hooks});
+      ds.innerHTML+='<br>Pool key: c0='+pk.currency0.slice(0,8)+'... c1='+pk.currency1.slice(0,8)+'... fee='+pk.fee+' hooks='+pk.hooks.slice(0,8)+'...';
+    }catch(pkErr){console.error("poolKey read failed:",pkErr);}
+
+    ds.innerHTML+='<br>Calling swapWETHforMFT... confirm in wallet';
+    var tx;
+    try{
+      tx=await v4.swapWETHforMFT(amt,0);
+    }catch(estErr){
+      ds.innerHTML+='<br><span style="color:#f97316;">Gas est failed: '+estErr.reason+'</span>';
+      console.error("Est error:",estErr);
+      ds.innerHTML+='<br>Retrying with 500k gas limit...';
+      tx=await v4.swapWETHforMFT(amt,0,{gasLimit:500000});
+    }
+    ds.innerHTML+='<br>Tx sent: '+tx.hash.slice(0,14)+'... waiting...';
+    var receipt=await tx.wait();
+    if(receipt.status===0){
+      ds.innerHTML+='<br><span style="color:#ef4444;">REVERTED on-chain!</span> Gas used: '+receipt.gasUsed.toString()+' <a href="https://basescan.org/tx/'+receipt.hash+'" target="_blank" style="color:#c9a84c;">View tx</a>';
+    }else{
+      var mftBal=await (new ethers.Contract(MFT,ERC20_ABI,signer)).balanceOf(me);
+      ds.innerHTML+='<br><span style="color:#4ade80;">V4 Swap SUCCESS!</span> MfT balance: '+ethers.formatEther(mftBal)+
+        ' <a href="https://basescan.org/tx/'+receipt.hash+'" target="_blank" style="color:#c9a84c;">View tx</a>';
+    }
+  }catch(e){
+    ds.innerHTML+='<br><span style="color:#ef4444;">V4 FAILED:</span> '+e.message;
+    console.error("Full V4 error:",e);
+  }
+}
+
+async function stepTestV2(){
+  var ds=document.getElementById("diagStatus");
+  try{
+    await ensureSigner();
+    var v2Addr=deployed["V2Swapper"]||document.getElementById("addrV2Swapper").value.trim();
+    if(!v2Addr){ds.innerText="Need V2Swapper address";return;}
+
+    var me=await signer.getAddress();
+    var mftBal=await (new ethers.Contract(MFT,ERC20_ABI,signer)).balanceOf(me);
+    if(mftBal==0n){ds.innerText="No MfT balance — run V4 swap first";return;}
+
+    // Use 10% of MfT balance for test
+    var testAmt=mftBal/10n;
+    ds.innerText="Approving MfT for V2Swapper...";
+    await approveIfNeeded(MFT,v2Addr,testAmt);
+
+    ds.innerText="Swapping "+ethers.formatEther(testAmt)+" MfT → BURGERS...";
+    var v2=new ethers.Contract(v2Addr,contracts["V2Swapper"].abi,signer);
+    var tx=await v2.swapMFTforBURGERS(testAmt,0,me);
+    ds.innerText="Tx sent: "+tx.hash+" — waiting...";
+    var receipt=await tx.wait();
+    var burgerBal=await (new ethers.Contract(BURGERS,ERC20_ABI,signer)).balanceOf(me);
+    ds.innerHTML='<span style="color:#4ade80;">V2 Swap SUCCESS!</span> BURGERS: '+ethers.formatEther(burgerBal)+
+      ' <a href="https://basescan.org/tx/'+receipt.hash+'" target="_blank" style="color:#c9a84c;">View tx</a>';
+  }catch(e){
+    ds.innerHTML='<span style="color:#ef4444;">V2 Swap FAILED:</span> '+e.message;
+    console.error("Full error:",e);
+  }
+}
+
+async function stepTestLP(){
+  var ds=document.getElementById("diagStatus");
+  try{
+    await ensureSigner();
+    var lpAddr=deployed["LPManager"]||document.getElementById("addrLPManager").value.trim();
+    if(!lpAddr){ds.innerText="Need LPManager address";return;}
+
+    var me=await signer.getAddress();
+    var burgerBal=await (new ethers.Contract(BURGERS,ERC20_ABI,signer)).balanceOf(me);
+    var mftBal=await (new ethers.Contract(MFT,ERC20_ABI,signer)).balanceOf(me);
+    if(burgerBal==0n||mftBal==0n){ds.innerText="Need both BURGERS ("+ethers.formatEther(burgerBal)+") and MfT ("+ethers.formatEther(mftBal)+")";return;}
+
+    ds.innerText="Approving BURGERS + MfT for LPManager...";
+    await approveIfNeeded(BURGERS,lpAddr,burgerBal);
+    await approveIfNeeded(MFT,lpAddr,mftBal);
+
+    ds.innerText="Adding liquidity: "+ethers.formatEther(burgerBal)+" BURGERS + "+ethers.formatEther(mftBal)+" MfT...";
+    var lpm=new ethers.Contract(lpAddr,contracts["LPManager"].abi,signer);
+    var tx=await lpm.addLiq(burgerBal,mftBal,0,0,me);
+    ds.innerText="Tx sent: "+tx.hash+" — waiting...";
+    var receipt=await tx.wait();
+    var lpBal=await (new ethers.Contract(LP_PAIR,ERC20_ABI,signer)).balanceOf(me);
+    ds.innerHTML='<span style="color:#4ade80;">LP Add SUCCESS!</span> LP tokens: '+ethers.formatEther(lpBal)+
+      ' <a href="https://basescan.org/tx/'+receipt.hash+'" target="_blank" style="color:#c9a84c;">View tx</a>';
+  }catch(e){
+    ds.innerHTML='<span style="color:#ef4444;">LP Add FAILED:</span> '+e.message;
+    console.error("Full error:",e);
+  }
+}
+
+async function testPowerUp(){
+  var ss=document.getElementById("testStatus");
+  try{
+    var amt=document.getElementById("testAmt").value;
+    var tokenId=document.getElementById("testTokenId").value;
+    var wethWei=ethers.parseEther(amt);
+    var routerAddr=deployed["VaultRouter"];
+
+    ss.innerText="Approving WETH for Router...";
+    await approveIfNeeded(WETH,routerAddr,wethWei);
+
+    ss.innerText="Power Up: WETH → MfT → BURGERS+MfT → LP → Vault... confirm in wallet";
+    var router=new ethers.Contract(routerAddr,contracts["VaultRouter"].abi,signer);
+    var tx=await router.powerUp(wethWei,tokenId);
+    ss.innerText="Waiting for confirmation...";
+    var receipt=await tx.wait();
+    ss.innerHTML='<span style="color:#4ade80;">Power Up Success!</span> <a href="https://basescan.org/tx/'+receipt.hash+'" target="_blank" style="color:#c9a84c;">View tx</a>';
+  }catch(e){
+    ss.innerHTML='<span style="color:#ef4444;">Error:</span> '+e.message;
+    console.error(e);
+  }
+}
+
+async function scanOrks(){
+  var sel=document.getElementById("testTokenId");
+  var ss=document.getElementById("orkStatus");
+  try{
+    if(!signer){
+      if(!window.ethereum){ss.innerText="No wallet found";return;}
+      await window.ethereum.request({method:"eth_requestAccounts"});
+      var p=new ethers.BrowserProvider(window.ethereum);
+      signer=await p.getSigner();
+    }
+    var me=await signer.getAddress();
+    ss.innerText="Scanning Ork NFTs for "+me.slice(0,6)+"...";
+    sel.innerHTML='<option value="">-- scanning... --</option>';
+
+    var nft=new ethers.Contract(ORK_NFT,ERC1155_ABI,signer);
+    // Scan token IDs 1-200 in batches of 50
+    var owned=[];
+    for(var start=1;start<=200;start+=50){
+      var addrs=[],ids=[];
+      for(var j=start;j<start+50&&j<=200;j++){
+        addrs.push(me);
+        ids.push(j);
+      }
+      var bals=await nft.balanceOfBatch(addrs,ids);
+      for(var k=0;k<bals.length;k++){
+        if(bals[k]>0n) owned.push(start+k);
+      }
+    }
+
+    sel.innerHTML="";
+    if(owned.length===0){
+      sel.innerHTML='<option value="">-- no Orks found --</option>';
+      ss.innerText="No Mountain Orks found for this wallet";
+    }else{
+      owned.forEach(function(id){
+        var opt=document.createElement("option");
+        opt.value=id;
+        opt.textContent="Ork #"+id;
+        sel.appendChild(opt);
+      });
+      ss.innerText="Found "+owned.length+" Ork(s)";
+    }
+  }catch(e){
+    ss.innerText="Scan failed: "+e.message;
+    console.error(e);
+  }
+}
+
+async function testPowerDown(){
+  var ss=document.getElementById("testStatus");
+  try{
+    var tokenId=document.getElementById("testTokenId").value;
+    var vaultAddr=deployed["OrkVault"];
+    var routerAddr=deployed["VaultRouter"];
+    var vault=new ethers.Contract(vaultAddr,contracts["OrkVault"].abi,signer);
+    var me=await signer.getAddress();
+
+    // Check user's stake
+    var staked=await vault.userStake(tokenId,me);
+    if(staked==0n){ss.innerText="No LP staked for token #"+tokenId;return;}
+
+    ss.innerText="Withdrawing "+ethers.formatEther(staked)+" LP from vault...";
+    var tx1=await vault.withdraw(tokenId,staked);
+    await tx1.wait();
+
+    ss.innerText="Approving LP for Router...";
+    await approveIfNeeded(LP_PAIR,routerAddr,staked);
+
+    ss.innerText="Power Down: LP → BURGERS+MfT → MfT → WETH... confirm in wallet";
+    var router=new ethers.Contract(routerAddr,contracts["VaultRouter"].abi,signer);
+    var tx2=await router.powerDown(staked,tokenId);
+    ss.innerText="Waiting for confirmation...";
+    var receipt=await tx2.wait();
+    ss.innerHTML='<span style="color:#4ade80;">Power Down Success!</span> <a href="https://basescan.org/tx/'+receipt.hash+'" target="_blank" style="color:#c9a84c;">View tx</a>';
+  }catch(e){
+    ss.innerHTML='<span style="color:#ef4444;">Error:</span> '+e.message;
+    console.error(e);
+  }
+}
+var factoryContract=null;
+
+async function deployFactory(){
+  var btn=document.getElementById("btnFactory");
+  var ss=document.getElementById("factoryStatus");
+  btn.disabled=true;
+  btn.innerText="Deploying...";
+  try{
+    await ensureSigner();
+    var c=contracts["VaultFactory"];
+    var f=new ethers.ContractFactory(c.abi,c.bin,signer);
+    var contract=await f.deploy();
+    ss.innerText="Tx sent, waiting...";
+    await contract.waitForDeployment();
+    var addr=await contract.getAddress();
+    document.getElementById("factoryAddr").value=addr;
+    factoryContract=new ethers.Contract(addr,c.abi,signer);
+    btn.innerText="Deployed!";
+    btn.style.background="#4ade80";
+    ss.innerHTML='<span style="color:#4ade80;">Factory live at</span> <span style="font-family:monospace;color:#f0d070;user-select:all;">'+addr+'</span>';
+    console.log("VaultFactory:",addr);
+    await refreshVaultList();
+  }catch(e){
+    btn.innerText="Error — Retry";
+    btn.style.background="#dc2626";
+    btn.disabled=false;
+    ss.innerHTML='<span style="color:#ef4444;">'+e.message+'</span>';
+    console.error(e);
+  }
+}
+
+async function loadFactory(){
+  var ss=document.getElementById("factoryStatus");
+  try{
+    await ensureSigner();
+    var addr=document.getElementById("factoryAddr").value.trim();
+    if(!addr){alert("Paste factory address first");return;}
+    factoryContract=new ethers.Contract(addr,contracts["VaultFactory"].abi,signer);
+    var count=await factoryContract.totalVaults();
+    ss.innerHTML='<span style="color:#4ade80;">Loaded!</span> '+count.toString()+' vault(s) deployed';
+    await refreshVaultList();
+  }catch(e){
+    ss.innerHTML='<span style="color:#ef4444;">'+e.message+'</span>';
+    console.error(e);
+  }
+}
+
+async function createVaultViaFactory(){
+  var btn=document.getElementById("btnCreateVault");
+  var ss=document.getElementById("pvStatus");
+  if(!factoryContract){alert("Deploy or load factory first");return;}
+  btn.disabled=true;
+  btn.innerText="Creating...";
+  try{
+    var nft=document.getElementById("pvNft").value.trim();
+    var lp=document.getElementById("pvLp").value.trim();
+    var bps=parseInt(document.getElementById("pvBps").value.trim());
+    if(!nft||!lp){alert("Fill in all addresses");btn.disabled=false;btn.innerText="Create Vault";return;}
+    if(isNaN(bps)||bps<0||bps>5000){alert("BPS must be 0-5000");btn.disabled=false;btn.innerText="Create Vault";return;}
+
+    ss.innerText="Creating vault via factory (community recipient = NFT address)...";
+    var tx=await factoryContract.createVault(lp,nft,nft,bps);
+    ss.innerText="Tx sent, waiting...";
+    var receipt=await tx.wait();
+
+    // Find VaultCreated event
+    var vaultAddr="";
+    for(var log of receipt.logs){
+      try{
+        var parsed=factoryContract.interface.parseLog({topics:log.topics,data:log.data});
+        if(parsed&&parsed.name==="VaultCreated"){
+          vaultAddr=parsed.args.vault;
+          break;
+        }
+      }catch(e){}
+    }
+
+    btn.innerText="Created!";
+    btn.style.background="#4ade80";
+    ss.innerHTML='<span style="color:#4ade80;font-weight:bold;">Vault created!</span><br><span style="font-family:monospace;color:#f0d070;font-size:14px;user-select:all;">'+vaultAddr+'</span><br><span style="color:#888;font-size:11px;">NFT: '+nft.slice(0,10)+'... | LP: '+lp.slice(0,10)+'... | Fee: '+(bps/100)+'%</span>';
+    console.log("PowerVault created at:",vaultAddr);
+    await refreshVaultList();
+  }catch(e){
+    btn.innerText="Error — Retry";
+    btn.style.background="#dc2626";
+    btn.disabled=false;
+    ss.innerHTML='<span style="color:#ef4444;">'+e.message+'</span>';
+    console.error(e);
+  }
+}
+
+async function refreshVaultList(){
+  var el=document.getElementById("vaultList");
+  if(!factoryContract){el.innerText="No factory loaded";return;}
+  try{
+    var count=await factoryContract.totalVaults();
+    if(count==0n){el.innerText="No vaults created yet";return;}
+    var html='<div style="text-align:left;">';
+    for(var i=0;i<count;i++){
+      var vAddr=await factoryContract.allVaults(i);
+      var v=new ethers.Contract(vAddr,contracts["PowerVault"].abi,signer);
+      var nft=await v.NFT();
+      var lp=await v.LP_PAIR();
+      var bps=await v.FEE_BPS();
+      var staked=await v.totalStaked();
+      var locked=await v.totalLocked();
+      html+='<div style="padding:8px;margin:4px 0;background:rgba(139,92,246,0.08);border:1px solid rgba(139,92,246,0.2);border-radius:6px;">';
+      html+='<div style="font-family:monospace;color:#f0d070;font-size:12px;user-select:all;">'+vAddr+'</div>';
+      html+='<div style="font-size:11px;color:#888;">NFT: '+nft.slice(0,10)+'... | LP: '+lp.slice(0,10)+'... | Fee: '+Number(bps)/100+'%</div>';
+      html+='<div style="font-size:11px;color:#4ade80;">Staked: '+ethers.formatEther(staked)+' LP | Locked: '+ethers.formatEther(locked)+' LP</div>';
+      html+='</div>';
+    }
+    html+='</div>';
+    el.innerHTML=html;
+  }catch(e){
+    el.innerText="Error loading vaults: "+e.message;
+    console.error(e);
+  }
+}
+
+async function createCrossChainVault(){
+  var btn=document.getElementById("btnCC");
+  var ss=document.getElementById("ccStatus");
+  if(!factoryContract){alert("Deploy or load factory first");return;}
+  btn.disabled=true;
+  btn.innerText="Creating...";
+  try{
+    var nft=document.getElementById("ccNft").value.trim();
+    var lp=document.getElementById("ccLp").value.trim();
+    var bps=parseInt(document.getElementById("ccBps").value.trim());
+    if(!nft||!lp){alert("Fill in all addresses");btn.disabled=false;btn.innerText="Create Cross-Chain Vault";return;}
+
+    ss.innerText="Creating cross-chain vault via factory (community recipient = NFT address)...";
+    var tx=await factoryContract.createCrossChainVault(lp,nft,nft,bps);
+    ss.innerText="Tx sent, waiting...";
+    var receipt=await tx.wait();
+
+    var vaultAddr="";
+    for(var log of receipt.logs){
+      try{
+        var parsed=factoryContract.interface.parseLog({topics:log.topics,data:log.data});
+        if(parsed&&parsed.name==="VaultCreated"){
+          vaultAddr=parsed.args.vault;
+          break;
+        }
+      }catch(e){}
+    }
+
+    btn.innerText="Created!";
+    btn.style.background="#4ade80";
+    ss.innerHTML='<span style="color:#4ade80;font-weight:bold;">Cross-Chain Vault created!</span><br><span style="font-family:monospace;color:#f0d070;font-size:14px;user-select:all;">'+vaultAddr+'</span><br><span style="color:#888;font-size:11px;">You are the owner — use Set Token Owners below to assign NFT holders.</span>';
+    document.getElementById("ccVaultAddr").value=vaultAddr;
+    console.log("CrossChainVault:",vaultAddr);
+    await refreshVaultList();
+  }catch(e){
+    btn.innerText="Error — Retry";
+    btn.style.background="#dc2626";
+    btn.disabled=false;
+    ss.innerHTML='<span style="color:#ef4444;">'+e.message+'</span>';
+    console.error(e);
+  }
+}
+
+async function setTokenOwner(){
+  var ss=document.getElementById("ccOwnerStatus");
+  try{
+    await ensureSigner();
+    var vaultAddr=document.getElementById("ccVaultAddr").value.trim();
+    var tokenId=parseInt(document.getElementById("ccTokenId").value.trim());
+    var wallet=document.getElementById("ccWallet").value.trim();
+    if(!vaultAddr||!wallet||isNaN(tokenId)){alert("Fill in all fields");return;}
+
+    var ccAbi=contracts["CrossChainVault"].abi;
+    var vault=new ethers.Contract(vaultAddr,ccAbi,signer);
+    ss.innerText="Setting token #"+tokenId+" owner to "+wallet.slice(0,8)+"...";
+    var tx=await vault.setTokenOwner(tokenId,wallet);
+    ss.innerText="Tx sent, waiting...";
+    await tx.wait();
+    ss.innerHTML='<span style="color:#4ade80;">Token #'+tokenId+' → '+wallet.slice(0,10)+'...</span>';
+  }catch(e){
+    ss.innerHTML='<span style="color:#ef4444;">'+e.message+'</span>';
+    console.error(e);
+  }
+}
+
+// ── Polygon Ownership Sync ──────────────────────────────────────────────────
+
+var POLYGON_RPC="https://polygon-rpc.com";
+var pendingSyncIds=[];
+var pendingSyncWallets=[];
+
+async function scanPolygonOwners(){
+  var ss=document.getElementById("syncStatus");
+  var results=document.getElementById("syncResults");
+  var btn=document.getElementById("btnSync");
+  btn.disabled=true; btn.style.opacity="0.4";
+  pendingSyncIds=[]; pendingSyncWallets=[];
+  results.innerHTML="";
+
+  try{
+    var nftAddr=document.getElementById("syncNft").value.trim();
+    var vaultAddr=document.getElementById("syncVault").value.trim();
+    if(!nftAddr||!vaultAddr){alert("Fill in both addresses");return;}
+
+    ss.innerText="Reading transfer events from Polygon...";
+
+    var polProvider=new ethers.JsonRpcProvider(POLYGON_RPC);
+
+    // ERC1155 TransferSingle and TransferBatch event signatures
+    var SINGLE_TOPIC="0xc3d58168c5ae7397731d063d5bbf3d657854427343f4c083240f7aacaa2d0f62";
+    var BATCH_TOPIC="0x4a39dc06d4c0dbc64b70af90fd698a233a518aa5d07e595d983b8c0526c8f7fb";
+    var ZERO="0x0000000000000000000000000000000000000000";
+
+    // Build ownership map from events: tokenId -> current owner
+    var ownership={};
+
+    // Get deploy block (scan from 0 or a reasonable start)
+    ss.innerText="Fetching TransferSingle events...";
+    var currentBlock=await polProvider.getBlockNumber();
+
+    // Scan in chunks of 100k blocks from block 0 to now
+    // Most Polygon NFTs deployed after block 20M
+    var startBlock=20000000;
+    var chunkSize=500000;
+
+    for(var from=startBlock;from<=currentBlock;from+=chunkSize){
+      var to=Math.min(from+chunkSize-1,currentBlock);
+      ss.innerText="Scanning blocks "+from+"–"+to+"...";
+
+      // TransferSingle events
+      try{
+        var singleLogs=await polProvider.getLogs({
+          address:nftAddr, fromBlock:from, toBlock:to, topics:[SINGLE_TOPIC]
+        });
+        for(var log of singleLogs){
+          var from_=("0x"+log.topics[2].slice(26)).toLowerCase();
+          var to_=("0x"+log.topics[3].slice(26)).toLowerCase();
+          var decoded=ethers.AbiCoder.defaultAbiCoder().decode(["uint256","uint256"],log.data);
+          var tokenId=Number(decoded[0]);
+          if(to_.toLowerCase()===ZERO.toLowerCase()){
+            // Burn
+            delete ownership[tokenId];
+          } else {
+            ownership[tokenId]=ethers.getAddress(to_);
+          }
+        }
+      }catch(e){console.error("single logs chunk",from,e);}
+
+      // TransferBatch events
+      try{
+        var batchLogs=await polProvider.getLogs({
+          address:nftAddr, fromBlock:from, toBlock:to, topics:[BATCH_TOPIC]
+        });
+        for(var log of batchLogs){
+          var from_=("0x"+log.topics[2].slice(26)).toLowerCase();
+          var to_=("0x"+log.topics[3].slice(26)).toLowerCase();
+          var decoded=ethers.AbiCoder.defaultAbiCoder().decode(["uint256[]","uint256[]"],log.data);
+          var ids=decoded[0];
+          for(var i=0;i<ids.length;i++){
+            var tokenId=Number(ids[i]);
+            if(to_.toLowerCase()===ZERO.toLowerCase()){
+              delete ownership[tokenId];
+            } else {
+              ownership[tokenId]=ethers.getAddress(to_);
+            }
+          }
+        }
+      }catch(e){console.error("batch logs chunk",from,e);}
+    }
+
+    // Now compare with vault's current tokenOwner mapping on Base
+    ss.innerText="Comparing with Base vault state...";
+    await ensureSigner();
+    var ccAbi=contracts["CrossChainVault"].abi;
+    var vault=new ethers.Contract(vaultAddr,ccAbi,signer);
+
+    var tokenIds=Object.keys(ownership).map(Number).sort((a,b)=>a-b);
+    var html='<table style="width:100%;border-collapse:collapse;font-family:monospace;font-size:11px;"><tr style="color:#c9a84c;"><th style="padding:4px;">Token</th><th>Polygon Owner</th><th>Vault Owner</th><th>Status</th></tr>';
+
+    var needsUpdate=[];
+    for(var tid of tokenIds){
+      var polOwner=ownership[tid];
+      var vaultOwner;
+      try{ vaultOwner=await vault.tokenOwner(tid); }catch{ vaultOwner=ZERO; }
+
+      var match=polOwner.toLowerCase()===vaultOwner.toLowerCase();
+      var statusColor=match?"#4ade80":"#f97316";
+      var statusText=match?"OK":"NEEDS SYNC";
+
+      if(!match){
+        needsUpdate.push({id:tid,wallet:polOwner});
+        pendingSyncIds.push(tid);
+        pendingSyncWallets.push(polOwner);
+      }
+
+      html+='<tr style="border-top:1px solid #333;"><td style="padding:4px;color:#f0d070;text-align:center;">#'+tid+'</td><td style="padding:4px;color:#888;">'+polOwner.slice(0,8)+'...'+polOwner.slice(-4)+'</td><td style="padding:4px;color:#888;">'+vaultOwner.slice(0,8)+'...'+vaultOwner.slice(-4)+'</td><td style="padding:4px;color:'+statusColor+';font-weight:bold;text-align:center;">'+statusText+'</td></tr>';
+    }
+    html+='</table>';
+
+    results.innerHTML=html;
+    ss.innerHTML='<span style="color:#3b82f6;">Found '+tokenIds.length+' tokens, '+needsUpdate.length+' need sync</span>';
+
+    if(needsUpdate.length>0){
+      btn.disabled=false; btn.style.opacity="1";
+    }
+  }catch(e){
+    ss.innerHTML='<span style="color:#ef4444;">'+e.message+'</span>';
+    console.error(e);
+  }
+}
+
+async function syncOwnersToBase(){
+  var ss=document.getElementById("syncStatus");
+  var btn=document.getElementById("btnSync");
+  if(pendingSyncIds.length===0){alert("Nothing to sync");return;}
+
+  try{
+    await ensureSigner();
+    var vaultAddr=document.getElementById("syncVault").value.trim();
+    var ccAbi=contracts["CrossChainVault"].abi;
+    var vault=new ethers.Contract(vaultAddr,ccAbi,signer);
+
+    btn.disabled=true; btn.style.opacity="0.4";
+    ss.innerText="Sending setTokenOwnersBatch for "+pendingSyncIds.length+" tokens...";
+
+    var tx=await vault.setTokenOwnersBatch(pendingSyncIds,pendingSyncWallets);
+    ss.innerText="Tx sent ("+tx.hash.slice(0,10)+"...), waiting for confirmation...";
+    await tx.wait();
+
+    ss.innerHTML='<span style="color:#4ade80;font-weight:bold;">Synced '+pendingSyncIds.length+' token owners to Base!</span>';
+    pendingSyncIds=[];
+    pendingSyncWallets=[];
+
+    // Re-scan to verify
+    setTimeout(function(){ scanPolygonOwners(); },2000);
+  }catch(e){
+    ss.innerHTML='<span style="color:#ef4444;">'+e.message+'</span>';
+    btn.disabled=false; btn.style.opacity="1";
+    console.error(e);
+  }
+}
+</script>
+</body></html>
