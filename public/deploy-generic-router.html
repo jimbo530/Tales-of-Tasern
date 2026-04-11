@@ -1,0 +1,37 @@
+<!DOCTYPE html><html><head>
+<meta charset="UTF-8"><title>Deploy GenericVaultRouter</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.1/ethers.umd.min.js"></script>
+<script src="vault-contracts.js"></script>
+<style>body{background:#111;color:#ddd;font-family:monospace;padding:40px;}button{padding:10px 20px;font-size:14px;cursor:pointer;background:#2a5a35;color:#4ade80;border:1px solid #4ade8044;border-radius:4px;margin:8px 0;}input{background:#222;color:#eee;border:1px solid #555;padding:8px;width:400px;margin:4px 0;font-family:monospace;}#out{white-space:pre-wrap;margin-top:16px;color:#888;}</style>
+</head><body>
+<h2>Deploy GenericVaultRouter (Base)</h2>
+<p>Constructor: (v4Swapper, v2Router)</p>
+<label>V4Swapper:</label><br>
+<input id="v4" value="0xD2ea238E82637Ba3052600eDCc4109822644Fcb0"><br>
+<label>V2 Router (Uniswap V2 on Base):</label><br>
+<input id="v2r" value="0x4752ba5DBc23f44D87826276BF6Fd6b1C372aD24"><br>
+<button onclick="deploy()">Deploy</button>
+<div id="out"></div>
+<script>
+async function deploy() {
+  var out = document.getElementById("out");
+  try {
+    out.innerText = "Connecting...";
+    await window.ethereum.request({ method: "eth_requestAccounts" });
+    await window.ethereum.request({ method: "wallet_switchEthereumChain", params: [{ chainId: "0x2105" }] });
+    var p = new ethers.BrowserProvider(window.ethereum);
+    var s = await p.getSigner();
+    var v4 = document.getElementById("v4").value;
+    var v2r = document.getElementById("v2r").value;
+    out.innerText = "Deploying GenericVaultRouter(" + v4.slice(0,10) + "..., " + v2r.slice(0,10) + "...)...";
+    var f = new ethers.ContractFactory(GenericVaultRouter_ABI, GenericVaultRouter_BIN, s);
+    var c = await f.deploy(v4, v2r);
+    out.innerText += "\nTx sent: " + c.deploymentTransaction().hash;
+    await c.waitForDeployment();
+    var addr = await c.getAddress();
+    out.innerText += "\n\nDEPLOYED: " + addr;
+    out.innerText += "\n\nSave this address! Set it as GENERIC_ROUTER in vault.html.";
+  } catch(e) { out.innerText = "ERROR: " + e.message; }
+}
+</script>
+</body></html>

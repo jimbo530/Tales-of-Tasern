@@ -772,3 +772,129 @@ contract VaultRouter {
         if (bal > 0) IERC20(token).transfer(owner, bal);
     }
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Contract 6: GenericVaultRouter — One-click WETH -> any TOKEN/MfT LP Vault
+//   Works with any token pair (BURGERS, TGN, EGP, etc.) and any vault type
+//   (PowerVault or CrossChainVault). Single tx for power up AND power down.
+// ═══════════════════════════════════════════════════════════════════════════
+
+contract GenericVaultRouter {
+    address public constant WETH = 0x4200000000000000000000000000000000000006;
+    address public constant MFT  = 0x8FB87d13B40B1A67B22ED1a17e2835fe7e3a9bA3;
+
+    V4Swapper public immutable v4Swapper;
+    IUniswapV2Router public immutable v2Router;
+    address public owner;
+
+    constructor(address _v4, address _v2Router) {
+        v4Swapper = V4Swapper(_v4);
+        v2Router  = IUniswapV2Router(_v2Router);
+        owner     = msg.sender;
+    }
+
+    /// @notice One-click: WETH -> MfT -> split -> TOKEN+MfT -> LP -> Vault
+    function powerUp(
+        uint256 wethAmount,
+        uint256 tokenId,
+        address token,
+        address lpPair,
+        address vault
+    ) external {
+        require(wethAmount > 0, "zero");
+
+        // 1. Pull WETH from user
+        IERC20(WETH).transferFrom(msg.sender, address(this), wethAmount);
+
+        // 2. WETH -> MfT via V4
+        IERC20(WETH).approve(address(v4Swapper), wethAmount);
+        uint256 mftTotal = v4Swapper.swapWETHforMFTTo(wethAmount, 0, address(this));
+
+        // 3. Half MfT -> TOKEN via V2 Router
+        uint256 halfMft = mftTotal / 2;
+        IERC20(MFT).approve(address(v2Router), mftTotal);
+        address[] memory path = new address[](2);
+        path[0] = MFT;
+        path[1] = token;
+        uint256[] memory amounts = v2Router.swapExactTokensForTokens(
+            halfMft, 0, path, address(this), block.timestamp
+        );
+        uint256 tokenAmt = amounts[1];
+
+        // 4. TOKEN + MfT -> LP
+        uint256 remainingMft = IERC20(MFT).balanceOf(address(this));
+        IERC20(token).approve(address(v2Router), tokenAmt);
+        IERC20(MFT).approve(address(v2Router), remainingMft);
+        (,, uint256 lpAmount) = v2Router.addLiquidity(
+            token, MFT, tokenAmt, remainingMft, 0, 0, address(this), block.timestamp
+        );
+
+        // 5. LP -> Vault (credited to msg.sender)
+        IERC20(lpPair).approve(vault, lpAmount);
+        // depositFor works on both PowerVault and CrossChainVault
+        (bool ok,) = vault.call(
+            abi.encodeWithSignature("depositFor(uint256,uint256,address)", tokenId, lpAmount, msg.sender)
+        );
+        require(ok, "deposit failed");
+
+        // 6. Return dust
+        _returnDust(msg.sender, token, lpPair);
+    }
+
+    /// @notice One-click: Vault -> LP -> TOKEN+MfT -> MfT -> WETH
+    function powerDown(
+        uint256 lpAmount,
+        uint256 tokenId,
+        address token,
+        address lpPair,
+        address vault
+    ) external {
+        require(lpAmount > 0, "zero");
+
+        // 1. Withdraw LP from vault (sends LP to this router)
+        (bool ok,) = vault.call(
+            abi.encodeWithSignature("withdrawFor(uint256,uint256,address,address)", tokenId, lpAmount, msg.sender, address(this))
+        );
+        require(ok, "withdraw failed");
+
+        // 2. LP -> TOKEN + MfT
+        IERC20(lpPair).approve(address(v2Router), lpAmount);
+        (uint256 tokenOut, uint256 mftOut) = v2Router.removeLiquidity(
+            token, MFT, lpAmount, 0, 0, address(this), block.timestamp
+        );
+
+        // 3. TOKEN -> MfT via V2
+        IERC20(token).approve(address(v2Router), tokenOut);
+        address[] memory path = new address[](2);
+        path[0] = token;
+        path[1] = MFT;
+        uint256[] memory amounts = v2Router.swapExactTokensForTokens(
+            tokenOut, 0, path, address(this), block.timestamp
+        );
+
+        // 4. All MfT -> WETH via V4
+        uint256 totalMft = mftOut + amounts[1];
+        IERC20(MFT).approve(address(v4Swapper), totalMft);
+        v4Swapper.swapMFTforWETHTo(totalMft, 0, msg.sender);
+
+        // 5. Return dust
+        _returnDust(msg.sender, token, lpPair);
+    }
+
+    function _returnDust(address to, address token, address lpPair) internal {
+        uint256 t = IERC20(token).balanceOf(address(this));
+        uint256 m = IERC20(MFT).balanceOf(address(this));
+        uint256 w = IERC20(WETH).balanceOf(address(this));
+        uint256 l = IERC20(lpPair).balanceOf(address(this));
+        if (t > 0) IERC20(token).transfer(to, t);
+        if (m > 0) IERC20(MFT).transfer(to, m);
+        if (w > 0) IERC20(WETH).transfer(to, w);
+        if (l > 0) IERC20(lpPair).transfer(to, l);
+    }
+
+    function rescue(address token) external {
+        require(msg.sender == owner, "not owner");
+        uint256 bal = IERC20(token).balanceOf(address(this));
+        if (bal > 0) IERC20(token).transfer(owner, bal);
+    }
+}

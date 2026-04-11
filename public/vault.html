@@ -314,6 +314,7 @@ if (!NFT_ADDR || !ethers.isAddress(NFT_ADDR)) {
 var TOKEN_PAIRS = [
   { name: "BURGERS", token: "0x06A05043eb2C1691b19c2C13219dB9212269dDc5", lp: "0xa2A61fD7816951A0bCf8C67eA8f153C1AB5De288" },
   { name: "TGN",     token: "0xd75dfa972c6136f1c594fec1945302f885e1ab29", lp: "0xbd0cc3b0aaf91b80c862dbcaf39faa4705ee2d7a" },
+  { name: "EGP",     token: "0xc1ba76771bbf0dd841347630e57c793f9d5accee", lp: "0x36d0c273faca6e90f827bc2e7d232246f9f89fe4" },
 ];
 var activePair = TOKEN_PAIRS[0];
 
@@ -323,6 +324,7 @@ var MFT_ADDR    = "0x8FB87d13B40B1A67B22ED1a17e2835fe7e3a9bA3";
 var V4_SWAPPER  = "0xD2ea238E82637Ba3052600eDCc4109822644Fcb0";
 var V2_ROUTER   = "0x4752ba5DBc23f44D87826276BF6Fd6b1C372aD24";
 var FACTORY     = "0x1db674DB0F83578a9AaD7BE30B59F61c8C9b82D0";
+var GENERIC_ROUTER = ""; // Deploy via deploy-generic-router.html, then paste address here
 
 // vault key includes NFT + LP pair so each combo gets its own vault
 function vaultKey() { return STORAGE_KEY + "_" + activePair.lp.slice(2,10); }
@@ -349,6 +351,10 @@ var V2R_ABI = [
   "function removeLiquidity(address,address,uint256,uint256,uint256,address,uint256) returns (uint256,uint256)"
 ];
 var V4S_ABI = V4Swapper_ABI;
+var GROUTER_ABI = [
+  "function powerUp(uint256 wethAmount, uint256 tokenId, address token, address lpPair, address vault)",
+  "function powerDown(uint256 lpAmount, uint256 tokenId, address token, address lpPair, address vault)"
+];
 var VAULT_ABI = [
   "function deposit(uint256,uint256)","function withdraw(uint256,uint256)",
   "function userStake(uint256,address) view returns (uint256)",
@@ -830,53 +836,12 @@ async function doPowerUp() {
   var amt = document.getElementById("puAmount").value;
   if (!amt || parseFloat(amt) <= 0) { alert("Enter WETH amount"); return; }
   btn.disabled = true; btn.innerText = "Working..."; ss.className = "status";
-  var deadline = Math.floor(Date.now() / 1000) + 600;
 
   try {
     var wethAmt = ethers.parseEther(amt);
     var wethBal = await wethC.balanceOf(userAddr);
     if (wethBal < wethAmt) { throw new Error("Not enough WETH. Have " + ethers.formatEther(wethBal) + ", need " + amt); }
 
-    // Snapshot balances before so we only use what this tx creates
-    var mftBefore = await mftC.balanceOf(userAddr);
-    var tokenBefore = await tokenC.balanceOf(userAddr);
-    var lpBefore = await lpC.balanceOf(userAddr);
-
-    // 1. WETH → MfT via V4
-    ss.innerText = "Step 1/4: WETH \u2192 MfT (V4)...";
-    var tx1;
-    try { tx1 = await v4C.swapWETHforMFT(wethAmt, 0); }
-    catch(e1) { tx1 = await v4C.swapWETHforMFT(wethAmt, 0, {gasLimit: 500000}); }
-    await tx1.wait();
-
-    // 2. Half new MfT → TOKEN via V2 Router
-    var mftNow = await mftC.balanceOf(userAddr);
-    var newMft = mftNow - mftBefore;
-    ss.innerText = "Step 2/4: MfT \u2192 " + activePair.name + " (V2)...";
-    var tx2 = await v2rC.swapExactTokensForTokens(newMft / 2n, 0, [MFT_ADDR, activePair.token], userAddr, deadline);
-    await tx2.wait();
-
-    // 3. Add liquidity — only use new tokens from this flow
-    var tNow = await tokenC.balanceOf(userAddr);
-    var mNow = await mftC.balanceOf(userAddr);
-    var newToken = tNow - tokenBefore;
-    var newMftForLiq = mNow - mftBefore;
-    // Use whichever is smaller if mftBefore had balance
-    if (newMftForLiq <= 0n) newMftForLiq = mNow; // fallback
-    ss.innerText = "Step 3/4: Adding liquidity...";
-    var tx3 = await v2rC.addLiquidity(activePair.token, MFT_ADDR, newToken, newMftForLiq, 0, 0, userAddr, deadline);
-    await tx3.wait();
-
-    // 4. Deposit only NEW LP to vault
-    var lpNow = await lpC.balanceOf(userAddr);
-    var lpBal = lpNow - lpBefore;
-    // Ensure LP is approved to vault before deposit
-    var lpAllow = await lpC.allowance(userAddr, vaultAddr);
-    if (lpAllow < lpBal) {
-      ss.innerText = "Approving LP to vault...";
-      var txA = await lpC.approve(vaultAddr, ethers.MaxUint256);
-      await txA.wait();
-    }
     // Cross-chain: ensure tokenOwner is registered before deposit
     if (IS_CROSS_CHAIN) {
       var xvc = new ethers.Contract(vaultAddr, ["function tokenOwner(uint256) view returns (address)","function setTokenOwner(uint256,address)"], signer);
@@ -887,13 +852,59 @@ async function doPowerUp() {
         await txOwn.wait();
       }
     }
-    ss.innerText = "Step 4/4: Depositing to vault...";
-    var tx4 = await vaultContract.deposit(parseInt(tid), lpBal);
-    await tx4.wait();
+
+    if (GENERIC_ROUTER) {
+      // ── Single-tx via GenericVaultRouter ──
+      ss.innerText = "Approving WETH to router...";
+      await ensureApproval(wethC, GENERIC_ROUTER, "WETH", ss);
+      ss.innerText = "Power Up (single tx)...";
+      var grc = new ethers.Contract(GENERIC_ROUTER, GROUTER_ABI, signer);
+      var tx = await grc.powerUp(wethAmt, parseInt(tid), activePair.token, activePair.lp, vaultAddr);
+      await tx.wait();
+    } else {
+      // ── Fallback: multi-tx flow ──
+      var deadline = Math.floor(Date.now() / 1000) + 600;
+      var mftBefore = await mftC.balanceOf(userAddr);
+      var tokenBefore = await tokenC.balanceOf(userAddr);
+      var lpBefore = await lpC.balanceOf(userAddr);
+
+      ss.innerText = "Step 1/4: WETH \u2192 MfT (V4)...";
+      var tx1;
+      try { tx1 = await v4C.swapWETHforMFT(wethAmt, 0); }
+      catch(e1) { tx1 = await v4C.swapWETHforMFT(wethAmt, 0, {gasLimit: 500000}); }
+      await tx1.wait();
+
+      var mftNow = await mftC.balanceOf(userAddr);
+      var newMft = mftNow - mftBefore;
+      ss.innerText = "Step 2/4: MfT \u2192 " + activePair.name + " (V2)...";
+      var tx2 = await v2rC.swapExactTokensForTokens(newMft / 2n, 0, [MFT_ADDR, activePair.token], userAddr, deadline);
+      await tx2.wait();
+
+      var tNow = await tokenC.balanceOf(userAddr);
+      var mNow = await mftC.balanceOf(userAddr);
+      var newToken = tNow - tokenBefore;
+      var newMftForLiq = mNow - mftBefore;
+      if (newMftForLiq <= 0n) newMftForLiq = mNow;
+      ss.innerText = "Step 3/4: Adding liquidity...";
+      var tx3 = await v2rC.addLiquidity(activePair.token, MFT_ADDR, newToken, newMftForLiq, 0, 0, userAddr, deadline);
+      await tx3.wait();
+
+      var lpNow = await lpC.balanceOf(userAddr);
+      var lpBal = lpNow - lpBefore;
+      var lpAllow = await lpC.allowance(userAddr, vaultAddr);
+      if (lpAllow < lpBal) {
+        ss.innerText = "Approving LP to vault...";
+        var txA = await lpC.approve(vaultAddr, ethers.MaxUint256);
+        await txA.wait();
+      }
+      ss.innerText = "Step 4/4: Depositing to vault...";
+      var tx4 = await vaultContract.deposit(parseInt(tid), lpBal);
+      await tx4.wait();
+    }
 
     addDeposit(tid, amt);
     ss.className = "status ok";
-    ss.innerHTML = "Done! " + amt + " WETH \u2192 #" + tid + " (" + parseFloat(ethers.formatEther(lpBal)).toFixed(6) + " LP)";
+    ss.innerHTML = "Done! " + amt + " WETH \u2192 #" + tid;
     await refreshAll();
     btn.innerText = "Power Up"; btn.disabled = false;
   } catch(e) {
@@ -919,10 +930,6 @@ async function doPowerDown() {
     var totalStake = await vaultContract.userStake(parseInt(tid), userAddr);
     var fraction = totalStake > 0n ? parseFloat(ethers.formatEther(lpAmt)) / parseFloat(ethers.formatEther(totalStake)) : 1;
 
-    // Snapshot balances before
-    var tokenBefore = await tokenC.balanceOf(userAddr);
-    var mftBefore = await mftC.balanceOf(userAddr);
-
     // Cross-chain: ensure tokenOwner is registered before withdraw
     if (IS_CROSS_CHAIN) {
       var xvc = new ethers.Contract(vaultAddr, ["function tokenOwner(uint256) view returns (address)","function setTokenOwner(uint256,address)"], signer);
@@ -933,38 +940,50 @@ async function doPowerDown() {
         await txOwn.wait();
       }
     }
-    // 1. Withdraw LP from vault
-    ss.innerText = "Step 1/4: Withdrawing LP...";
-    var tx1 = await vaultContract.withdraw(parseInt(tid), lpAmt);
-    await tx1.wait();
 
-    // 2. Remove liquidity → TOKEN + MfT
-    // Ensure LP approved to V2 Router
-    var lpAllow2 = await lpC.allowance(userAddr, V2_ROUTER);
-    if (lpAllow2 < lpAmt) {
-      ss.innerText = "Approving LP...";
-      var txA2 = await lpC.approve(V2_ROUTER, ethers.MaxUint256);
-      await txA2.wait();
+    if (GENERIC_ROUTER) {
+      // ── Single-tx via GenericVaultRouter ──
+      ss.innerText = "Power Down (single tx)...";
+      var grc = new ethers.Contract(GENERIC_ROUTER, GROUTER_ABI, signer);
+      var tx = await grc.powerDown(lpAmt, parseInt(tid), activePair.token, activePair.lp, vaultAddr);
+      await tx.wait();
+    } else {
+      // ── Fallback: multi-tx flow ──
+      var tokenBefore = await tokenC.balanceOf(userAddr);
+      var mftBefore = await mftC.balanceOf(userAddr);
+
+      // 1. Withdraw LP from vault
+      ss.innerText = "Step 1/4: Withdrawing LP...";
+      var tx1 = await vaultContract.withdraw(parseInt(tid), lpAmt);
+      await tx1.wait();
+
+      // 2. Remove liquidity
+      var lpAllow2 = await lpC.allowance(userAddr, V2_ROUTER);
+      if (lpAllow2 < lpAmt) {
+        ss.innerText = "Approving LP...";
+        var txA2 = await lpC.approve(V2_ROUTER, ethers.MaxUint256);
+        await txA2.wait();
+      }
+      ss.innerText = "Step 2/4: Removing liquidity...";
+      var tx2 = await v2rC.removeLiquidity(activePair.token, MFT_ADDR, lpAmt, 0, 0, userAddr, deadline);
+      await tx2.wait();
+
+      // 3. Only swap the NEW tokens from removeLiquidity
+      var tNow = await tokenC.balanceOf(userAddr);
+      var newToken = tNow - tokenBefore;
+      ss.innerText = "Step 3/4: " + activePair.name + " \u2192 MfT...";
+      var tx3 = await v2rC.swapExactTokensForTokens(newToken, 0, [activePair.token, MFT_ADDR], userAddr, deadline);
+      await tx3.wait();
+
+      // 4. Only swap the NEW MfT to WETH
+      var mNow = await mftC.balanceOf(userAddr);
+      var newMft = mNow - mftBefore;
+      ss.innerText = "Step 4/4: MfT \u2192 WETH (V4)...";
+      var tx4;
+      try { tx4 = await v4C.swapMFTforWETH(newMft, 0); }
+      catch(e4) { tx4 = await v4C.swapMFTforWETH(newMft, 0, {gasLimit: 500000}); }
+      await tx4.wait();
     }
-    ss.innerText = "Step 2/4: Removing liquidity...";
-    var tx2 = await v2rC.removeLiquidity(activePair.token, MFT_ADDR, lpAmt, 0, 0, userAddr, deadline);
-    await tx2.wait();
-
-    // 3. Only swap the NEW tokens from removeLiquidity
-    var tNow = await tokenC.balanceOf(userAddr);
-    var newToken = tNow - tokenBefore;
-    ss.innerText = "Step 3/4: " + activePair.name + " \u2192 MfT...";
-    var tx3 = await v2rC.swapExactTokensForTokens(newToken, 0, [activePair.token, MFT_ADDR], userAddr, deadline);
-    await tx3.wait();
-
-    // 4. Only swap the NEW MfT to WETH
-    var mNow = await mftC.balanceOf(userAddr);
-    var newMft = mNow - mftBefore;
-    ss.innerText = "Step 4/4: MfT \u2192 WETH (V4)...";
-    var tx4;
-    try { tx4 = await v4C.swapMFTforWETH(newMft, 0); }
-    catch(e4) { tx4 = await v4C.swapMFTforWETH(newMft, 0, {gasLimit: 500000}); }
-    await tx4.wait();
 
     subDeposit(tid, fraction);
     ss.className = "status ok";
