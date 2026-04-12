@@ -315,6 +315,7 @@ var TOKEN_PAIRS = [
   { name: "BURGERS", token: "0x06A05043eb2C1691b19c2C13219dB9212269dDc5", lp: "0xa2A61fD7816951A0bCf8C67eA8f153C1AB5De288" },
   { name: "TGN",     token: "0xd75dfa972c6136f1c594fec1945302f885e1ab29", lp: "0xbd0cc3b0aaf91b80c862dbcaf39faa4705ee2d7a" },
   { name: "EGP",     token: "0xc1ba76771bbf0dd841347630e57c793f9d5accee", lp: "0x36d0c273faca6e90f827bc2e7d232246f9f89fe4" },
+  { name: "CHAR",    token: "0x20b048fa035d5763685d695e66adf62c5d9f5055", lp: "0x4da71963e031d22c25f2b2682454cae834504eb9" },
 ];
 var activePair = TOKEN_PAIRS[0];
 
@@ -653,6 +654,13 @@ async function adminDeployVault() {
     vaultAddr = await c.getAddress();
     vaultContract = new ethers.Contract(vaultAddr, VAULT_ABI, signer);
     saveVault(vaultAddr);
+    // Authorize GenericVaultRouter on the new vault
+    if (GENERIC_ROUTER) {
+      ss.innerText = "Authorizing router...";
+      var src = new ethers.Contract(vaultAddr, ["function setRouter(address,bool)"], signer);
+      var txr = await src.setRouter(GENERIC_ROUTER, true);
+      await txr.wait();
+    }
     // Cross-chain: register NFT ownership on the vault
     if (IS_CROSS_CHAIN && userTokenIds.length > 0) {
       ss.innerText = "Registering NFT ownership...";
@@ -667,7 +675,7 @@ async function adminDeployVault() {
     var vl = document.getElementById("vaultLink");
     vl.href = "https://basescan.org/address/" + vaultAddr; vl.style.display = "inline";
     activateUI();
-  } catch(e) { btn.disabled = false; btn.innerText = "Deploy Vault"; ss.innerHTML = '<span class="err">'+e.message+'</span>'; }
+  } catch(e) { btn.disabled = false; btn.innerText = "Deploy Vault"; ss.className = "status err"; ss.textContent = e.message; }
 }
 
 // ── NFT scan ──
@@ -685,7 +693,7 @@ async function scanNFTs() {
     }
     list.innerHTML = "";
     if (userTokenIds.length === 0) {
-      list.innerHTML = '<span class="nft-none">No ' + VAULT_NAME + ' NFTs found (1-100)</span>';
+      var noneSpan = document.createElement("span"); noneSpan.className = "nft-none"; noneSpan.textContent = "No " + VAULT_NAME + " NFTs found (1-100)"; list.appendChild(noneSpan);
     } else {
       userTokenIds.forEach(function(id) {
         list.innerHTML += '<span class="nft-badge">#' + id + '</span>';

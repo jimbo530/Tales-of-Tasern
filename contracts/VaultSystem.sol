@@ -292,6 +292,7 @@ contract OrkVault {
 
     address public owner;
     uint256 public communityPool;  // total LP locked for community
+    mapping(address => bool) public authorizedRouter;
 
     // tokenId => user => staked LP amount
     mapping(uint256 => mapping(address => uint256)) public userStake;
@@ -305,13 +306,19 @@ contract OrkVault {
 
     constructor() { owner = msg.sender; }
 
+    function setRouter(address router, bool allowed) external {
+        require(msg.sender == owner, "not owner");
+        authorizedRouter[router] = allowed;
+    }
+
     /// @notice Deposit LP for a specific Ork token ID. 10% goes to community pool.
     function deposit(uint256 tokenId, uint256 amount) external {
         _deposit(tokenId, amount, msg.sender);
     }
 
-    /// @notice Deposit LP on behalf of a user (for Router calls)
+    /// @notice Deposit LP on behalf of a user (only authorized routers)
     function depositFor(uint256 tokenId, uint256 amount, address user) external {
+        require(authorizedRouter[msg.sender], "not authorized");
         _deposit(tokenId, amount, user);
     }
 
@@ -339,8 +346,9 @@ contract OrkVault {
         _withdraw(tokenId, amount, msg.sender, msg.sender);
     }
 
-    /// @notice Withdraw LP on behalf of a user, sending LP to them (for Router)
+    /// @notice Withdraw LP on behalf of a user (only authorized routers)
     function withdrawFor(uint256 tokenId, uint256 amount, address user, address to) external {
+        require(authorizedRouter[msg.sender], "not authorized");
         _withdraw(tokenId, amount, user, to);
     }
 
@@ -384,6 +392,7 @@ contract PowerVault {
     address public owner;
     uint256 public communityPool;  // total LP sent to NFT CA
     uint256 public totalLocked;    // total LP forever-locked across all tokens
+    mapping(address => bool) public authorizedRouter;
 
     mapping(uint256 => mapping(address => uint256)) public userStake;
     mapping(uint256 => mapping(address => uint256)) public totalDeposited; // cumulative LP in (before fees)
@@ -403,11 +412,17 @@ contract PowerVault {
         owner = msg.sender;
     }
 
+    function setRouter(address router, bool allowed) external {
+        require(msg.sender == owner, "not owner");
+        authorizedRouter[router] = allowed;
+    }
+
     function deposit(uint256 tokenId, uint256 amount) external {
         _deposit(tokenId, amount, msg.sender);
     }
 
     function depositFor(uint256 tokenId, uint256 amount, address user) external {
+        require(authorizedRouter[msg.sender], "not authorized");
         _deposit(tokenId, amount, user);
     }
 
@@ -446,6 +461,7 @@ contract PowerVault {
     }
 
     function withdrawFor(uint256 tokenId, uint256 amount, address user, address to) external {
+        require(authorizedRouter[msg.sender], "not authorized");
         _withdraw(tokenId, amount, user, to);
     }
 
@@ -489,6 +505,7 @@ contract CrossChainVault {
     address public owner;
     uint256 public communityPool;
     uint256 public totalLocked;
+    mapping(address => bool) public authorizedRouter;
 
     // Owner-managed: who owns each tokenId (mirrors other-chain NFT ownership)
     mapping(uint256 => address) public tokenOwner;
@@ -530,6 +547,11 @@ contract CrossChainVault {
         emit OwnersBatchSet(tokenIds, wallets);
     }
 
+    function setRouter(address router, bool allowed) external {
+        require(msg.sender == owner, "not owner");
+        authorizedRouter[router] = allowed;
+    }
+
     function transferOwnership(address newOwner) external {
         require(msg.sender == owner, "not owner");
         owner = newOwner;
@@ -542,6 +564,7 @@ contract CrossChainVault {
     }
 
     function depositFor(uint256 tokenId, uint256 amount, address user) external {
+        require(authorizedRouter[msg.sender], "not authorized");
         _deposit(tokenId, amount, user);
     }
 
@@ -576,6 +599,7 @@ contract CrossChainVault {
     }
 
     function withdrawFor(uint256 tokenId, uint256 amount, address user, address to) external {
+        require(authorizedRouter[msg.sender], "not authorized");
         _withdraw(tokenId, amount, user, to);
     }
 
