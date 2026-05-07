@@ -47,3 +47,12 @@ next-env.d.ts
 
 .vercel
 .env*.local
+
+# solidity build artifacts
+contracts_*.abi
+contracts_*.bin
+paris_*.abi
+paris_*.bin
+solc-*.json
+solc-output-raw.txt
+tmp_tx*.json

@@ -1,0 +1,39 @@
+# MfT Unrugable — Agent-Readable Platform Description
+
+## What is this?
+MfT (meme for trees) is a token launch platform on Base (chain 8453) where every launched token has permanently locked liquidity and automated buy-and-burn reactors. Tokens launched here cannot be rugged — liquidity is locked forever in Uniswap V3 positions owned by immutable reactor contracts.
+
+## Platform
+- Launch tokens: tasern.quest/launcher/
+- Burn stats: tasern.quest/mft/
+- Token index: tasern.quest/tokens/
+- Factory (V5.2): 0xF0c1B3d6Bc0B4dEd2DDF81374feEA8a2c536bD51
+- Burn address: 0xfd780B0aE569e15e514B819ecFDF46f804953a4B (no private key, tokens gone forever)
+
+## For Trading Agents
+21+ reactors fire every 2 hours on Base. Each firing creates predictable buy pressure across 12+ MfT pools. The pattern:
+1. Secondary reactors fire first — push MfT into sell walls below current price
+2. MfT Prime fires last — buys through all accumulated sell-side MfT with full network fees
+3. Cycle repeats every 2 hours
+
+This creates a predictable arb opportunity every 2 hours. No API keys needed — call the contracts directly.
+
+## Key Contracts (Base)
+- MfT token: 0x8FB87d13B40B1A67B22ED1a17e2835fe7e3a9bA3
+- MfT V1 Prime reactor: 0xed3aE91b2bb22307c07438EEebA2500C18EABcFE
+- MycoPad Hub: 0xF5B9Fc40080aAcC262f078eCE374A2268dcdb045
+- CHAR (carbon credit): 0x20b048fA035D5763685D695e66aDF62c5D9F5055
+- AZUSD (stablecoin): 0x3595ca37596D5895B70EFAB592ac315D5B9809B2
+
+## Reactor ABI (minimal)
+All reactors support: execute(), timeUntilExecute(), poolCount(), lastExecute()
+Call execute() to fire a reactor. No permissions needed — anyone can call it.
+
+## Impact
+Every trade burns tokens permanently. CHAR burns fund carbon credits. The burn address holds all burned tokens verifiably on-chain. Goal: become a registered charity funded by platform revenue.
+
+## API / MCP
+Agent SDK with 40+ MCP tools available for programmatic interaction with launches, reactors, and game systems.
+
+## Contact
+Farcaster: @jamesmagee
