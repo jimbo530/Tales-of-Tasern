@@ -1,6 +1,6 @@
 "use client";
 
-import { useReducer, useCallback, useEffect, useRef } from "react";
+import { useReducer, useCallback, useEffect, useRef, useState } from "react";
 import { type HexCoord, hexDistance, hexesInRange, isAdjacent, hexNeighbors, GRID_COLS, GRID_ROWS } from "@/lib/hexGrid";
 import {
   type BattleUnit,
@@ -29,6 +29,7 @@ import {
 } from "@/lib/hexCombat";
 import { getSpell, requiresConcentration, type SpellBattleEffect } from "@/lib/spells";
 import { getFeatCombatFlags } from "@/lib/feats";
+import { resolveAbility, getSneakAttackDice, resolveStunningFist, ABILITY_DEFS, type SummonDef } from "@/lib/classAbilities";
 import type { NftCharacter } from "@/hooks/useNftStats";
 import type { CharacterClass } from "@/lib/classes";
 import type { Follower, EntityProgression } from "@/lib/party";
@@ -44,7 +45,8 @@ export type BattlePhase =
   | "enemyTurn"
   | "victory"
   | "defeat"
-  | "retreat";
+  | "retreat"
+  | "room_cleared";
 
 export type PlayerSubMode = "idle" | "moving" | "attacking" | "casting";
 
@@ -64,12 +66,19 @@ type BattleState = {
   logCounter: number;
   pendingAoO: { attackerId: string; targetId: string } | null;
   packFed: boolean;  // a food-motivated enemy escaped with a body — rest of pack flees
+
+  // Dungeon tracking (optional — null/undefined if not in a dungeon)
+  dungeonId?: string;           // which dungeon template
+  dungeonRoomIndex?: number;    // current room (0-based)
+  dungeonTotalRooms?: number;   // total rooms
+  dungeonName?: string;         // display name
+  dungeonCanRest?: boolean;     // current room allows short rest between rooms
 };
 
 // ── Actions ──────────────────────────────────────────────────────────────────
 
 type Action =
-  | { type: "INIT"; player: BattleUnit; enemies: BattleUnit[]; followers?: BattleUnit[]; extraHeroes?: BattleUnit[] }
+  | { type: "INIT"; player: BattleUnit; enemies: BattleUnit[]; followers?: BattleUnit[]; extraHeroes?: BattleUnit[]; dungeon?: { dungeonId: string; dungeonName: string; dungeonRoomIndex: number; dungeonTotalRooms: number; dungeonCanRest?: boolean } }
   | { type: "MOVE"; hex: HexCoord }
   | { type: "SELECT_TARGET"; targetId: string }
   | { type: "ROLL"; natural: number }
@@ -84,9 +93,14 @@ type Action =
   | { type: "SET_SUBMODE"; subMode: PlayerSubMode }
   | { type: "GRAB_BODY"; unitId: string; bodyId: string }
   | { type: "ENEMY_FLEE"; unitId: string; escaped: boolean }
-  | { type: "RETREAT"; roll: number; dc: number }
+  | { type: "RETREAT"; roll: number; dc: number; natural: number; breakdown: string }
+  | { type: "USE_ABILITY"; effectId: string; targetId?: string }
   | { type: "AOO_TAKE" }
-  | { type: "AOO_PASS" };
+  | { type: "AOO_PASS" }
+  | { type: "RESTORE_STATE"; payload: BattleState }
+  | { type: "DUNGEON_NEXT_ROOM" }
+  | { type: "DUNGEON_SHORT_REST" }
+  | { type: "DUNGEON_RETREAT" };
 
 function addLog(state: BattleState, text: string, logType: CombatLogEntry["type"]): BattleState {
   const id = state.logCounter + 1;
@@ -152,7 +166,10 @@ function calcReachable(unit: BattleUnit, units: BattleUnit[]): HexCoord[] {
   const occupied = new Set(
     units.filter(u => u.id !== unit.id && isConscious(u)).map(u => `${u.position.q},${u.position.r}`)
   );
-  return hexesInRange(unit.position, Math.floor(unit.stats.speed / 5), occupied);
+  // Apply speed buffs/debuffs from active effects (entangle sets buffSpeed: -999)
+  const speedMod = unit.activeEffects.reduce((sum, e) => sum + ((e.buffSpeed as number) ?? 0), 0);
+  const effectiveSpeed = Math.max(0, unit.stats.speed + speedMod);
+  return hexesInRange(unit.position, Math.floor(effectiveSpeed / 5), occupied);
 }
 
 function calcAttackable(unit: BattleUnit, units: BattleUnit[]): string[] {
@@ -185,8 +202,12 @@ function checkEnd(state: BattleState): BattleState {
   if (playerSideAlive.length === 0) return { ...state, phase: "defeat" };
   // No conscious player-side units but some alive (all unconscious) = also defeat
   if (playerSideConscious.length === 0) return { ...state, phase: "defeat" };
-  // All enemies down (dead or unconscious) = victory
-  if (enemiesConscious.length === 0) return { ...state, phase: "victory" };
+  // All enemies down (dead or unconscious) = victory (or room_cleared if mid-dungeon)
+  if (enemiesConscious.length === 0) {
+    const inDungeon = state.dungeonId != null && state.dungeonRoomIndex != null && state.dungeonTotalRooms != null;
+    const hasMoreRooms = inDungeon && (state.dungeonRoomIndex! + 1) < state.dungeonTotalRooms!;
+    return { ...state, phase: hasMoreRooms ? "room_cleared" : "victory" };
+  }
   return state;
 }
 
@@ -250,7 +271,7 @@ function advanceTurn(state: BattleState): BattleState {
       const tickedEffects = u.activeEffects
         .map(e => e.remainingRounds === -1 ? e : { ...e, remainingRounds: e.remainingRounds - 1 })
         .filter(e => e.remainingRounds !== 0);
-      return { ...u, hasMoved: false, hasActed: false, hasBonusActed: false, readiedAttack: false, turnStartPos: u.position, activeEffects: tickedEffects, reactionUsed: newRound ? false : u.reactionUsed };
+      return { ...u, hasMoved: false, hasActed: false, hasBonusActed: false, readiedAttack: false, turnStartPos: u.position, activeEffects: tickedEffects, reactionUsed: false, _stunFistActive: false, _flurryActive: false };
     }
     // Reset reactions for all units on new round
     return newRound ? { ...u, reactionUsed: false } : u;
@@ -304,7 +325,18 @@ function reducer(state: BattleState, action: Action): BattleState {
         logCounter: 0,
         pendingAoO: null,
         packFed: false,
+        // Dungeon tracking (passed through from parent component)
+        ...(action.dungeon ? {
+          dungeonId: action.dungeon.dungeonId,
+          dungeonName: action.dungeon.dungeonName,
+          dungeonRoomIndex: action.dungeon.dungeonRoomIndex,
+          dungeonTotalRooms: action.dungeon.dungeonTotalRooms,
+          dungeonCanRest: action.dungeon.dungeonCanRest ?? false,
+        } : {}),
       };
+      if (action.dungeon) {
+        s = addLog(s, `--- ${action.dungeon.dungeonName} — Room ${action.dungeon.dungeonRoomIndex + 1} of ${action.dungeon.dungeonTotalRooms} ---`, "system");
+      }
       s = addLog(s, "Battle begins!", "system");
       s = addLog(s, `Initiative: ${sorted.map(u => `${u.name} (${u.stats.initiative})`).join(", ")}`, "info");
       if (phase === "playerTurn") {
@@ -354,6 +386,48 @@ function reducer(state: BattleState, action: Action): BattleState {
     }
 
     case "SELECT_TARGET": {
+      // Flurry of Blows: auto-resolve two attacks at -2, skip the manual ROLL phase
+      const flurryUnit = state.units.find(u => u.id === state.turnOrder[state.currentTurnIndex]);
+      if (flurryUnit && flurryUnit._flurryActive) {
+        const flurryTarget = state.units.find(u => u.id === action.targetId)!;
+        const flurryDist = hexDistance(flurryUnit.position, flurryTarget.position);
+        // Create a virtual attacker with -2 ATK for flurry penalty
+        const flurryAttacker = { ...flurryUnit, stats: { ...flurryUnit.stats, atkBonus: flurryUnit.stats.atkBonus - 2 } };
+        let s: BattleState = state;
+        let totalDmg = 0;
+        for (let i = 0; i < 2; i++) {
+          const nat = rollD20();
+          const result = resolveAttack(flurryAttacker, flurryTarget, nat, flurryDist);
+          const label = i === 0 ? "Flurry (1st):" : "Flurry (2nd):";
+          s = addLog(s, `${label} ${flurryUnit.name} attacks ${flurryTarget.name}: ${result.breakdown}`, result.hit ? "hit" : "miss");
+          if (result.hit) {
+            const sneakDmg = getSneakAttackDice(flurryUnit, flurryTarget, s.units);
+            const dmg = result.damage + sneakDmg;
+            totalDmg += dmg;
+            s = { ...s, units: s.units.map(u => u.id === action.targetId ? { ...u, currentHp: Math.max(-10, u.currentHp - dmg) } : u) };
+            if (sneakDmg > 0) s = addLog(s, `Sneak Attack! +${sneakDmg} (2d6 flanking)`, "crit");
+            // Stunning fist on first hit
+            if (i === 0 && flurryUnit._stunFistActive) {
+              const tgt = s.units.find(u => u.id === action.targetId)!;
+              if (isConscious(tgt)) {
+                const stun = resolveStunningFist(flurryUnit, tgt);
+                s = addLog(s, stun.breakdown, stun.stunned ? "hit" : "miss");
+                if (stun.stunned && stun.effect) {
+                  s = { ...s, units: s.units.map(u => u.id === action.targetId ? { ...u, activeEffects: [...u.activeEffects, stun.effect!] } : u) };
+                }
+              }
+            }
+            const hitUnit = s.units.find(u => u.id === action.targetId)!;
+            if (!isConscious(hitUnit)) { s = logDowned(s, hitUnit); break; }
+          }
+        }
+        // Clear flurry + stun flags, mark acted
+        s = { ...s, units: s.units.map(u => u.id === flurryUnit.id ? { ...u, hasActed: true, _flurryActive: false, _stunFistActive: false } : u) };
+        const updFlurry = s.units.find(u => u.id === flurryUnit.id)!;
+        const mvLeft = !updFlurry.hasMoved ? calcReachable(updFlurry, s.units) : [];
+        s = { ...s, phase: "playerTurn", subMode: "idle", reachableHexes: mvLeft, attackableEnemies: [], pendingTargetId: null };
+        return checkEnd(s);
+      }
       return { ...state, pendingTargetId: action.targetId, phase: "playerRoll", lastRollNatural: null, lastAttackResult: null };
     }
 
@@ -390,7 +464,10 @@ function reducer(state: BattleState, action: Action): BattleState {
       const attacker2 = state.units.find(u => u.id === activeId2)!;
       const target2 = state.units.find(u => u.id === state.pendingTargetId)!;
       const charged = attacker2.weaponProperties.includes("charge") && isCharge(attacker2, target2);
-      const finalDamage = charged ? damage * 2 : damage;
+      // Sneak attack: +2d6 if rogue has flanking
+      const sneakDmg = getSneakAttackDice(attacker2, target2, state.units);
+      const chargeDmg = charged ? damage * 2 : damage;
+      const finalDamage = chargeDmg + sneakDmg;
       // Apply damage with death save / phoenix checks
       let units = state.units.map(u => {
         if (u.id !== state.pendingTargetId) return u;
@@ -423,6 +500,20 @@ function reducer(state: BattleState, action: Action): BattleState {
       // Log death save
       if (target.currentHp === 1 && (target as any)._deathSaveUsed) {
         s = addLog(s, `${target.name} refuses to fall! (Unbreakable — drops to 1 HP)`, "system");
+      }
+      // Log sneak attack bonus
+      if (sneakDmg > 0) {
+        s = addLog(s, `Sneak Attack! +${sneakDmg} damage (2d6 flanking)`, "crit");
+      }
+      // Stunning Fist: if active and hit, force Fort save
+      if (attacker2._stunFistActive && isConscious(target)) {
+        const stun = resolveStunningFist(attacker2, target);
+        s = addLog(s, stun.breakdown, stun.stunned ? "hit" : "miss");
+        if (stun.stunned && stun.effect) {
+          s = { ...s, units: s.units.map(u => u.id === target.id ? { ...u, activeEffects: [...u.activeEffects, stun.effect!] } : u) };
+        }
+        // Clear the flag
+        s = { ...s, units: s.units.map(u => u.id === activeId ? { ...u, _stunFistActive: false } : u) };
       }
       // Log retaliation
       if (state.lastAttackResult.retaliationText) {
@@ -512,34 +603,37 @@ function reducer(state: BattleState, action: Action): BattleState {
 
       // Apply damage
       if (result.damage) {
-        // AoE: hit all enemies within area (if hexArea defined)
         const dmgAmt = result.damage ?? 0;
         if (spell.battle.hexArea && spell.battle.hexArea > 0) {
-          const hitIds: string[] = [];
-          units = s.units.map(u => {
-            if (u.id === activeId || isDead(u)) return u; // AoE hits unconscious units too
-            if (hexDistance(u.position, target.position) <= (spell.battle!.hexArea ?? 0)) {
-              hitIds.push(u.id);
-              return { ...u, currentHp: Math.max(-10, u.currentHp - dmgAmt) };
+          // AoE: hit ALL units in blast radius — each gets their own save
+          // Sculpt Spell feat lets caster exclude allies
+          const hasSculpt = getFeatCombatFlags(caster.feats).sculptSpell;
+          const aoeTargets = s.units.filter(u =>
+            u.id !== caster.id && !isDead(u)
+            && hexDistance(u.position, target.position) <= (spell.battle!.hexArea ?? 0)
+            && !(hasSculpt && u.isPlayer === caster.isPlayer)
+          );
+          for (const aoeT of aoeTargets) {
+            // Roll individual save for each AoE target
+            const aoeResult = resolveSpellCast(caster, aoeT, action.spellId, spell.name, spellLevel, spell.battle as SpellBattleEffect, isConc);
+            const aoeDmg = aoeResult.damage ?? dmgAmt;
+            s = { ...s, units: s.units.map(u => u.id === aoeT.id ? { ...u, currentHp: Math.max(-10, u.currentHp - aoeDmg) } : u) };
+            s = checkConcentration(s, aoeT.id, aoeDmg);
+            if (aoeT.id !== action.targetId) {
+              s = addLog(s, `${aoeT.name}: ${aoeDmg} damage${aoeResult.targetSaved ? " (saved)" : ""}`, aoeResult.targetSaved ? "info" : "hit");
             }
-            return u;
-          });
-          s = { ...s, units };
-          for (const hid of hitIds) {
-            s = checkConcentration(s, hid, dmgAmt);
-            const hitU = s.units.find(u => u.id === hid)!;
-            if (isDead(hitU)) s = addLog(s, `${hitU.name} is slain by the blast!`, "kill");
+            const hitU = s.units.find(u => u.id === aoeT.id)!;
+            if (!isConscious(hitU)) s = logDowned(s, hitU);
           }
         } else {
+          // Single target
           units = s.units.map(u =>
             u.id === action.targetId ? { ...u, currentHp: Math.max(-10, u.currentHp - dmgAmt) } : u
           );
           s = { ...s, units };
           s = checkConcentration(s, action.targetId, dmgAmt);
-        }
-        const killed = s.units.find(u => u.id === action.targetId);
-        if (killed && !isConscious(killed)) {
-          s = logDowned(s, killed);
+          const killed = s.units.find(u => u.id === action.targetId);
+          if (killed && !isConscious(killed)) s = logDowned(s, killed);
         }
       }
 
@@ -750,15 +844,166 @@ function reducer(state: BattleState, action: Action): BattleState {
       return state;
     }
 
+    case "USE_ABILITY": {
+      const activeId = state.turnOrder[state.currentTurnIndex];
+      const user = state.units.find(u => u.id === activeId)!;
+      const target = action.targetId ? state.units.find(u => u.id === action.targetId) ?? null : null;
+      const result = resolveAbility(action.effectId, user, target, state.units);
+      let s: BattleState = state;
+
+      // ── Deduct ability use ──
+      const oldUses = user._abilityUses ?? {};
+      const newUses = { ...oldUses, [action.effectId]: (oldUses[action.effectId] ?? 0) + 1 };
+      let units = s.units.map(u => {
+        if (u.id !== activeId) return u;
+        return {
+          ...u,
+          _abilityUses: newUses,
+          ...(result.consumesStandard ? { hasActed: true } : {}),
+          ...(result.consumesBonus ? { hasBonusActed: true } : {}),
+          ...(result.setStunFist ? { _stunFistActive: true } : {}),
+          ...(result.setFlurry ? { _flurryActive: true } : {}),
+        };
+      });
+      s = { ...s, units };
+
+      // ── Apply self-effect ──
+      if (result.selfEffect) {
+        units = s.units.map(u =>
+          u.id === activeId ? { ...u, activeEffects: [...u.activeEffects, result.selfEffect!] } : u
+        );
+        s = { ...s, units };
+      }
+
+      // ── Apply party-wide effect ──
+      if (result.partyEffect) {
+        units = s.units.map(u =>
+          u.isPlayer && u.currentHp > 0
+            ? { ...u, activeEffects: [...u.activeEffects, result.partyEffect!] }
+            : u
+        );
+        s = { ...s, units };
+      }
+
+      // ── Apply damage to target ──
+      if (result.damage && target) {
+        if (result.aoeRange && result.aoeRange > 0) {
+          // AoE: hit ALL units in blast radius — each gets their own save
+          // Sculpt Spell feat lets caster exclude allies
+          const hasSculpt = getFeatCombatFlags(user.feats).sculptSpell;
+          const aoeTargets = s.units.filter(u =>
+            u.id !== user.id && !isDead(u)
+            && hexDistance(u.position, target.position) <= result.aoeRange!
+            && !(hasSculpt && u.isPlayer === user.isPlayer)
+          );
+          for (const aoeT of aoeTargets) {
+            let aoeDmg: number;
+            if (aoeT.id === target.id) {
+              // Primary target already had its save resolved
+              aoeDmg = result.damage!;
+            } else if (result.aoeSaveDC && result.aoeSaveStat && result.aoeRawDmg) {
+              // Roll individual save for this target
+              const saveStat = aoeT.rawAbilities[result.aoeSaveStat] ?? 0;
+              const saveRoll = Math.floor(Math.random() * 20) + 1 + Math.floor(Math.max(0, saveStat) / 2);
+              const saved = saveRoll >= result.aoeSaveDC;
+              aoeDmg = saved ? Math.max(1, Math.floor(result.aoeRawDmg / 2)) : result.aoeRawDmg;
+              s = addLog(s, `${aoeT.name}: ${aoeDmg} damage${saved ? " (saved)" : ""}`, saved ? "info" : "hit");
+            } else {
+              aoeDmg = result.damage!;
+            }
+            s = { ...s, units: s.units.map(u =>
+              u.id === aoeT.id ? { ...u, currentHp: Math.max(-10, u.currentHp - aoeDmg) } : u
+            )};
+            const hitU = s.units.find(u => u.id === aoeT.id)!;
+            if (!isConscious(hitU)) s = logDowned(s, hitU);
+          }
+        } else {
+          // Single target
+          units = s.units.map(u =>
+            u.id === target.id ? { ...u, currentHp: Math.max(-10, u.currentHp - result.damage!) } : u
+          );
+          s = { ...s, units };
+          const killed = s.units.find(u => u.id === target.id);
+          if (killed && !isConscious(killed)) s = logDowned(s, killed);
+        }
+      }
+
+      // ── Apply healing to target ──
+      if (result.healing && target) {
+        units = s.units.map(u =>
+          u.id === target.id ? { ...u, currentHp: Math.min(u.maxHp, u.currentHp + result.healing!) } : u
+        );
+        s = { ...s, units };
+      }
+
+      // ── Apply target debuff/condition ──
+      if (result.targetEffect && target) {
+        units = s.units.map(u =>
+          u.id === target.id ? { ...u, activeEffects: [...u.activeEffects, result.targetEffect!] } : u
+        );
+        s = { ...s, units };
+      }
+
+      // ── Summon companion ──
+      if (result.summon) {
+        const sm = result.summon;
+        // Find spawn position adjacent to user
+        const neighbors = hexNeighbors(user.position);
+        const occupied = new Set(s.units.filter(u => isConscious(u)).map(u => `${u.position.q},${u.position.r}`));
+        const spawnHex = neighbors.find(h =>
+          h.q >= 0 && h.q < GRID_COLS && h.r >= 0 && h.r < GRID_ROWS && !occupied.has(`${h.q},${h.r}`)
+        ) ?? { q: Math.min(GRID_COLS - 1, user.position.q + 1), r: user.position.r };
+        const companionUnit: BattleUnit = {
+          id: `companion-${s.units.length}`,
+          name: sm.name,
+          imageEmoji: sm.emoji,
+          position: spawnHex,
+          stats: {
+            attack: sm.dmg, mAtk: 1, def: sm.dex, mDef: sm.wis,
+            hp: sm.hp, healing: 0, initiative: sm.dex, carryCapacity: 50,
+            ac: sm.ac, magicAC: 10 + Math.floor(sm.dex / 2), naturalArmor: 0,
+            armorBonus: 0, shieldBonus: 0, dexMod: Math.floor(sm.dex / 2),
+            atkBonus: sm.atk, speed: sm.speed,
+            lightningDmg: 0, fireDmg: 0, lightningDice: null, fireDice: null, retaliationDice: null,
+            bonusHp: 0, initiativeBonus: 0, hasEvasion: false, hasRegen: false,
+            autoStabilize: false, hasDeathSave: false, hasPhoenix: false, hasActionSurge: false,
+            resistances: [], immunities: [], conditionImmunities: [], saveAdvantages: [],
+            boonSpells: [], retaliationDmg: 0, hasGuardianReaction: false,
+            oppAttackDisadvantage: false, rerollD20: false, fateDie: false, spellResistance: false,
+          },
+          subtypes: [],
+          currentHp: sm.hp, maxHp: sm.hp,
+          isPlayer: true, hasMoved: true, hasActed: true, hasBonusActed: true,
+          feats: [], attackRange: 1, rangeIncrement: 0, isRanged: false,
+          weaponProperties: [], readiedAttack: false, turnStartPos: spawnHex,
+          reactionUsed: false, activeEffects: [],
+          rawAbilities: { str: sm.str, dex: sm.dex, con: sm.con, int: sm.int, wis: sm.wis, cha: sm.cha },
+        };
+        const newUnits = [...s.units, companionUnit];
+        const newTurnOrder = [...s.turnOrder, companionUnit.id];
+        s = { ...s, units: newUnits, turnOrder: newTurnOrder };
+      }
+
+      // ── Log the result ──
+      s = addLog(s, result.breakdown, result.logType);
+
+      // Refresh reachable/attackable if still this unit's turn
+      const userNow = s.units.find(u => u.id === activeId)!;
+      const reachLeft = !userNow.hasMoved ? calcReachable(userNow, s.units) : [];
+      const atkLeft = !userNow.hasActed ? calcAttackable(userNow, s.units) : [];
+      s = { ...s, phase: "playerTurn", subMode: "idle", reachableHexes: reachLeft, attackableEnemies: atkLeft, pendingTargetId: null };
+      return checkEnd(s);
+    }
+
     case "RETREAT": {
       let s = state;
       if (action.roll >= action.dc) {
-        s = addLog(s, `Retreat succeeds! (${action.roll} vs DC ${action.dc}) — your party flees!`, "system");
+        s = addLog(s, `Tumble check succeeds! (${action.breakdown} = ${action.roll} vs DC ${action.dc}) — your party retreats!`, "system");
         return { ...s, phase: "retreat" };
       }
       // Failed — waste your turn
       const au = s.units.find(u => u.id === s.turnOrder[s.currentTurnIndex]);
-      s = addLog(s, `Retreat fails! (${action.roll} vs DC ${action.dc}) — ${au?.name ?? "you"} can't disengage!`, "system");
+      s = addLog(s, `Tumble check fails! (${action.breakdown} = ${action.roll} vs DC ${action.dc}) — ${au?.name ?? "you"} can't disengage!`, "system");
       const units = s.units.map(u =>
         u.id === s.turnOrder[s.currentTurnIndex] ? { ...u, hasMoved: true, hasActed: true } : u
       );
@@ -773,12 +1018,87 @@ function reducer(state: BattleState, action: Action): BattleState {
       return advanceTurn(state);
     }
 
+    case "RESTORE_STATE": {
+      const { savedAt: _, ...restored } = action.payload as BattleState & { savedAt?: number };
+      return restored;
+    }
+
+    // ── Dungeon progression ─────────────────────────────────────────────
+    case "DUNGEON_NEXT_ROOM": {
+      if (state.dungeonRoomIndex == null || state.phase !== "room_cleared") return state;
+      const nextIdx = state.dungeonRoomIndex + 1;
+      let s: BattleState = {
+        ...state,
+        dungeonRoomIndex: nextIdx,
+        phase: "setup",
+        // Reset combat state but keep player units with current HP/spell slots
+        turnOrder: [],
+        currentTurnIndex: 0,
+        round: 0,
+        subMode: "idle",
+        reachableHexes: [],
+        attackableEnemies: [],
+        pendingTargetId: null,
+        lastRollNatural: null,
+        lastAttackResult: null,
+        pendingAoO: null,
+        packFed: false,
+        // Keep only living player units — enemies will be loaded by parent component
+        units: state.units.filter(u => u.isPlayer && isAlive(u)),
+      };
+      s = addLog(s, `Advancing to room ${nextIdx + 1} of ${state.dungeonTotalRooms}...`, "system");
+      return s;
+    }
+
+    case "DUNGEON_SHORT_REST": {
+      if (state.dungeonRoomIndex == null || state.phase !== "room_cleared") return state;
+      // Heal each player unit by 25% max HP, recover 1 spell slot per level used
+      const healedUnits = state.units.filter(u => u.isPlayer && isAlive(u)).map(u => {
+        const healAmt = Math.floor(u.maxHp * 0.25);
+        const newHp = Math.min(u.maxHp, u.currentHp + healAmt);
+        // Recover 1 spell slot per level (reduce spellSlotsUsed by 1 at each level, min 0)
+        const recoveredSlots = u.spellSlotsUsed
+          ? u.spellSlotsUsed.map(used => Math.max(0, used - 1))
+          : u.spellSlotsUsed;
+        return { ...u, currentHp: newHp, spellSlotsUsed: recoveredSlots };
+      });
+      const nextIdx = state.dungeonRoomIndex + 1;
+      let s: BattleState = {
+        ...state,
+        dungeonRoomIndex: nextIdx,
+        phase: "setup",
+        turnOrder: [],
+        currentTurnIndex: 0,
+        round: 0,
+        subMode: "idle",
+        reachableHexes: [],
+        attackableEnemies: [],
+        pendingTargetId: null,
+        lastRollNatural: null,
+        lastAttackResult: null,
+        pendingAoO: null,
+        packFed: false,
+        units: healedUnits,
+      };
+      s = addLog(s, `Short rest — party heals and recovers some spells.`, "info");
+      s = addLog(s, `Advancing to room ${nextIdx + 1} of ${state.dungeonTotalRooms}...`, "system");
+      return s;
+    }
+
+    case "DUNGEON_RETREAT": {
+      if (state.dungeonId == null) return state;
+      let s = addLog(state, `The party retreats from the dungeon!`, "system");
+      return { ...s, phase: "retreat" };
+    }
+
     default:
       return state;
   }
 }
 
 // ── Hook ─────────────────────────────────────────────────────────────────────
+
+const BATTLE_SAVE_KEY = "tot-battle-state";
 
 const INITIAL_STATE: BattleState = {
   units: [],
@@ -801,9 +1121,56 @@ const INITIAL_STATE: BattleState = {
 export function useHexBattle() {
   const [state, dispatch] = useReducer(reducer, INITIAL_STATE);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [hasSavedBattle, setHasSavedBattle] = useState(false);
 
   // Cleanup timers on unmount
   useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
+
+  // ── Auto-save: persist battle state to localStorage after each change ──
+  useEffect(() => {
+    const { phase } = state;
+    if (
+      phase === "playerTurn" || phase === "playerRoll" || phase === "playerResult" ||
+      phase === "playerReaction" || phase === "enemyTurn" || phase === "room_cleared"
+    ) {
+      try {
+        localStorage.setItem(BATTLE_SAVE_KEY, JSON.stringify({ ...state, savedAt: Date.now() }));
+      } catch { /* quota exceeded — ignore */ }
+    } else if (phase === "victory" || phase === "defeat" || phase === "retreat" || phase === "setup") {
+      localStorage.removeItem(BATTLE_SAVE_KEY);
+    }
+  }, [state]);
+
+  // ── Restore check: detect saved battle on mount ──
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(BATTLE_SAVE_KEY);
+      if (raw) {
+        const saved = JSON.parse(raw);
+        if (saved.savedAt && Date.now() - saved.savedAt < 3600000) {
+          setHasSavedBattle(true);
+        } else {
+          localStorage.removeItem(BATTLE_SAVE_KEY);
+        }
+      }
+    } catch { localStorage.removeItem(BATTLE_SAVE_KEY); }
+  }, []);
+
+  function restoreBattle() {
+    try {
+      const raw = localStorage.getItem(BATTLE_SAVE_KEY);
+      if (raw) {
+        const saved = JSON.parse(raw);
+        dispatch({ type: "RESTORE_STATE", payload: saved });
+        setHasSavedBattle(false);
+      }
+    } catch { setHasSavedBattle(false); }
+  }
+
+  function dismissSavedBattle() {
+    localStorage.removeItem(BATTLE_SAVE_KEY);
+    setHasSavedBattle(false);
+  }
 
   const activeUnit = state.turnOrder.length > 0
     ? state.units.find(u => u.id === state.turnOrder[state.currentTurnIndex]) ?? null
@@ -828,7 +1195,7 @@ export function useHexBattle() {
   }, []);
 
   /** Start a quest battle with pre-built enemy specs (bypasses encounter generation) */
-  const startQuestBattle = useCallback((character: NftCharacter, specs: EnemySpec[], charClass?: CharacterClass, featIds?: string[], weaponName?: string, spellInfo?: SpellUnitInfo, currentHp?: number, followers?: Follower[], progression?: EntityProgression, extraHeroes?: { char: NftCharacter; charClass?: CharacterClass; featIds?: string[]; weaponName?: string; spellInfo?: SpellUnitInfo; currentHp?: number; progression?: EntityProgression }[], armorEffect?: string, shieldEffect?: string) => {
+  const startQuestBattle = useCallback((character: NftCharacter, specs: EnemySpec[], charClass?: CharacterClass, featIds?: string[], weaponName?: string, spellInfo?: SpellUnitInfo, currentHp?: number, followers?: Follower[], progression?: EntityProgression, extraHeroes?: { char: NftCharacter; charClass?: CharacterClass; featIds?: string[]; weaponName?: string; spellInfo?: SpellUnitInfo; currentHp?: number; progression?: EntityProgression }[], armorEffect?: string, shieldEffect?: string, dungeon?: { dungeonId: string; dungeonName: string; dungeonRoomIndex: number; dungeonTotalRooms: number; dungeonCanRest?: boolean }) => {
     const playerPos = { q: 1, r: 5 };
     const player = createPlayerUnit(character, playerPos, charClass, featIds ?? [], weaponName, spellInfo, currentHp, progression, undefined, armorEffect, shieldEffect);
     const heroPositions: HexCoord[] = [{ q: 0, r: 5 }, { q: 0, r: 4 }, { q: 0, r: 6 }];
@@ -842,7 +1209,7 @@ export function useHexBattle() {
       .map((f, i) => createFollowerUnit(f, followerPositions[i], i));
     const spawnPositions = generateSpawnPositions(specs.length, playerPos);
     const enemies = specs.map((s, i) => createEnemyUnit(s, spawnPositions[i], i));
-    dispatch({ type: "INIT", player, enemies, followers: followerUnits, extraHeroes: extraHeroUnits });
+    dispatch({ type: "INIT", player, enemies, followers: followerUnits, extraHeroes: extraHeroUnits, dungeon });
   }, []);
 
   const clickHex = useCallback((hex: HexCoord) => {
@@ -898,9 +1265,14 @@ export function useHexBattle() {
     dispatch({ type: "CAST_SPELL", spellId, targetId });
   }, [state.phase]);
 
-  const attemptRetreat = useCallback((roll: number, dc: number) => {
+  const useAbility = useCallback((effectId: string, targetId?: string) => {
     if (state.phase !== "playerTurn") return;
-    dispatch({ type: "RETREAT", roll, dc });
+    dispatch({ type: "USE_ABILITY", effectId, targetId });
+  }, [state.phase]);
+
+  const attemptRetreat = useCallback((roll: number, dc: number, natural: number, breakdown: string) => {
+    if (state.phase !== "playerTurn") return;
+    dispatch({ type: "RETREAT", roll, dc, natural, breakdown });
   }, [state.phase]);
 
   const takeAoO = useCallback(() => {
@@ -910,6 +1282,19 @@ export function useHexBattle() {
   const passAoO = useCallback(() => {
     if (state.phase === "playerReaction") dispatch({ type: "AOO_PASS" });
   }, [state.phase]);
+
+  // ── Dungeon progression helpers ──
+  const advanceRoom = useCallback(() => {
+    if (state.phase === "room_cleared") dispatch({ type: "DUNGEON_NEXT_ROOM" });
+  }, [state.phase]);
+
+  const dungeonShortRest = useCallback(() => {
+    if (state.phase === "room_cleared") dispatch({ type: "DUNGEON_SHORT_REST" });
+  }, [state.phase]);
+
+  const dungeonRetreat = useCallback(() => {
+    if (state.dungeonId != null) dispatch({ type: "DUNGEON_RETREAT" });
+  }, [state.dungeonId]);
 
   // ── Enemy AI auto-play ───────────────────────────────────────────────────
   // Only re-trigger on phase/turn changes — NOT on units changes (which
@@ -947,7 +1332,8 @@ export function useHexBattle() {
       const occupied = new Set(
         state.units.filter(u => u.id !== enemy.id && isConscious(u)).map(u => `${u.position.q},${u.position.r}`)
       );
-      const maxSteps = Math.floor(enemy.stats.speed / 5);
+      const enemySpeedMod = enemy.activeEffects.reduce((sum, e) => sum + ((e.buffSpeed as number) ?? 0), 0);
+      const maxSteps = Math.floor(Math.max(0, enemy.stats.speed + enemySpeedMod) / 5);
       const isAtEdge = (p: HexCoord) => p.q === 0 || p.q === GRID_COLS - 1 || p.r === 0 || p.r === GRID_ROWS - 1;
 
       // Find nearest edge hex for fleeing
@@ -1138,6 +1524,14 @@ export function useHexBattle() {
     }
   }, [state.phase, state.units, state.turnOrder, state.currentTurnIndex]);
 
+  // ── Dungeon computed values ──
+  const isDungeon = state.dungeonId != null;
+  const dungeonRoomIndex = state.dungeonRoomIndex ?? 0;
+  const dungeonTotalRooms = state.dungeonTotalRooms ?? 0;
+  const dungeonName = state.dungeonName ?? "";
+  const dungeonRoomCleared = state.phase === "room_cleared";
+  const canDungeonRest = dungeonRoomCleared && (state.dungeonCanRest ?? false);
+
   return {
     state,
     activeUnit,
@@ -1150,8 +1544,22 @@ export function useHexBattle() {
     readyAttack,
     endTurn,
     castSpell,
+    useAbility,
     attemptRetreat,
     takeAoO,
     passAoO,
+    hasSavedBattle,
+    restoreBattle,
+    dismissSavedBattle,
+    // Dungeon progression
+    isDungeon,
+    dungeonRoomIndex,
+    dungeonTotalRooms,
+    dungeonName,
+    dungeonRoomCleared,
+    canDungeonRest,
+    advanceRoom,
+    dungeonShortRest,
+    dungeonRetreat,
   };
 }

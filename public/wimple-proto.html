@@ -1,0 +1,1506 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Baseling Home</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0a1a;overflow:hidden;font-family:'Press Start 2P',monospace;image-rendering:pixelated}
+canvas{display:block;cursor:pointer}
+#hud{position:fixed;top:8px;left:8px;z-index:10;color:#f0d060;font-size:8px;text-shadow:1px 1px #000,2px 2px 4px rgba(0,0,0,0.8)}
+#hud span{margin-right:16px}
+#panel{position:fixed;bottom:0;left:0;right:0;z-index:10;background:rgba(10,10,30,0.94);border-top:3px solid #f0d060;padding:8px 12px;display:none}
+#panel .name{color:#f0d060;font-size:10px;margin-bottom:4px}
+#panel .rarity-common{color:#aaa}
+#panel .rarity-uncommon{color:#4ade80}
+#panel .rarity-rare{color:#60a5fa}
+#panel .rarity-legendary{color:#c084fc}
+#panel .info{color:#aaa;font-size:7px;margin-bottom:8px}
+.bars{display:flex;gap:12px;margin-bottom:8px}
+.bar{flex:1}
+.bar-label{font-size:6px;color:#888;margin-bottom:2px}
+.bar-bg{height:8px;background:#111;border:1px solid #333;border-radius:2px;overflow:hidden}
+.bar-fill{height:100%;transition:width 0.3s}
+.btns{display:flex;gap:6px;flex-wrap:wrap}
+.btn{font-family:'Press Start 2P',monospace;font-size:7px;padding:6px 10px;border:2px solid;border-radius:3px;cursor:pointer;transition:all 0.1s}
+.btn:hover{transform:scale(1.05);filter:brightness(1.2)}
+.btn:active{transform:scale(0.95)}
+.btn-feed{background:#166534;color:#4ade80;border-color:#4ade80}
+.btn-feed-apple{background:#14532d;color:#86efac;border-color:#86efac}
+.btn-feed-meat{background:#7f1d1d;color:#fca5a5;border-color:#fca5a5}
+.btn-feed-cake{background:#831843;color:#fbcfe8;border-color:#fbcfe8}
+.btn-feed-candy{background:#4c1d95;color:#c4b5fd;border-color:#c4b5fd}
+.btn-pet{background:#831843;color:#f472b6;border-color:#f472b6}
+.btn-play{background:#1e1b4b;color:#818cf8;border-color:#818cf8}
+.btn-poop{background:#3b0764;color:#a78bfa;border-color:#a78bfa}
+.btn-rez{background:#7f1d1d;color:#fca5a5;border-color:#fca5a5}
+.btn-hatch{background:#713f12;color:#fbbf24;border-color:#fbbf24}
+.btn-new{background:#0f3460;color:#60a5fa;border-color:#60a5fa}
+.btn-deselect{background:#333;color:#999;border-color:#666}
+#msg{position:fixed;top:38%;left:50%;transform:translate(-50%,-50%);color:#fbbf24;font-size:14px;text-shadow:2px 2px #000,0 0 10px rgba(240,208,96,0.5);z-index:20;pointer-events:none;opacity:0;transition:opacity 0.3s}
+#add-btn{position:fixed;top:8px;right:8px;z-index:10}
+#loading{position:fixed;top:0;left:0;right:0;bottom:0;background:#0a0a1a;display:flex;align-items:center;justify-content:center;z-index:100;color:#f0d060;font-size:10px;flex-direction:column;gap:12px}
+#load-bar{width:200px;height:8px;background:#111;border:1px solid #333;border-radius:2px;overflow:hidden}
+#load-fill{height:100%;background:#f0d060;width:0%;transition:width 0.2s}
+</style>
+</head>
+<body>
+<div id="loading"><div>LOADING BASELINGS...</div><div id="load-bar"><div id="load-fill"></div></div></div>
+<div id="hud"><span id="poop-total">POOP: 0</span><span id="baseling-count">BASELINGS: 0</span></div>
+<div id="add-btn">
+<button class="btn btn-new" onclick="addEgg()" style="font-size:8px;padding:6px 10px">+ HATCH BASELING</button>
+</div>
+<canvas id="world"></canvas>
+<div id="panel"></div>
+<div id="msg"></div>
+
+<script>
+var C = document.getElementById('world');
+var ctx = C.getContext('2d');
+var W, H, SCALE;
+
+// --- SPRITE SYSTEM ---
+// Base bodies (no accessories) and accessory sources
+var EGGS = [
+  {file:'sprites/egg-plain.png', rarity:'common', weight:40},
+  {file:'sprites/egg-star1.png', rarity:'uncommon', weight:25},
+  {file:'sprites/egg-star1b.png', rarity:'uncommon', weight:15},
+  {file:'sprites/egg-star2.png', rarity:'rare', weight:12},
+  {file:'sprites/egg-star3.png', rarity:'legendary', weight:8},
+];
+
+// Base animal bodies (clean, no accessories)
+var BODIES = [
+  {file:'sprites/baby-cat-white.png', name:'White Cat', rarity:'common'},
+  {file:'sprites/baby-bunny-white.png', name:'White Bunny', rarity:'common'},
+  {file:'sprites/baby-bear.png', name:'Brown Bear', rarity:'uncommon'},
+  {file:'sprites/baby-redpanda.png', name:'Red Panda', rarity:'rare'},
+];
+
+// Accessories — extracted by diffing these sprites against their base body
+// baseBody = which clean body sprite is underneath (for diffing)
+var ACCESSORIES = [
+  {name:'None', file:null, rarity:'common', weight:30},
+  {name:'Red Cap', file:'sprites/baby-cap-red.png', baseBody:'sprites/baby-bunny-white.png', rarity:'common', weight:20},
+  {name:'Red Cap II', file:'sprites/baby-cap-red2.png', baseBody:'sprites/baby-bunny-white.png', rarity:'common', weight:15},
+  {name:'Blue Cap', file:'sprites/baby-cap-blue.png', baseBody:'sprites/baby-bunny-white.png', rarity:'uncommon', weight:12},
+  {name:'Sunglasses', file:'sprites/baby-cool.png', baseBody:'sprites/baby-bunny-white.png', rarity:'uncommon', weight:10},
+  {name:'Cowboy Hat', file:'sprites/baby-cowboy-brown.png', baseBody:'sprites/baby-redpanda.png', rarity:'rare', weight:8},
+  {name:'Wizard Hat', file:'sprites/baby-wizard.png', baseBody:'sprites/baby-bunny-white.png', rarity:'legendary', weight:5},
+];
+
+var RARITY_COLORS = {common:'#aaa',uncommon:'#4ade80',rare:'#60a5fa',legendary:'#c084fc'};
+var RARITY_LABELS = {common:'COMMON',uncommon:'UNCOMMON',rare:'RARE',legendary:'LEGENDARY'};
+var RARITY_ORDER = ['common','uncommon','rare','legendary'];
+
+// Loaded + processed sprites (black bg removed)
+var sprites = {};
+var totalToLoad = 0;
+var totalLoaded = 0;
+
+function colorDist(r1,g1,b1,r2,g2,b2) {
+  var dr=r1-r2, dg=g1-g2, db=b1-b2;
+  return Math.sqrt(dr*dr + dg*dg + db*db);
+}
+
+function processSprite(img) {
+  var oc = document.createElement('canvas');
+  var w = img.width, h = img.height;
+  oc.width = w; oc.height = h;
+  var octx = oc.getContext('2d');
+  octx.drawImage(img, 0, 0);
+  var data = octx.getImageData(0, 0, w, h);
+  var d = data.data;
+
+  // Sample background colors from corners and bottom edge
+  var bgSamples = [];
+  var samplePoints = [
+    [0,0],[1,0],[2,0],[w-1,0],[w-2,0],[w-3,0],
+    [0,1],[w-1,1],
+    [0,h-1],[1,h-1],[2,h-1],[w-1,h-1],[w-2,h-1],
+    [0,h-2],[w-1,h-2],
+    [Math.floor(w*0.25),h-1],[Math.floor(w*0.5),h-1],[Math.floor(w*0.75),h-1],
+    [Math.floor(w*0.25),h-2],[Math.floor(w*0.5),h-2],[Math.floor(w*0.75),h-2],
+  ];
+  samplePoints.forEach(function(p){
+    var idx = (p[1]*w + p[0])*4;
+    if (idx >= 0 && idx < d.length-2) {
+      bgSamples.push([d[idx], d[idx+1], d[idx+2]]);
+    }
+  });
+
+  // Flood fill from edges — mark background pixels
+  var visited = new Uint8Array(w * h);
+  var threshold = 25; // very tight — preserve dark fur edges
+  var queue = [];
+
+  // Seed from all edge pixels
+  for (var x = 0; x < w; x++) {
+    queue.push(x + 0 * w);
+    queue.push(x + (h-1) * w);
+  }
+  for (var y = 0; y < h; y++) {
+    queue.push(0 + y * w);
+    queue.push((w-1) + y * w);
+  }
+
+  function isBgColor(idx) {
+    var r = d[idx*4], g = d[idx*4+1], b = d[idx*4+2];
+    // Only match against sampled background colors from edges
+    for (var s = 0; s < bgSamples.length; s++) {
+      if (colorDist(r,g,b, bgSamples[s][0],bgSamples[s][1],bgSamples[s][2]) < threshold) return true;
+    }
+    return false;
+  }
+
+  while (queue.length > 0) {
+    var pos = queue.pop();
+    if (pos < 0 || pos >= w*h || visited[pos]) continue;
+    if (!isBgColor(pos)) continue;
+    visited[pos] = 1;
+    var px = pos % w, py = Math.floor(pos / w);
+    if (px > 0) queue.push(pos - 1);
+    if (px < w-1) queue.push(pos + 1);
+    if (py > 0) queue.push(pos - w);
+    if (py < h-1) queue.push(pos + w);
+  }
+
+  // Find the bottom of the creature: scan up from bottom to find
+  // the first row that has a cluster of non-bg pixels
+  var creatureBottom = h;
+  for (var scanY = h - 1; scanY > h * 0.4; scanY--) {
+    var solidCount = 0;
+    for (var scanX = Math.floor(w*0.2); scanX < w*0.8; scanX++) {
+      if (!visited[scanY * w + scanX]) solidCount++;
+    }
+    // If this row has a wide band of solid pixels, it's the creature
+    if (solidCount > w * 0.3) {
+      creatureBottom = scanY;
+      break;
+    }
+  }
+
+  // Aggressively clear everything below the creature's bottom edge
+  // plus a small margin to catch ground that blends with the body
+  var clearBelow = Math.min(h, creatureBottom + Math.round(h * 0.03));
+  for (var cy = clearBelow; cy < h; cy++) {
+    for (var cx = 0; cx < w; cx++) {
+      visited[cy * w + cx] = 1;
+    }
+  }
+
+  // Also fade the transition zone just above the clear line
+  var fadeZone = Math.round(h * 0.03);
+  for (var cy = Math.max(0, clearBelow - fadeZone); cy < clearBelow; cy++) {
+    var fadeT = (cy - (clearBelow - fadeZone)) / fadeZone;
+    for (var cx = 0; cx < w; cx++) {
+      var idx = cy * w + cx;
+      if (visited[idx]) continue;
+      // Check if this pixel is on the edge (connected to background below)
+      if (cy + 1 < h && visited[(cy+1)*w + cx]) {
+        // Fade out pixels near the ground
+        var origAlpha = d[idx*4+3];
+        d[idx*4+3] = Math.round(origAlpha * (1 - fadeT * 0.7));
+      }
+    }
+  }
+
+  // Apply: set visited pixels to transparent, with edge feathering
+  for (var i = 0; i < w*h; i++) {
+    if (visited[i]) {
+      d[i*4+3] = 0;
+    } else {
+      // Feather edges: check if any neighbor is background
+      var px = i % w, py = Math.floor(i / w);
+      var nearBg = 0;
+      if (px > 0 && visited[i-1]) nearBg++;
+      if (px < w-1 && visited[i+1]) nearBg++;
+      if (py > 0 && visited[i-w]) nearBg++;
+      if (py < h-1 && visited[i+w]) nearBg++;
+      if (nearBg >= 3) {
+        d[i*4+3] = Math.round(d[i*4+3] * 0.5);
+      } else if (nearBg >= 2) {
+        d[i*4+3] = Math.round(d[i*4+3] * 0.8);
+      }
+    }
+  }
+
+  octx.putImageData(data, 0, 0);
+  return oc;
+}
+
+// Extracted accessory canvases (just the hat/glasses, no body)
+var accessorySprites = {};
+
+function extractAccessory(accSprite, baseSprite) {
+  // Diff the accessory sprite against base body to isolate the accessory
+  var w = accSprite.width, h = accSprite.height;
+  var oc = document.createElement('canvas');
+  oc.width = w; oc.height = h;
+  var octx = oc.getContext('2d');
+
+  // Get pixel data from both
+  var accCanvas = document.createElement('canvas');
+  accCanvas.width = w; accCanvas.height = h;
+  var accCtx = accCanvas.getContext('2d');
+  accCtx.drawImage(accSprite, 0, 0, w, h);
+  var accData = accCtx.getImageData(0, 0, w, h).data;
+
+  var baseCanvas = document.createElement('canvas');
+  baseCanvas.width = w; baseCanvas.height = h;
+  var baseCtx = baseCanvas.getContext('2d');
+  baseCtx.drawImage(baseSprite, 0, 0, w, h);
+  var baseData = baseCtx.getImageData(0, 0, w, h).data;
+
+  var outData = octx.getImageData(0, 0, w, h);
+  var out = outData.data;
+
+  for (var i = 0; i < out.length; i += 4) {
+    var accAlpha = accData[i+3];
+    var baseAlpha = baseData[i+3];
+
+    // If pixel exists in accessory but not in base → accessory pixel
+    if (accAlpha > 20 && baseAlpha < 20) {
+      out[i] = accData[i];
+      out[i+1] = accData[i+1];
+      out[i+2] = accData[i+2];
+      out[i+3] = accData[i+3];
+      continue;
+    }
+
+    // If both have pixels, check color difference
+    if (accAlpha > 20 && baseAlpha > 20) {
+      var dist = colorDist(accData[i],accData[i+1],accData[i+2],
+                           baseData[i],baseData[i+1],baseData[i+2]);
+      if (dist > 40) {
+        // Significantly different color = accessory
+        out[i] = accData[i];
+        out[i+1] = accData[i+1];
+        out[i+2] = accData[i+2];
+        out[i+3] = accData[i+3];
+      } else {
+        out[i+3] = 0; // same as body, remove
+      }
+    } else {
+      out[i+3] = 0;
+    }
+  }
+
+  octx.putImageData(outData, 0, 0);
+  return oc;
+}
+
+function loadAllSprites(callback) {
+  var allFiles = new Set();
+  EGGS.forEach(function(e){ allFiles.add(e.file); });
+  BODIES.forEach(function(b){ allFiles.add(b.file); });
+  ACCESSORIES.forEach(function(a){ if(a.file) allFiles.add(a.file); });
+  allFiles.add('baseling-bg.webp');
+  var fileList = Array.from(allFiles);
+  totalToLoad = fileList.length;
+  totalLoaded = 0;
+
+  fileList.forEach(function(f) {
+    var img = new Image();
+    img.onload = function() {
+      if (f === 'baseling-bg.webp') {
+        sprites[f] = img;
+      } else {
+        sprites[f] = processSprite(img);
+      }
+      totalLoaded++;
+      document.getElementById('load-fill').style.width = (totalLoaded/totalToLoad*100) + '%';
+      if (totalLoaded >= totalToLoad) {
+        // Now extract accessories by diffing
+        ACCESSORIES.forEach(function(acc) {
+          if (!acc.file) return;
+          var accSpr = sprites[acc.file];
+          var baseSpr = sprites[acc.baseBody];
+          if (accSpr && baseSpr) {
+            accessorySprites[acc.file] = extractAccessory(accSpr, baseSpr);
+          }
+        });
+        document.getElementById('loading').style.display = 'none';
+        callback();
+      }
+    };
+    img.onerror = function() {
+      console.warn('Failed to load:', f);
+      totalLoaded++;
+      if (totalLoaded >= totalToLoad) {
+        document.getElementById('loading').style.display = 'none';
+        callback();
+      }
+    };
+    img.src = f;
+  });
+}
+
+// --- RARITY ROLL ---
+function rollEgg() {
+  var totalWeight = 0;
+  EGGS.forEach(function(e){ totalWeight += e.weight; });
+  var roll = Math.random() * totalWeight;
+  var acc = 0;
+  for (var i = 0; i < EGGS.length; i++) {
+    acc += EGGS[i].weight;
+    if (roll < acc) return EGGS[i];
+  }
+  return EGGS[0];
+}
+
+function rollBody(eggRarity) {
+  // Better eggs → better chance of rare bodies
+  var chances;
+  if (eggRarity === 'legendary') {
+    chances = {common:10, uncommon:20, rare:70};
+  } else if (eggRarity === 'rare') {
+    chances = {common:20, uncommon:35, rare:45};
+  } else if (eggRarity === 'uncommon') {
+    chances = {common:40, uncommon:40, rare:20};
+  } else {
+    chances = {common:60, uncommon:30, rare:10};
+  }
+  var roll = Math.random() * 100, acc = 0, pickedRarity = 'common';
+  for (var r in chances) {
+    acc += chances[r];
+    if (roll < acc) { pickedRarity = r; break; }
+  }
+  var pool = BODIES.filter(function(b){ return b.rarity === pickedRarity; });
+  if (pool.length === 0) pool = BODIES;
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
+function rollAccessory(eggRarity) {
+  // Better eggs → better chance of rare accessories
+  // Filter by rarity weights
+  var pool = ACCESSORIES.slice();
+  var totalWeight = 0;
+  // Boost rare accessory weights for better eggs
+  var boosts = {common:1, uncommon:1, rare:1, legendary:1};
+  if (eggRarity === 'legendary') boosts = {common:0.3, uncommon:1, rare:2, legendary:4};
+  else if (eggRarity === 'rare') boosts = {common:0.5, uncommon:1, rare:2, legendary:2};
+  else if (eggRarity === 'uncommon') boosts = {common:0.7, uncommon:1.5, rare:1.5, legendary:1.2};
+
+  var weights = pool.map(function(a){ return a.weight * (boosts[a.rarity] || 1); });
+  weights.forEach(function(w){ totalWeight += w; });
+  var roll = Math.random() * totalWeight, acc = 0;
+  for (var i = 0; i < pool.length; i++) {
+    acc += weights[i];
+    if (roll < acc) return pool[i];
+  }
+  return pool[0];
+}
+
+function highestRarity(r1, r2) {
+  var o = RARITY_ORDER;
+  return o.indexOf(r1) >= o.indexOf(r2) ? r1 : r2;
+}
+
+// --- CANVAS SETUP ---
+var FLOOR_ZONE = {
+  yMin: 0.50, yMax: 0.92,
+  xMinAtTop: 0.20, xMaxAtTop: 0.65,
+  xMinAtBot: 0.05, xMaxAtBot: 0.90,
+};
+
+function getFloorBounds(yFrac) {
+  var t = (yFrac - FLOOR_ZONE.yMin) / (FLOOR_ZONE.yMax - FLOOR_ZONE.yMin);
+  t = Math.max(0, Math.min(1, t));
+  return {
+    xMin: FLOOR_ZONE.xMinAtTop + (FLOOR_ZONE.xMinAtBot - FLOOR_ZONE.xMinAtTop) * t,
+    xMax: FLOOR_ZONE.xMaxAtTop + (FLOOR_ZONE.xMaxAtBot - FLOOR_ZONE.xMaxAtTop) * t,
+  };
+}
+
+function resize() {
+  W = C.width = window.innerWidth;
+  H = C.height = window.innerHeight;
+  SCALE = Math.min(W / 800, H / 600);
+}
+resize();
+window.addEventListener('resize', resize);
+
+// --- BASELING DATA ---
+var baselings = [];
+var nextId = 1;
+var selected = null;
+var totalPoop = 0;
+var STAGES = ['egg','baby','teen','adult','legend','dead'];
+
+// --- NEW GAMEPLAY SYSTEMS ---
+var floorPoops = [];
+var particles = [];
+var ball = null;
+var frameCount = 0;
+
+function randomFloorPos() {
+  var yFrac = FLOOR_ZONE.yMin + Math.random() * (FLOOR_ZONE.yMax - FLOOR_ZONE.yMin);
+  var bounds = getFloorBounds(yFrac);
+  var xFrac = bounds.xMin + Math.random() * (bounds.xMax - bounds.xMin);
+  return { x: xFrac * W, y: yFrac * H };
+}
+
+function createBaseling() {
+  var id = nextId++;
+  var pos = randomFloorPos();
+  var egg = rollEgg();
+  var body = rollBody(egg.rarity);
+  var accessory = rollAccessory(egg.rarity);
+  var combinedRarity = highestRarity(body.rarity, accessory.rarity);
+
+  var w = {
+    id: id, stage: 0,
+    eggSprite: egg.file,
+    eggRarity: egg.rarity,
+    bodySprite: body.file,
+    bodyName: body.name,
+    bodyRarity: body.rarity,
+    accName: accessory.name,
+    accFile: accessory.file,
+    accRarity: accessory.rarity,
+    combinedRarity: combinedRarity,
+    hunger: 100, happy: 100,
+    poopMeter: 0, poopCount: 0, feedCount: 0,
+    alive: true, deathCount: 0,
+    bounceY: 0, blinkTimer: 100,
+    lastFed: Date.now(), birthTime: Date.now(),
+    x: pos.x, y: pos.y,
+    targetX: pos.x, targetY: pos.y,
+    state: 'idle',
+    stateTimer: 60 + Math.random()*120,
+    facing: Math.random() > 0.5 ? 1 : -1,
+    walkSpeed: 0.3 + Math.random() * 0.3,
+    interactCooldown: 0,
+    poopSpawnTimer: Math.floor(Math.random() * 60),
+    lastAngerParticle: 0,
+    lastSweatParticle: 0,
+    lastNoteParticle: 0,
+  };
+  baselings.push(w);
+  updateHUD();
+  return w;
+}
+
+function addEgg() {
+  var w = createBaseling();
+  showMsg(RARITY_LABELS[w.eggRarity] + ' EGG!', RARITY_COLORS[w.eggRarity]);
+}
+
+// --- PARTICLE SYSTEM ---
+function spawnParticles(x, y, type, count) {
+  for (var i = 0; i < count; i++) {
+    var p = {
+      x: x + (Math.random() - 0.5) * 20,
+      y: y + (Math.random() - 0.5) * 10,
+      vx: (Math.random() - 0.5) * 2,
+      vy: -(1.5 + Math.random() * 2),
+      life: 1.0,
+      maxLife: 60 + Math.floor(Math.random() * 40),
+      type: type,
+      text: '',
+      color: '#fff',
+      size: 10 + Math.random() * 6,
+    };
+    switch (type) {
+      case 'heart':
+        p.text = '\u2665'; p.color = '#f472b6'; break;
+      case 'anger':
+        p.text = '\u2726'; p.color = '#ef4444'; break;
+      case 'sweat':
+        p.text = '\u25cf'; p.color = '#60a5fa'; break;
+      case 'note':
+        p.text = '\u266a'; p.color = '#4ade80'; break;
+      case 'star':
+        p.text = '\u2605'; p.color = '#fbbf24'; p.size = 14 + Math.random() * 6; break;
+      case 'stink':
+        p.text = '~'; p.color = '#84cc16'; break;
+    }
+    particles.push(p);
+  }
+}
+
+function updateParticles() {
+  for (var i = particles.length - 1; i >= 0; i--) {
+    var p = particles[i];
+    p.x += p.vx;
+    p.y += p.vy;
+    p.vy *= 0.98;
+    p.vx *= 0.98;
+    p.life -= 1.0 / p.maxLife;
+    if (p.life <= 0) {
+      particles.splice(i, 1);
+    }
+  }
+}
+
+function drawParticles() {
+  for (var i = 0; i < particles.length; i++) {
+    var p = particles[i];
+    var alpha = Math.max(0, p.life);
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.font = Math.round(p.size * SCALE) + 'px "Press Start 2P"';
+    ctx.fillStyle = p.color;
+    ctx.textAlign = 'center';
+    ctx.fillText(p.text, p.x, p.y);
+    ctx.restore();
+  }
+}
+
+// --- FLOOR POOP SYSTEM ---
+function spawnFloorPoop(wx, wy) {
+  var offsetX = (Math.random() - 0.5) * 30;
+  var offsetY = (Math.random() - 0.5) * 15;
+  floorPoops.push({
+    x: wx + offsetX,
+    y: wy + offsetY,
+    age: 0,
+    size: 0.7 + Math.random() * 0.5,
+  });
+}
+
+function drawFloorPoops(t) {
+  for (var i = 0; i < floorPoops.length; i++) {
+    var fp = floorPoops[i];
+    fp.age++;
+    var sz = fp.size * SCALE;
+    var px = fp.x;
+    var py = fp.y;
+
+    // Shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.1)';
+    ctx.beginPath();
+    ctx.ellipse(px, py + 2, 8 * sz, 3 * sz, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Bottom ball
+    ctx.fillStyle = '#78350f';
+    ctx.beginPath();
+    ctx.ellipse(px, py, 7 * sz, 5 * sz, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Middle ball
+    ctx.fillStyle = '#92400e';
+    ctx.beginPath();
+    ctx.ellipse(px + 1 * sz, py - 6 * sz, 5 * sz, 4 * sz, 0.2, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Top ball
+    ctx.fillStyle = '#a16207';
+    ctx.beginPath();
+    ctx.ellipse(px - 1 * sz, py - 11 * sz, 3.5 * sz, 3 * sz, -0.3, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Highlight
+    ctx.fillStyle = 'rgba(255,255,255,0.15)';
+    ctx.beginPath();
+    ctx.ellipse(px - 2 * sz, py - 12 * sz, 1.5 * sz, 1 * sz, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Stink cloud — wavy lines above the poop
+    if (fp.age > 30) {
+      ctx.strokeStyle = 'rgba(132,204,22,0.35)';
+      ctx.lineWidth = 1.5;
+      for (var s = 0; s < 3; s++) {
+        ctx.beginPath();
+        var baseY = py - 16 * sz - s * 8 * sz;
+        var waveOff = t * 3 + s * 1.2 + i;
+        for (var wx2 = -8; wx2 <= 8; wx2 += 2) {
+          var wy2 = baseY + Math.sin(waveOff + wx2 * 0.5) * 3 * sz;
+          if (wx2 === -8) ctx.moveTo(px + wx2 * sz, wy2);
+          else ctx.lineTo(px + wx2 * sz, wy2);
+        }
+        ctx.stroke();
+      }
+      // Stink particles occasionally
+      if (Math.random() < 0.01) {
+        spawnParticles(px, py - 16 * sz, 'stink', 1);
+      }
+    }
+  }
+}
+
+function clickPoop(mx, my) {
+  for (var i = floorPoops.length - 1; i >= 0; i--) {
+    var fp = floorPoops[i];
+    var dx = mx - fp.x;
+    var dy = my - fp.y;
+    if (dx * dx + dy * dy < 400) {
+      // Clicked a poop — clean it
+      spawnParticles(fp.x, fp.y - 10, 'star', 3);
+      floorPoops.splice(i, 1);
+      totalPoop += 5;
+      showMsg('+5 POOP (CLEANED!)');
+      updateHUD();
+      return true;
+    }
+  }
+  return false;
+}
+
+// --- BALL MINI-GAME ---
+function spawnBall(x, y) {
+  ball = {
+    x: x,
+    y: y,
+    vx: 0,
+    vy: -3,
+    bounceTimer: 0,
+    spawnTime: Date.now(),
+  };
+}
+
+function updateBall() {
+  if (!ball) return;
+
+  // Ball bounce physics
+  ball.vy += 0.15;
+  ball.x += ball.vx;
+  ball.y += ball.vy;
+  ball.vx *= 0.98;
+
+  // Bounce off floor
+  var yFloor = FLOOR_ZONE.yMax * H;
+  if (ball.y > yFloor) {
+    ball.y = yFloor;
+    ball.vy = -ball.vy * 0.5;
+    if (Math.abs(ball.vy) < 0.5) ball.vy = 0;
+  }
+
+  ball.bounceTimer++;
+
+  // Check if a Baseling reached the ball
+  for (var i = 0; i < baselings.length; i++) {
+    var w = baselings[i];
+    if (!w.alive || w.stage === 0) continue;
+    if (w.state === 'chasing') {
+      var dx = ball.x - w.x;
+      var dy = ball.y - w.y;
+      var dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < 25) {
+        // Baseling caught the ball
+        w.happy = Math.min(100, w.happy + 10);
+        w.poopMeter = Math.min(100, w.poopMeter + 5);
+        w.state = 'idle';
+        w.stateTimer = 60;
+        w.bounceY = -10;
+        spawnParticles(w.x, w.y - 40, 'star', 5);
+        showMsg('FETCH! +10 HAPPY');
+        ball = null;
+        if (selected === w) updatePanel();
+        return;
+      }
+    }
+  }
+
+  // Ball times out after 10 seconds
+  if (Date.now() - ball.spawnTime > 10000) {
+    ball = null;
+  }
+}
+
+function drawBall(t) {
+  if (!ball) return;
+  var bx = ball.x;
+  var by = ball.y;
+  var radius = 8 * SCALE;
+
+  // Shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.15)';
+  ctx.beginPath();
+  ctx.ellipse(bx, FLOOR_ZONE.yMax * H + 2, radius * 0.8, radius * 0.2, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Ball body — red
+  ctx.fillStyle = '#ef4444';
+  ctx.beginPath();
+  ctx.arc(bx, by, radius, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Yellow stripe
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(bx, by, radius, 0, Math.PI * 2);
+  ctx.clip();
+  ctx.fillStyle = '#fbbf24';
+  var stripeAngle = t * 4 + ball.bounceTimer * 0.05;
+  ctx.save();
+  ctx.translate(bx, by);
+  ctx.rotate(stripeAngle);
+  ctx.fillRect(-radius * 1.5, -radius * 0.2, radius * 3, radius * 0.4);
+  ctx.restore();
+  ctx.restore();
+
+  // Highlight
+  ctx.fillStyle = 'rgba(255,255,255,0.3)';
+  ctx.beginPath();
+  ctx.arc(bx - radius * 0.3, by - radius * 0.3, radius * 0.35, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function startChasingBall() {
+  if (!ball) return;
+  // Find nearest alive non-egg Baseling
+  var nearest = null;
+  var nearDist = Infinity;
+  for (var i = 0; i < baselings.length; i++) {
+    var w = baselings[i];
+    if (!w.alive || w.stage === 0 || w.state === 'chasing') continue;
+    var dx = ball.x - w.x;
+    var dy = ball.y - w.y;
+    var dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist < nearDist) {
+      nearDist = dist;
+      nearest = w;
+    }
+  }
+  if (nearest) {
+    nearest.state = 'chasing';
+    nearest.targetX = ball.x;
+    nearest.targetY = ball.y;
+    nearest.stateTimer = 600;
+  }
+}
+
+// --- BASELING INTERACTIONS ---
+function checkBaselingInteractions() {
+  for (var i = 0; i < baselings.length; i++) {
+    var a = baselings[i];
+    if (!a.alive || a.stage === 0 || a.interactCooldown > 0) continue;
+    for (var j = i + 1; j < baselings.length; j++) {
+      var b = baselings[j];
+      if (!b.alive || b.stage === 0 || b.interactCooldown > 0) continue;
+      var dx = a.x - b.x;
+      var dy = a.y - b.y;
+      var dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < 60) {
+        var midX = (a.x + b.x) / 2;
+        var midY = (a.y + b.y) / 2;
+        if (a.happy > 50 && b.happy > 50) {
+          // Play together — spawn hearts
+          spawnParticles(midX, midY - 30, 'heart', 3);
+          a.happy = Math.min(100, a.happy + 2);
+          b.happy = Math.min(100, b.happy + 2);
+          a.interactCooldown = 180;
+          b.interactCooldown = 180;
+        } else if (a.hunger < 30 && b.hunger < 30) {
+          // Fight — spawn anger marks, push apart
+          spawnParticles(midX, midY - 30, 'anger', 4);
+          a.happy = Math.max(0, a.happy - 3);
+          b.happy = Math.max(0, b.happy - 3);
+          // Push apart
+          var pushDist = 30;
+          if (dist > 0) {
+            a.x += (dx / dist) * pushDist;
+            a.y += (dy / dist) * pushDist;
+            b.x -= (dx / dist) * pushDist;
+            b.y -= (dy / dist) * pushDist;
+          }
+          clampToFloor(a);
+          clampToFloor(b);
+          a.interactCooldown = 240;
+          b.interactCooldown = 240;
+        } else {
+          // One follows the other briefly
+          if (a.state !== 'chasing') {
+            a.targetX = b.x + (Math.random() - 0.5) * 30;
+            a.targetY = b.y + (Math.random() - 0.5) * 15;
+            a.state = 'walking';
+            a.stateTimer = 60;
+          }
+          a.interactCooldown = 120;
+          b.interactCooldown = 120;
+        }
+        break; // Only one interaction per Baseling per check
+      }
+    }
+  }
+}
+
+// --- BASELING AI ---
+function pickNewTarget(w) {
+  var yFrac = FLOOR_ZONE.yMin + Math.random() * (FLOOR_ZONE.yMax - FLOOR_ZONE.yMin);
+  var bounds = getFloorBounds(yFrac);
+  var xFrac = bounds.xMin + Math.random() * (bounds.xMax - bounds.xMin);
+  w.targetX = xFrac * W;
+  w.targetY = yFrac * H;
+}
+
+function clampToFloor(w) {
+  var yFrac = w.y / H;
+  yFrac = Math.max(FLOOR_ZONE.yMin, Math.min(FLOOR_ZONE.yMax, yFrac));
+  w.y = yFrac * H;
+  var bounds = getFloorBounds(yFrac);
+  w.x = Math.max(bounds.xMin * W, Math.min(bounds.xMax * W, w.x));
+}
+
+function updateBaselingAI(w) {
+  if (!w.alive && w.stage !== 0) { w.state = 'dead'; return; }
+  if (w.stage === 0) { w.state = 'egg'; return; }
+
+  // Decrement interaction cooldown
+  if (w.interactCooldown > 0) w.interactCooldown--;
+
+  // Poop spawn timer
+  if (w.poopSpawnTimer > 0) w.poopSpawnTimer--;
+
+  // Auto-spawn poop on floor when poopMeter >= 100
+  if (w.poopMeter >= 100 && w.alive && w.poopSpawnTimer <= 0) {
+    // Calculate poop token reward
+    var mult = w.stage >= 4 ? 25 : w.stage >= 3 ? 10 : w.stage >= 2 ? 5 : 2;
+    var amount = mult * 10;
+    w.poopCount += amount;
+    totalPoop += amount;
+    w.poopMeter = 0;
+    w.poopSpawnTimer = 30; // prevent instant re-poop
+    spawnFloorPoop(w.x, w.y);
+    spawnParticles(w.x + 15, w.y - 10, 'stink', 2);
+    showMsg('PLOOP! +' + amount + ' POOP');
+    updateHUD();
+    if (selected === w) updatePanel();
+  }
+
+  // Periodic particle spawns based on mood
+  var now = Date.now();
+  if (w.hunger < 15 && now - w.lastAngerParticle > 2000) {
+    spawnParticles(w.x, w.y - 50, 'anger', 2);
+    w.lastAngerParticle = now;
+  }
+  if (w.hunger < 35 && w.hunger >= 15 && now - w.lastSweatParticle > 2000) {
+    spawnParticles(w.x + 15, w.y - 40, 'sweat', 1);
+    w.lastSweatParticle = now;
+  }
+  if (w.happy > 80 && w.state === 'walking' && now - w.lastNoteParticle > 3000 && Math.random() < 0.3) {
+    spawnParticles(w.x, w.y - 55, 'note', 1);
+    w.lastNoteParticle = now;
+  }
+
+  // Too many floor poops = everyone loses happiness faster
+  if (floorPoops.length > 5) {
+    w.happy = Math.max(0, w.happy - 0.02);
+  }
+
+  // If chasing ball, override targeting
+  if (w.state === 'chasing' && ball) {
+    w.targetX = ball.x;
+    w.targetY = ball.y;
+    var dx = w.targetX - w.x;
+    var dy = w.targetY - w.y;
+    var dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist > 3) {
+      var speed = (w.walkSpeed + 0.6) * SCALE;
+      w.x += (dx / dist) * speed;
+      w.y += (dy / dist) * speed;
+      w.facing = dx > 0 ? 1 : -1;
+    }
+    clampToFloor(w);
+    // Fall through to hunger/happy decay below but skip normal state machine
+  } else if (w.state === 'chasing' && !ball) {
+    // Ball disappeared, go back to idle
+    w.state = 'idle';
+    w.stateTimer = 40;
+  }
+
+  if (w.state !== 'chasing') {
+    w.stateTimer--;
+    if (w.stateTimer <= 0) {
+      var r = Math.random();
+      if (r < 0.4) {
+        w.state = 'walking';
+        pickNewTarget(w);
+        w.stateTimer = 120 + Math.random()*200;
+      } else if (r < 0.7) {
+        w.state = 'idle';
+        w.stateTimer = 80 + Math.random()*160;
+      } else if (r < 0.85) {
+        w.state = 'sitting';
+        w.stateTimer = 100 + Math.random()*200;
+      } else {
+        w.state = 'sleeping';
+        w.stateTimer = 150 + Math.random()*250;
+      }
+    }
+
+    if (w.state === 'walking') {
+      var dx = w.targetX - w.x;
+      var dy = w.targetY - w.y;
+      var dist = Math.sqrt(dx*dx + dy*dy);
+      if (dist < 5) {
+        w.state = 'idle';
+        w.stateTimer = 40 + Math.random()*80;
+      } else {
+        var speed = w.walkSpeed * SCALE;
+        w.x += (dx / dist) * speed;
+        w.y += (dy / dist) * speed;
+        w.facing = dx > 0 ? 1 : -1;
+      }
+    }
+    clampToFloor(w);
+  }
+
+  // hunger/happy decay
+  if (w.alive && w.stage > 0) {
+    w.hunger = Math.max(0, w.hunger - 0.012);
+    w.happy = Math.max(0, w.happy - 0.006);
+    if (w.hunger <= 0) {
+      w.alive = false;
+      w.stage = 5;
+      w.state = 'dead';
+      if (selected === w) updatePanel();
+      showMsg('BASELING #' + w.id + ' DIED...', '#f87171');
+    }
+  }
+
+  if (w.bounceY < 0) w.bounceY += 0.5;
+  if (w.bounceY > 0) w.bounceY = 0;
+}
+
+// --- DEPTH SCALE ---
+function getDepthScale(w) {
+  var yFrac = w.y / H;
+  var t = (yFrac - FLOOR_ZONE.yMin) / (FLOOR_ZONE.yMax - FLOOR_ZONE.yMin);
+  t = Math.max(0, Math.min(1, t));
+  return 0.45 + t * 0.75;
+}
+
+// --- DRAW SPRITES ---
+function drawSpriteAt(spriteKey, x, y, size, flipX, alpha, tint, isAccessory) {
+  var spr = isAccessory ? accessorySprites[spriteKey] : sprites[spriteKey];
+  if (!spr) return;
+  ctx.save();
+  if (alpha !== undefined) ctx.globalAlpha = alpha;
+  ctx.translate(x, y);
+  if (flipX) ctx.scale(-1, 1);
+  // Draw centered, sized
+  var hw = size / 2;
+  var aspect = spr.height / spr.width;
+  var hh = hw * aspect;
+  ctx.drawImage(spr, -hw, -hh * 2, size, size * aspect);
+
+  // Tint overlay for dead/effects
+  if (tint) {
+    ctx.globalCompositeOperation = 'source-atop';
+    ctx.fillStyle = tint;
+    ctx.fillRect(-hw, -hh * 2, size, size * aspect);
+  }
+  ctx.restore();
+}
+
+// --- ATTENTION CALLS ---
+function drawAttentionBubble(w, x, y, size, depth, t) {
+  if (!w.alive || w.stage === 0) return;
+  var needsFood = w.hunger < 25;
+  var needsHappy = w.happy < 20;
+  if (!needsFood && !needsHappy) return;
+
+  var bubbleX = x + size * 0.35;
+  var bobOffset = Math.sin(t * 4) * 3;
+  var bubbleY = y - size * 1.05 + bobOffset;
+  var bubbleR = 10 * depth * SCALE;
+
+  // Determine what to show
+  var text, textColor;
+  if (needsFood && needsHappy) {
+    // Alternate between them
+    if (Math.floor(t * 2) % 2 === 0) {
+      text = '!'; textColor = '#ef4444';
+    } else {
+      text = '...'; textColor = '#60a5fa';
+    }
+  } else if (needsFood) {
+    text = '!'; textColor = '#ef4444';
+  } else {
+    text = '...'; textColor = '#60a5fa';
+  }
+
+  // White bubble background
+  ctx.fillStyle = 'rgba(255,255,255,0.9)';
+  ctx.beginPath();
+  ctx.arc(bubbleX, bubbleY, bubbleR, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Bubble border
+  ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  // Small triangle pointing down
+  ctx.fillStyle = 'rgba(255,255,255,0.9)';
+  ctx.beginPath();
+  ctx.moveTo(bubbleX - 3, bubbleY + bubbleR - 1);
+  ctx.lineTo(bubbleX + 3, bubbleY + bubbleR - 1);
+  ctx.lineTo(bubbleX, bubbleY + bubbleR + 5);
+  ctx.closePath();
+  ctx.fill();
+
+  // Text inside bubble
+  ctx.fillStyle = textColor;
+  ctx.font = 'bold ' + Math.round(bubbleR * 1.1) + 'px "Press Start 2P"';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, bubbleX, bubbleY);
+  ctx.textBaseline = 'alphabetic';
+  ctx.textAlign = 'left';
+}
+
+function drawBaseling(w, t) {
+  var depth = getDepthScale(w);
+  var stageScale;
+  if (w.stage === 0) stageScale = 0.5;
+  else if (w.stage === 1) stageScale = 0.55;
+  else if (w.stage === 2) stageScale = 0.7;
+  else if (w.stage === 3) stageScale = 0.85;
+  else if (w.stage === 4) stageScale = 1.0;
+  else stageScale = 0.6; // dead
+
+  var size = 120 * SCALE * depth * stageScale;
+  var x = w.x;
+  var y = w.y + w.bounceY;
+
+  // Attention vibrate — shake when calling for attention
+  if (w.alive && w.stage > 0 && (w.hunger < 25 || w.happy < 20)) {
+    x += (Math.random() - 0.5) * 2;
+  }
+
+  // Walking bob
+  if (w.state === 'walking' || w.state === 'chasing') y += Math.sin(t * 8) * 2 * depth;
+  // Idle breathe
+  if (w.state === 'idle') y += Math.sin(t * 2) * 1 * depth;
+
+  // Shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.15)';
+  ctx.beginPath();
+  ctx.ellipse(w.x, w.y + 2, size * 0.3, size * 0.08, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Choose sprite
+  var alpha = 1, tint = null;
+  var isEgg = w.stage === 0;
+
+  if (isEgg) {
+    // Egg wobble
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(Math.sin(t * 3) * 0.06);
+    ctx.translate(-x, -y);
+  }
+
+  // Dead tint
+  if (!w.alive) {
+    alpha = 0.5;
+    tint = 'rgba(100,100,100,0.5)';
+    y += Math.sin(t * 2) * 4;
+  }
+
+  // Legend glow
+  if (w.stage === 4 && w.alive) {
+    var glowAlpha = 0.15 + Math.sin(t * 4) * 0.1;
+    ctx.fillStyle = 'rgba(240,208,96,' + glowAlpha + ')';
+    ctx.beginPath();
+    ctx.ellipse(x, y - size * 0.4, size * 0.6, size * 0.7, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Sparkles
+    for (var i = 0; i < 6; i++) {
+      var sx = x + Math.sin(t*2 + i*1.05) * size * 0.6;
+      var sy = y - size * 0.4 + Math.cos(t*2 + i*1.05) * size * 0.6;
+      ctx.fillStyle = '#fef08a';
+      ctx.globalAlpha = 0.7 + Math.sin(t*4+i)*0.3;
+      ctx.fillRect(sx-1, sy-1, 3, 3);
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  // Sleeping Z's
+  if (w.state === 'sleeping' && w.alive) {
+    ctx.font = Math.round(8 * depth * SCALE) + 'px "Press Start 2P"';
+    for (var z = 0; z < 3; z++) {
+      var zx = x + size * 0.4 + z * 6;
+      var zy = y - size * 0.5 - z * 12 * depth + Math.sin(t + z) * 3;
+      ctx.globalAlpha = 0.6 - z * 0.18;
+      ctx.fillStyle = '#ddd';
+      ctx.fillText('z', zx, zy);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // Draw the sprite(s)
+  if (isEgg) {
+    drawSpriteAt(w.eggSprite, x, y, size, w.facing < 0, alpha, tint);
+    ctx.restore(); // end egg wobble
+  } else {
+    // Draw base body
+    drawSpriteAt(w.bodySprite, x, y, size, w.facing < 0, alpha, tint);
+    // Draw accessory on top
+    if (w.accFile && accessorySprites[w.accFile]) {
+      drawSpriteAt(w.accFile, x, y, size, w.facing < 0, alpha, null, true);
+    }
+  }
+
+  // Death scars overlay
+  if (w.deathCount > 0 && w.alive) {
+    ctx.strokeStyle = '#666';
+    ctx.lineWidth = 2;
+    for (var s = 0; s < Math.min(w.deathCount, 3); s++) {
+      var scX = x - size*0.15 + s * size*0.12;
+      var scY = y - size*0.5 + s * size*0.08;
+      ctx.beginPath();
+      ctx.moveTo(scX, scY);
+      ctx.lineTo(scX + size*0.12, scY + size*0.04);
+      ctx.stroke();
+      // stitch marks
+      for (var st = 0; st < 3; st++) {
+        var stx = scX + st * size*0.04;
+        ctx.beginPath();
+        ctx.moveTo(stx, scY - 2);
+        ctx.lineTo(stx + 2, scY + 4);
+        ctx.stroke();
+      }
+    }
+  }
+
+  // Attention speech bubble
+  drawAttentionBubble(w, x, y, size, depth, t);
+
+  // Name + rarity tag
+  var tagY = y - size * 0.95;
+  var rarity = w.stage === 0 ? w.eggRarity : w.combinedRarity;
+  ctx.font = Math.round(5 * depth * SCALE + 2) + 'px "Press Start 2P"';
+  ctx.textAlign = 'center';
+  if (selected === w) {
+    ctx.fillStyle = RARITY_COLORS[rarity];
+    ctx.fillText(RARITY_LABELS[rarity], x, tagY - 10);
+    ctx.fillStyle = '#f0d060';
+  } else {
+    ctx.fillStyle = 'rgba(240,208,96,0.5)';
+  }
+  ctx.fillText('#' + w.id, x, tagY);
+  ctx.textAlign = 'left';
+
+  // Selection ring
+  if (selected === w) {
+    var dash = Math.sin(t * 6) * 0.5 + 0.5;
+    ctx.strokeStyle = RARITY_COLORS[rarity].replace(')', ',' + (0.5 + dash*0.5) + ')').replace('rgb','rgba');
+    if (ctx.strokeStyle.indexOf('rgba') === -1) {
+      ctx.strokeStyle = 'rgba(240,208,96,' + (0.5 + dash*0.5) + ')';
+    }
+    ctx.lineWidth = 2;
+    ctx.setLineDash([4, 4]);
+    ctx.lineDashOffset = t * 20;
+    ctx.beginPath();
+    ctx.ellipse(x, y - size * 0.35, size * 0.45, size * 0.55, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+}
+
+// --- CLICK ---
+C.addEventListener('click', function(e) {
+  var rect = C.getBoundingClientRect();
+  var mx = e.clientX - rect.left;
+  var my = e.clientY - rect.top;
+
+  // 1. Check poop click FIRST
+  if (clickPoop(mx, my)) return;
+
+  // 2. Check baseling click
+  var clicked = null;
+  for (var i = baselings.length - 1; i >= 0; i--) {
+    var w = baselings[i];
+    var depth = getDepthScale(w);
+    var sz = 60 * SCALE * depth;
+    if (Math.abs(mx - w.x) < sz && my > w.y - sz*2 && my < w.y + 10) {
+      clicked = w;
+      break;
+    }
+  }
+  if (clicked) {
+    selected = clicked;
+    updatePanel();
+    return;
+  }
+
+  // 3. Empty floor click — spawn/throw a ball
+  var yFrac = my / H;
+  if (yFrac >= FLOOR_ZONE.yMin && yFrac <= FLOOR_ZONE.yMax) {
+    if (!ball) {
+      spawnBall(mx, my);
+      startChasingBall();
+    }
+    selected = null;
+    document.getElementById('panel').style.display = 'none';
+    return;
+  }
+
+  // 4. Deselect if clicking outside everything
+  selected = null;
+  document.getElementById('panel').style.display = 'none';
+});
+
+// --- PANEL ---
+function updatePanel() {
+  var p = document.getElementById('panel');
+  if (!selected) { p.style.display = 'none'; return; }
+  var w = selected;
+  p.style.display = 'block';
+
+  var stageLabel = STAGES[w.stage].toUpperCase();
+  if (w.deathCount > 0 && w.alive) stageLabel += ' (SCARRED x' + w.deathCount + ')';
+
+  var rarity = w.stage === 0 ? w.eggRarity : w.combinedRarity;
+  var rarityColor = RARITY_COLORS[rarity];
+  var rarityLabel = RARITY_LABELS[rarity];
+  var nameStr = w.stage === 0 ? 'MYSTERY EGG' : w.bodyName + (w.accName !== 'None' ? ' + ' + w.accName : '');
+
+  var btnsHTML = '';
+  if (w.stage === 0) {
+    btnsHTML = '<button class="btn btn-hatch" onclick="doHatch()">HATCH</button>';
+  } else if (!w.alive) {
+    btnsHTML = '<button class="btn btn-rez" onclick="doResurrect()">RESURRECT (10% LP)</button>';
+  } else {
+    btnsHTML = '<button class="btn btn-feed-apple" onclick="doFeedApple()">APPLE</button>' +
+      '<button class="btn btn-feed-meat" onclick="doFeedMeat()">MEAT</button>' +
+      '<button class="btn btn-feed-cake" onclick="doFeedCake()">CAKE</button>' +
+      '<button class="btn btn-feed-candy" onclick="doFeedCandy()">CANDY</button>' +
+      '<button class="btn btn-pet" onclick="doPet()">PET</button>' +
+      '<button class="btn btn-play" onclick="doPlay()">PLAY</button>';
+  }
+  btnsHTML += '<button class="btn btn-deselect" onclick="deselect()">CLOSE</button>';
+
+  p.innerHTML =
+    '<div class="name">BASELING #' + w.id + ' - ' + nameStr + ' - ' + stageLabel +
+    ' <span style="color:'+rarityColor+'">['+rarityLabel+']</span></div>' +
+    '<div class="info">feeds: ' + w.feedCount + ' | poop: ' + w.poopCount + ' | deaths: ' + w.deathCount + '</div>' +
+    '<div class="bars">' +
+      '<div class="bar"><div class="bar-label">HUNGER</div><div class="bar-bg"><div class="bar-fill" style="width:'+w.hunger+'%;background:'+(w.hunger<20?'#ef4444':w.hunger<50?'#f59e0b':'#4ade80')+'"></div></div></div>' +
+      '<div class="bar"><div class="bar-label">HAPPY</div><div class="bar-bg"><div class="bar-fill" style="width:'+w.happy+'%;background:#f472b6"></div></div></div>' +
+      '<div class="bar"><div class="bar-label">DIGEST</div><div class="bar-bg"><div class="bar-fill" style="width:'+w.poopMeter+'%;background:#a78bfa"></div></div></div>' +
+    '</div>' +
+    '<div class="btns">' + btnsHTML + '</div>';
+}
+function deselect() { selected = null; document.getElementById('panel').style.display = 'none'; }
+
+// --- ACTIONS ---
+// Food variety functions
+function doFeedApple() {
+  if (!selected || !selected.alive || selected.stage === 0) return;
+  selected.hunger = Math.min(100, selected.hunger + 20);
+  selected.poopMeter = Math.min(100, selected.poopMeter + 10);
+  selected.feedCount++;
+  selected.lastFed = Date.now();
+  selected.bounceY = -10;
+  selected.state = 'idle'; selected.stateTimer = 60;
+  checkLevelUp(selected);
+  showMsg('CRUNCH! APPLE!', '#4ade80');
+  updatePanel();
+}
+function doFeedMeat() {
+  if (!selected || !selected.alive || selected.stage === 0) return;
+  selected.hunger = Math.min(100, selected.hunger + 35);
+  selected.happy = Math.min(100, selected.happy + 5);
+  selected.poopMeter = Math.min(100, selected.poopMeter + 20);
+  selected.feedCount++;
+  selected.lastFed = Date.now();
+  selected.bounceY = -10;
+  selected.state = 'idle'; selected.stateTimer = 60;
+  checkLevelUp(selected);
+  showMsg('CHOMP! MEAT!', '#fca5a5');
+  updatePanel();
+}
+function doFeedCake() {
+  if (!selected || !selected.alive || selected.stage === 0) return;
+  selected.hunger = Math.min(100, selected.hunger + 10);
+  selected.happy = Math.min(100, selected.happy + 20);
+  selected.poopMeter = Math.min(100, selected.poopMeter + 10);
+  selected.feedCount++;
+  selected.lastFed = Date.now();
+  selected.bounceY = -8;
+  selected.state = 'idle'; selected.stateTimer = 60;
+  checkLevelUp(selected);
+  spawnParticles(selected.x, selected.y - 40, 'heart', 2);
+  showMsg('YUM! CAKE!', '#fbcfe8');
+  updatePanel();
+}
+function doFeedCandy() {
+  if (!selected || !selected.alive || selected.stage === 0) return;
+  selected.hunger = Math.min(100, selected.hunger + 5);
+  selected.happy = Math.min(100, selected.happy + 15);
+  selected.poopMeter = Math.min(100, selected.poopMeter + 5);
+  selected.feedCount++;
+  selected.lastFed = Date.now();
+  selected.bounceY = -6;
+  selected.state = 'idle'; selected.stateTimer = 60;
+  checkLevelUp(selected);
+  showMsg('SWEET! CANDY!', '#c4b5fd');
+  updatePanel();
+}
+function doFeed() {
+  // Legacy fallback — same as apple
+  doFeedApple();
+}
+function doPet() {
+  if (!selected || !selected.alive || selected.stage === 0) return;
+  selected.happy = Math.min(100, selected.happy + 15);
+  selected.poopMeter = Math.min(100, selected.poopMeter + 5);
+  selected.bounceY = -5;
+  selected.state = 'idle'; selected.stateTimer = 80;
+  spawnParticles(selected.x, selected.y - 50, 'heart', 4);
+  showMsg('<3 HAPPY!');
+  updatePanel();
+}
+function doPlay() {
+  if (!selected || !selected.alive || selected.stage === 0) return;
+  selected.happy = Math.min(100, selected.happy + 20);
+  selected.hunger = Math.max(0, selected.hunger - 8);
+  selected.poopMeter = Math.min(100, selected.poopMeter + 10);
+  selected.bounceY = -14;
+  selected.feedCount++;
+  selected.state = 'walking'; pickNewTarget(selected); selected.stateTimer = 100;
+  spawnParticles(selected.x, selected.y - 50, 'star', 3);
+  showMsg('WHEEE!');
+  updatePanel();
+}
+function doPoop() {
+  if (!selected || !selected.alive || selected.poopMeter < 100) return;
+  var mult = selected.stage >= 4 ? 25 : selected.stage >= 3 ? 10 : selected.stage >= 2 ? 5 : 2;
+  var amount = mult * 10;
+  selected.poopMeter = 0;
+  selected.poopCount += amount;
+  totalPoop += amount;
+  selected.bounceY = -8;
+  showMsg('PLOOP! +' + amount + ' POOP');
+  updatePanel(); updateHUD();
+}
+function doHatch() {
+  if (!selected || selected.stage !== 0) return;
+  selected.stage = 1;
+  selected.birthTime = Date.now();
+  selected.lastFed = Date.now();
+  selected.hunger = 70; selected.happy = 50;
+  selected.state = 'idle'; selected.stateTimer = 60;
+  var rarityColor = RARITY_COLORS[selected.combinedRarity];
+  var hatchName = selected.bodyName + (selected.accName !== 'None' ? ' + ' + selected.accName : '');
+  spawnParticles(selected.x, selected.y - 40, 'star', 8);
+  showMsg('* ' + hatchName.toUpperCase() + ' HATCHED! [' + RARITY_LABELS[selected.combinedRarity] + '] *', rarityColor);
+  updatePanel();
+}
+function doResurrect() {
+  if (!selected || selected.alive) return;
+  selected.alive = true; selected.stage = 1;
+  selected.deathCount++;
+  selected.hunger = 50; selected.happy = 30;
+  selected.poopMeter = 0; selected.feedCount = 0;
+  selected.lastFed = Date.now(); selected.birthTime = Date.now();
+  selected.state = 'idle'; selected.stateTimer = 80;
+  showMsg('REVIVED! 10% LP locked forever');
+  updatePanel();
+}
+function checkLevelUp(w) {
+  var age = (Date.now() - w.birthTime) / 1000;
+  var old = w.stage;
+  if (w.stage === 1 && age > 10 && w.feedCount >= 3) w.stage = 2;
+  else if (w.stage === 2 && age > 30 && w.feedCount >= 8) w.stage = 3;
+  else if (w.stage === 3 && age > 60 && w.feedCount >= 15) w.stage = 4;
+  if (w.stage !== old) {
+    spawnParticles(w.x, w.y - 60, 'star', 10);
+    showMsg('* EVOLVED TO ' + STAGES[w.stage].toUpperCase() + '! *', '#f0d060');
+    updatePanel();
+  }
+}
+
+var msgTimeout;
+function showMsg(text, color) {
+  var el = document.getElementById('msg');
+  el.textContent = text;
+  el.style.color = color || '#fbbf24';
+  el.style.opacity = 1;
+  clearTimeout(msgTimeout);
+  msgTimeout = setTimeout(function(){ el.style.opacity = 0; }, 1800);
+}
+function updateHUD() {
+  document.getElementById('poop-total').textContent = 'POOP: ' + totalPoop;
+  document.getElementById('baseling-count').textContent = 'BASELINGS: ' + baselings.length;
+}
+
+// --- MAIN LOOP ---
+function render() {
+  var t = Date.now() / 1000;
+  frameCount++;
+  ctx.clearRect(0, 0, W, H);
+
+  // Background
+  var bg = sprites['baseling-bg.webp'];
+  if (bg) {
+    var imgRatio = bg.width / bg.height;
+    var canvasRatio = W / H;
+    var dw, dh, dx, dy;
+    if (canvasRatio > imgRatio) {
+      dw = W; dh = W / imgRatio; dx = 0; dy = (H - dh) / 2;
+    } else {
+      dh = H; dw = H * imgRatio; dx = (W - dw) / 2; dy = 0;
+    }
+    ctx.drawImage(bg, dx, dy, dw, dh);
+  } else {
+    ctx.fillStyle = '#1a1210';
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  // Draw floor poops (under baselings)
+  drawFloorPoops(t);
+
+  // Sort by Y for depth
+  baselings.sort(function(a,b){ return a.y - b.y; });
+
+  // Update AI for all baselings
+  for (var i = 0; i < baselings.length; i++) {
+    updateBaselingAI(baselings[i]);
+  }
+
+  // Check Baseling interactions every 30 frames
+  if (frameCount % 30 === 0) {
+    checkBaselingInteractions();
+  }
+
+  // Draw baselings
+  for (var i = 0; i < baselings.length; i++) {
+    drawBaseling(baselings[i], t);
+  }
+
+  // Draw particles (above baselings)
+  updateParticles();
+  drawParticles();
+
+  // Draw ball
+  updateBall();
+  drawBall(t);
+
+  // Live-update panel bars
+  if (selected) {
+    var hbar = document.querySelector('#panel .bar:nth-child(1) .bar-fill');
+    var pbar = document.querySelector('#panel .bar:nth-child(2) .bar-fill');
+    var dbar = document.querySelector('#panel .bar:nth-child(3) .bar-fill');
+    if (hbar) {
+      hbar.style.width = selected.hunger + '%';
+      hbar.style.background = selected.hunger < 20 ? '#ef4444' : selected.hunger < 50 ? '#f59e0b' : '#4ade80';
+    }
+    if (pbar) pbar.style.width = selected.happy + '%';
+    if (dbar) dbar.style.width = selected.poopMeter + '%';
+  }
+
+  requestAnimationFrame(render);
+}
+
+// --- BOOT ---
+loadAllSprites(function() {
+  // Start with 4 eggs
+  createBaseling();
+  createBaseling();
+  createBaseling();
+  createBaseling();
+  render();
+});
+</script>
+</body>
+</html>

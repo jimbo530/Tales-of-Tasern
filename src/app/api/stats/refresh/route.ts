@@ -9,8 +9,11 @@ const BATCH_COUNT = 4; // Split NFTs into 4 batches across the day
 
 export async function GET(request: Request) {
   // Auth: Vercel cron sends Authorization: Bearer <CRON_SECRET>
-  // Skip auth if CRON_SECRET not configured (local dev)
+  // Required in production, optional in local dev
   const secret = process.env.CRON_SECRET;
+  if (!secret && process.env.NODE_ENV === 'production') {
+    return NextResponse.json({ error: "Server misconfigured" }, { status: 500 });
+  }
   if (secret) {
     const authHeader = request.headers.get("authorization");
     if (authHeader !== `Bearer ${secret}`) {

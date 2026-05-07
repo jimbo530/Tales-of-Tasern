@@ -1,0 +1,690 @@
+<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8">
+<title>Baseling Admin - Contract Config</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:#0a0a1a;color:#e0e0e0;font-family:'Courier New',monospace;padding:20px}
+  h1{color:#f0d060;margin-bottom:4px;font-size:18px}
+  h2{color:#60a5fa;margin:16px 0 8px;font-size:14px;border-bottom:1px solid #333;padding-bottom:4px}
+  .sub{color:#888;font-size:11px;margin-bottom:16px}
+  .section{background:#111;border:1px solid #333;border-radius:8px;padding:12px;margin-bottom:12px}
+  .row{display:flex;align-items:center;gap:8px;margin:4px 0;flex-wrap:wrap}
+  .label{color:#888;font-size:11px;min-width:160px}
+  .val{color:#4ade80;font-size:11px;word-break:break-all}
+  .val.unset{color:#ef4444}
+  .val.pending{color:#f0d060}
+  button{background:#1a1a2e;border:1px solid #60a5fa;color:#60a5fa;padding:4px 10px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:11px}
+  button:hover{background:#60a5fa;color:#0a0a1a}
+  button:disabled{opacity:0.4;cursor:not-allowed}
+  button.danger{border-color:#ef4444;color:#ef4444}
+  button.danger:hover{background:#ef4444;color:#0a0a1a}
+  button.success{border-color:#4ade80;color:#4ade80}
+  button.success:hover{background:#4ade80;color:#0a0a1a}
+  input{background:#1a1a2e;border:1px solid #444;color:#e0e0e0;padding:4px 8px;border-radius:4px;font-family:inherit;font-size:11px;width:200px}
+  #status{position:fixed;top:10px;right:10px;background:rgba(10,10,26,0.95);border:1px solid #333;border-radius:8px;padding:8px 14px;font-size:11px;z-index:100}
+  #log{background:#0a0a12;border:1px solid #333;border-radius:4px;padding:8px;margin-top:12px;max-height:200px;overflow-y:auto;font-size:10px;color:#888}
+  .log-ok{color:#4ade80}.log-err{color:#ef4444}.log-info{color:#f0d060}
+  .check{color:#4ade80}.cross{color:#ef4444}
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.4/ethers.umd.min.js"></script>
+</head><body>
+
+<h1>Baseling Admin Panel</h1>
+<div class="sub">Contract configuration for POOP pipeline</div>
+
+<div id="status">
+  <span id="wallet-status" style="color:#ef4444">NOT CONNECTED</span>
+  <button onclick="connect()" style="margin-left:8px">Connect</button>
+</div>
+
+<!-- PoopToken Config -->
+<div class="section">
+  <h2>PoopToken <span style="font-size:10px;color:#666">0x1265...4dc</span></h2>
+  <div class="row"><span class="label">Owner:</span><span class="val" id="poop-owner">...</span></div>
+  <div class="row"><span class="label">Total Supply:</span><span class="val" id="poop-supply">...</span></div>
+  <div class="row"><span class="label">BaselingNFT is minter:</span><span class="val" id="poop-minter">...</span></div>
+  <div class="row">
+    <button class="success" onclick="setPoopMinter()">Set BaselingNFT as Minter</button>
+  </div>
+</div>
+
+<!-- BaselingNFT Config -->
+<div class="section">
+  <h2>BaselingNFT <span style="font-size:10px;color:#666">0xFCb8...7b9</span></h2>
+
+  <div class="row"><span class="label">Owner:</span><span class="val" id="nft-owner">...</span></div>
+  <div class="row"><span class="label">Total Minted:</span><span class="val" id="nft-minted">...</span></div>
+  <div class="row"><span class="label">Poop Token:</span><span class="val" id="nft-poop">...</span></div>
+  <div class="row"><span class="label">Power Plant:</span><span class="val" id="nft-pp">...</span></div>
+  <div class="row"><span class="label">PP Balance (WETH):</span><span class="val" id="nft-ppbal">...</span></div>
+
+  <h2 style="font-size:12px">Egg Prices (WETH)</h2>
+  <div class="row"><span class="label">Random:</span><span class="val" id="egg-random">...</span></div>
+  <div class="row"><span class="label">Sorted:</span><span class="val" id="egg-sorted">...</span></div>
+  <div class="row"><span class="label">Giant:</span><span class="val" id="egg-giant">...</span></div>
+  <div class="row">
+    <input id="price-random" placeholder="Random (ETH, e.g. 0.00004)">
+    <input id="price-sorted" placeholder="Sorted (ETH, e.g. 0.0004)">
+    <input id="price-giant" placeholder="Giant (ETH, e.g. 0.002)">
+    <button class="success" onclick="setEggPrices()">Set Egg Prices</button>
+  </div>
+
+  <h2 style="font-size:12px">POOP Peg (1 POOP = $0.01 of ETH)</h2>
+  <div class="row"><span class="label">wethPerPoop:</span><span class="val" id="nft-wpp">...</span></div>
+  <div class="row"><span class="label">Current ETH price:</span><span class="val" id="eth-price">...</span></div>
+  <div class="row"><span class="label">$0.01 in WETH:</span><span class="val" id="target-wpp">...</span></div>
+  <div class="row">
+    <button class="success" onclick="syncWethPerPoop()">Sync to Current ETH Price</button>
+    <input id="wpp-input" placeholder="Or manual WETH value">
+    <button onclick="setWethPerPoop()">Set Manual</button>
+  </div>
+
+  <h2 style="font-size:12px">Authorized Contracts</h2>
+  <div class="row"><span class="label">Router authorized:</span><span class="val" id="auth-router">...</span></div>
+  <div class="row"><span class="label">Pantry authorized:</span><span class="val" id="auth-pantry">...</span></div>
+  <div class="row">
+    <button class="success" onclick="authorizeContract('router')">Authorize Router</button>
+    <button class="success" onclick="authorizeContract('pantry')">Authorize Pantry</button>
+  </div>
+
+  <h2 style="font-size:12px">LP Pairs</h2>
+  <div class="row"><span class="label">TGN/MfT accepted:</span><span class="val" id="pair-tgn">...</span></div>
+  <div class="row"><span class="label">BURGERS/MfT accepted:</span><span class="val" id="pair-burgers">...</span></div>
+  <div class="row"><span class="label">AZUSD/MfT accepted:</span><span class="val" id="pair-azusd">...</span></div>
+  <div class="row">
+    <button class="success" onclick="addAllPairs()">Add All LP Pairs</button>
+  </div>
+
+  <h2 style="font-size:12px">Pair WETH Values (wethPerLP)</h2>
+  <div class="row"><span class="label">TGN/MfT wethPerLP:</span><span class="val" id="wpl-tgn">...</span></div>
+  <div class="row"><span class="label">BURGERS/MfT wethPerLP:</span><span class="val" id="wpl-burgers">...</span></div>
+  <div class="row"><span class="label">AZUSD/MfT wethPerLP:</span><span class="val" id="wpl-azusd">...</span></div>
+  <div class="row">
+    <button class="success" onclick="autoSetWethPerLP()">Auto-Calculate from Reserves</button>
+  </div>
+
+  <h2 style="font-size:12px">Family Pairs (NFT side)</h2>
+  <div class="row"><span class="label">Family 0 (TGN):</span><span class="val" id="fam-nft-0">...</span></div>
+  <div class="row"><span class="label">Family 1 (BURGERS):</span><span class="val" id="fam-nft-1">...</span></div>
+  <div class="row"><span class="label">Family 2 (AZUSD):</span><span class="val" id="fam-nft-2">...</span></div>
+  <div class="row">
+    <button class="success" onclick="setAllFamilyPairsNFT()">Set All Family Pairs (NFT)</button>
+  </div>
+
+  <h2 style="font-size:12px">Power Plant</h2>
+  <div class="row">
+    <button class="success" onclick="setPowerPlant()">Set Power Plant Address</button>
+  </div>
+</div>
+
+<!-- Router Config -->
+<div class="section">
+  <h2>BaselingRouter <span style="font-size:10px;color:#666">0x2421...aD7</span></h2>
+  <div class="row"><span class="label">Owner:</span><span class="val" id="router-owner">...</span></div>
+  <div class="row"><span class="label">Family LP 0 (TGN):</span><span class="val" id="fam-router-0">...</span></div>
+  <div class="row"><span class="label">Family LP 1 (BURGERS):</span><span class="val" id="fam-router-1">...</span></div>
+  <div class="row"><span class="label">Family LP 2 (AZUSD):</span><span class="val" id="fam-router-2">...</span></div>
+  <div class="row">
+    <button class="success" onclick="setAllFamilyPairsRouter()">Set All Family LP Pairs (Router)</button>
+  </div>
+</div>
+
+<!-- Pipeline Stats -->
+<div class="section">
+  <h2>Pipeline Stats</h2>
+  <div class="row"><span class="label">Total LP Locked:</span><span class="val" id="stat-lp">...</span></div>
+  <div class="row"><span class="label">Total POOP Minted:</span><span class="val" id="stat-minted">...</span></div>
+  <div class="row"><span class="label">Total POOP Burned:</span><span class="val" id="stat-burned">...</span></div>
+  <div class="row"><span class="label">Total Fees (WETH):</span><span class="val" id="stat-fees">...</span></div>
+  <div class="row">
+    <button onclick="refreshAll()">Refresh All</button>
+  </div>
+</div>
+
+<!-- Quick Setup -->
+<div class="section">
+  <h2 style="color:#f0d060">One-Click Full Setup</h2>
+  <div style="color:#888;font-size:10px;margin-bottom:8px">
+    Runs ALL config calls in sequence. Only sends tx for things not already configured.
+  </div>
+  <button class="success" style="font-size:13px;padding:8px 20px" onclick="fullSetup()">CONFIGURE EVERYTHING</button>
+</div>
+
+<div id="log"></div>
+
+<script>
+// --- Addresses ---
+var POOP   = '0x126555aecBAC290b25644e4b7f29c016aE95f4dc';
+var NFT    = '0xFCb825491490284189C75fD330Fd08Df5E9217b9';
+var PANTRY = '0xb62E32a93e2027356271C083F794cFFDb0ac4aa6';
+var PP     = '0x493D3164F6d6187467B1FD3955bd1030763a7Fec';
+var ROUTER = '0x24213d631C9bf90EEaEAdde8bFdd4591eb95faD7';
+var WETH   = '0x4200000000000000000000000000000000000006';
+var MFT    = '0x8FB87d13B40B1A67B22ED1a17e2835fe7e3a9bA3';
+
+var LP_PAIRS = {
+  tgn:     '0xbd0cc3b0aaf91b80c862dbcaf39faa4705ee2d7a',
+  burgers: '0xa2A61fD7816951A0bCf8C67eA8f153C1AB5De288',
+  azusd:   '0xecc664757da0c71ba32dfed527580a26783b6697'
+};
+
+// --- ABIs ---
+var POOP_ABI = [
+  'function owner() view returns (address)',
+  'function totalSupply() view returns (uint256)',
+  'function totalMinted() view returns (uint256)',
+  'function totalBurned() view returns (uint256)',
+  'function isMinter(address) view returns (bool)',
+  'function setMinter(address,bool)',
+  'function balanceOf(address) view returns (uint256)'
+];
+var NFT_ABI = [
+  'function owner() view returns (address)',
+  'function totalMinted() view returns (uint256)',
+  'function randomEggPrice() view returns (uint256)',
+  'function sortedEggPrice() view returns (uint256)',
+  'function giantEggPrice() view returns (uint256)',
+  'function wethPerPoop() view returns (uint256)',
+  'function powerPlant() view returns (address)',
+  'function powerPlantBalance() view returns (uint256)',
+  'function totalLPLocked() view returns (uint256)',
+  'function totalPoopMinted() view returns (uint256)',
+  'function totalPoopBurned() view returns (uint256)',
+  'function totalFeesWETH() view returns (uint256)',
+  'function authorized(address) view returns (bool)',
+  'function pairs(address) view returns (bool,uint256)',
+  'function familyPairs(uint256) view returns (address)',
+  'function setEggPrices(uint256,uint256,uint256)',
+  'function setWethPerPoop(uint256)',
+  'function setAuthorized(address,bool)',
+  'function addPair(address)',
+  'function setPairWethPerLP(address,uint256)',
+  'function setFamilyPair(uint8,address)',
+  'function setPowerPlant(address)'
+];
+var ROUTER_ABI = [
+  'function owner() view returns (address)',
+  'function familyLPPairs(uint256) view returns (address)',
+  'function setFamilyLPPair(uint8,address)'
+];
+var PAIR_ABI = [
+  'function getReserves() view returns (uint112,uint112,uint32)',
+  'function totalSupply() view returns (uint256)',
+  'function token0() view returns (address)',
+  'function token1() view returns (address)'
+];
+
+var provider, signer, addr;
+
+function log(msg, cls) {
+  var el = document.getElementById('log');
+  var d = document.createElement('div');
+  d.className = cls || '';
+  d.textContent = '[' + new Date().toLocaleTimeString() + '] ' + msg;
+  el.appendChild(d);
+  el.scrollTop = el.scrollHeight;
+}
+
+async function connect() {
+  if (!window.ethereum) { log('No wallet found', 'log-err'); return; }
+  provider = new ethers.BrowserProvider(window.ethereum);
+  var net = await provider.getNetwork();
+  if (Number(net.chainId) !== 8453) {
+    await window.ethereum.request({method:'wallet_switchEthereumChain',params:[{chainId:'0x2105'}]});
+    provider = new ethers.BrowserProvider(window.ethereum);
+  }
+  signer = await provider.getSigner();
+  addr = await signer.getAddress();
+  document.getElementById('wallet-status').textContent = addr.slice(0,6) + '...' + addr.slice(-4);
+  document.getElementById('wallet-status').style.color = '#4ade80';
+  log('Connected: ' + addr, 'log-ok');
+  refreshAll();
+}
+
+function fmt(val) { return parseFloat(ethers.formatEther(val)); }
+function fmtE(val) { return ethers.formatEther(val); }
+function short(a) { return a === '0x0000000000000000000000000000000000000000' ? 'NOT SET' : a.slice(0,6)+'...'+a.slice(-4); }
+
+async function refreshAll() {
+  if (!provider) return;
+  log('Refreshing all config...', 'log-info');
+  var p = new ethers.Contract(POOP, POOP_ABI, provider);
+  var n = new ethers.Contract(NFT, NFT_ABI, provider);
+  var r = new ethers.Contract(ROUTER, ROUTER_ABI, provider);
+
+  try {
+    // PoopToken
+    var [pOwner, pSupply, isMinter] = await Promise.all([
+      p.owner(), p.totalSupply(), p.isMinter(NFT)
+    ]);
+    document.getElementById('poop-owner').textContent = short(pOwner);
+    document.getElementById('poop-supply').textContent = fmtE(pSupply) + ' POOP';
+    var me = document.getElementById('poop-minter');
+    me.textContent = isMinter ? 'YES' : 'NO';
+    me.className = 'val ' + (isMinter ? '' : 'unset');
+
+    // BaselingNFT
+    var [nOwner, nMinted, nPP, nPPBal, eRand, eSorted, eGiant, wpp] = await Promise.all([
+      n.owner(), n.totalMinted(), n.powerPlant(), n.powerPlantBalance(),
+      n.randomEggPrice(), n.sortedEggPrice(), n.giantEggPrice(), n.wethPerPoop()
+    ]);
+    document.getElementById('nft-owner').textContent = short(nOwner);
+    document.getElementById('nft-minted').textContent = nMinted.toString();
+    document.getElementById('nft-poop').textContent = short(POOP);
+
+    var ppEl = document.getElementById('nft-pp');
+    ppEl.textContent = nPP === '0x0000000000000000000000000000000000000000' ? 'NOT SET' : short(nPP);
+    ppEl.className = 'val ' + (nPP === '0x0000000000000000000000000000000000000000' ? 'unset' : '');
+
+    document.getElementById('nft-ppbal').textContent = fmtE(nPPBal);
+
+    var re = document.getElementById('egg-random');
+    re.textContent = eRand == 0n ? 'NOT SET' : fmtE(eRand);
+    re.className = 'val ' + (eRand == 0n ? 'unset' : '');
+    var se = document.getElementById('egg-sorted');
+    se.textContent = eSorted == 0n ? 'NOT SET' : fmtE(eSorted);
+    se.className = 'val ' + (eSorted == 0n ? 'unset' : '');
+    var ge = document.getElementById('egg-giant');
+    ge.textContent = eGiant == 0n ? 'NOT SET' : fmtE(eGiant);
+    ge.className = 'val ' + (eGiant == 0n ? 'unset' : '');
+
+    var wppEl = document.getElementById('nft-wpp');
+    wppEl.textContent = wpp == 0n ? 'NOT SET' : fmtE(wpp);
+    wppEl.className = 'val ' + (wpp == 0n ? 'unset' : '');
+
+    // ETH price display
+    try {
+      var ethP = await fetchETHPrice();
+      if (ethP) {
+        document.getElementById('eth-price').textContent = '$' + ethP.toFixed(2);
+        var target = 0.01 / ethP;
+        document.getElementById('target-wpp').textContent = target.toFixed(18);
+      }
+    } catch(e) {}
+
+    // Auth
+    var [authR, authP] = await Promise.all([n.authorized(ROUTER), n.authorized(PANTRY)]);
+    var arEl = document.getElementById('auth-router');
+    arEl.textContent = authR ? 'YES' : 'NO';
+    arEl.className = 'val ' + (authR ? '' : 'unset');
+    var apEl = document.getElementById('auth-pantry');
+    apEl.textContent = authP ? 'YES' : 'NO';
+    apEl.className = 'val ' + (authP ? '' : 'unset');
+
+    // Pairs
+    var pairKeys = ['tgn','burgers','azusd'];
+    for (var i = 0; i < pairKeys.length; i++) {
+      var pk = pairKeys[i];
+      var pAddr = LP_PAIRS[pk];
+      try {
+        var pairInfo = await n.pairs(pAddr);
+        var accepted = pairInfo[0];
+        var wplVal = pairInfo[1];
+        var pEl = document.getElementById('pair-' + pk);
+        pEl.textContent = accepted ? 'YES' : 'NO';
+        pEl.className = 'val ' + (accepted ? '' : 'unset');
+        var wplEl = document.getElementById('wpl-' + pk);
+        wplEl.textContent = wplVal == 0n ? 'NOT SET' : fmtE(wplVal);
+        wplEl.className = 'val ' + (wplVal == 0n ? 'unset' : '');
+      } catch(e) {
+        document.getElementById('pair-' + pk).textContent = 'ERROR';
+        document.getElementById('wpl-' + pk).textContent = 'ERROR';
+      }
+    }
+
+    // Family pairs (NFT)
+    for (var fi = 0; fi < 3; fi++) {
+      var fp = await n.familyPairs(fi);
+      var fpEl = document.getElementById('fam-nft-' + fi);
+      fpEl.textContent = fp === '0x0000000000000000000000000000000000000000' ? 'NOT SET' : short(fp);
+      fpEl.className = 'val ' + (fp === '0x0000000000000000000000000000000000000000' ? 'unset' : '');
+    }
+
+    // Router
+    var rOwner = await r.owner();
+    document.getElementById('router-owner').textContent = short(rOwner);
+    for (var ri = 0; ri < 3; ri++) {
+      var rlp = await r.familyLPPairs(ri);
+      var rlpEl = document.getElementById('fam-router-' + ri);
+      rlpEl.textContent = rlp === '0x0000000000000000000000000000000000000000' ? 'NOT SET' : short(rlp);
+      rlpEl.className = 'val ' + (rlp === '0x0000000000000000000000000000000000000000' ? 'unset' : '');
+    }
+
+    // Stats
+    var [tLP, tMinted, tBurned, tFees] = await Promise.all([
+      n.totalLPLocked(), n.totalPoopMinted(), n.totalPoopBurned(), n.totalFeesWETH()
+    ]);
+    document.getElementById('stat-lp').textContent = fmtE(tLP);
+    document.getElementById('stat-minted').textContent = fmtE(tMinted) + ' POOP';
+    document.getElementById('stat-burned').textContent = fmtE(tBurned) + ' POOP';
+    document.getElementById('stat-fees').textContent = fmtE(tFees) + ' WETH';
+
+    log('Refresh complete', 'log-ok');
+  } catch(e) {
+    log('Refresh error: ' + e.message, 'log-err');
+    console.error(e);
+  }
+}
+
+// --- Config Actions ---
+
+async function setPoopMinter() {
+  var c = new ethers.Contract(POOP, POOP_ABI, signer);
+  log('Setting BaselingNFT as POOP minter...', 'log-info');
+  var tx = await c.setMinter(NFT, true);
+  log('TX: ' + tx.hash, 'log-info');
+  await tx.wait();
+  log('BaselingNFT is now a POOP minter!', 'log-ok');
+  refreshAll();
+}
+
+async function setEggPrices() {
+  var rp = document.getElementById('price-random').value || '0.00004';
+  var sp = document.getElementById('price-sorted').value || '0.0004';
+  var gp = document.getElementById('price-giant').value || '0.002';
+  var c = new ethers.Contract(NFT, NFT_ABI, signer);
+  log('Setting egg prices: random=' + rp + ' sorted=' + sp + ' giant=' + gp, 'log-info');
+  var tx = await c.setEggPrices(ethers.parseEther(rp), ethers.parseEther(sp), ethers.parseEther(gp));
+  log('TX: ' + tx.hash, 'log-info');
+  await tx.wait();
+  log('Egg prices set!', 'log-ok');
+  refreshAll();
+}
+
+async function setWethPerPoop() {
+  var val = document.getElementById('wpp-input').value || '0.000004';
+  var c = new ethers.Contract(NFT, NFT_ABI, signer);
+  log('Setting wethPerPoop=' + val, 'log-info');
+  var tx = await c.setWethPerPoop(ethers.parseEther(val));
+  log('TX: ' + tx.hash, 'log-info');
+  await tx.wait();
+  log('wethPerPoop set!', 'log-ok');
+  refreshAll();
+}
+
+async function fetchETHPrice() {
+  // Chainlink ETH/USD on Base: 0x71041dddad3595F9CEd3DcCFBe3D1F4b0a16Bb70
+  var CHAINLINK = '0x71041dddad3595F9CEd3DcCFBe3D1F4b0a16Bb70';
+  var CL_ABI = ['function latestRoundData() view returns (uint80,int256,uint256,uint256,uint80)'];
+  try {
+    var cl = new ethers.Contract(CHAINLINK, CL_ABI, provider);
+    var data = await cl.latestRoundData();
+    var price = Number(data[1]) / 1e8; // Chainlink ETH/USD has 8 decimals
+    return price;
+  } catch(e) {
+    log('Chainlink failed, trying CoinGecko...', 'log-info');
+    try {
+      var resp = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd');
+      var json = await resp.json();
+      return json.ethereum.usd;
+    } catch(e2) {
+      log('Price fetch failed: ' + e2.message, 'log-err');
+      return null;
+    }
+  }
+}
+
+async function syncWethPerPoop() {
+  var ethPrice = await fetchETHPrice();
+  if (!ethPrice) { log('Could not get ETH price', 'log-err'); return; }
+  // 1 POOP = $0.01, so wethPerPoop = 0.01 / ethPrice
+  var wpp = 0.01 / ethPrice;
+  log('ETH = $' + ethPrice.toFixed(2) + ' => $0.01 = ' + wpp.toFixed(18) + ' WETH', 'log-info');
+
+  var c = new ethers.Contract(NFT, NFT_ABI, signer);
+  var tx = await c.setWethPerPoop(ethers.parseEther(wpp.toFixed(18)));
+  log('TX: ' + tx.hash, 'log-info');
+  await tx.wait();
+  log('wethPerPoop synced to $0.01!', 'log-ok');
+  refreshAll();
+}
+
+async function authorizeContract(which) {
+  var target = which === 'router' ? ROUTER : PANTRY;
+  var c = new ethers.Contract(NFT, NFT_ABI, signer);
+  log('Authorizing ' + which + ' (' + short(target) + ')...', 'log-info');
+  var tx = await c.setAuthorized(target, true);
+  log('TX: ' + tx.hash, 'log-info');
+  await tx.wait();
+  log(which + ' authorized!', 'log-ok');
+  refreshAll();
+}
+
+async function addAllPairs() {
+  var c = new ethers.Contract(NFT, NFT_ABI, signer);
+  var keys = ['tgn','burgers','azusd'];
+  for (var i = 0; i < keys.length; i++) {
+    var pa = LP_PAIRS[keys[i]];
+    try {
+      var info = await c.pairs(pa);
+      if (info[0]) { log(keys[i] + ' pair already added, skipping', 'log-info'); continue; }
+    } catch(e) {}
+    log('Adding ' + keys[i] + ' pair...', 'log-info');
+    var tx = await c.addPair(pa);
+    await tx.wait();
+    log(keys[i] + ' pair added!', 'log-ok');
+  }
+  refreshAll();
+}
+
+async function autoSetWethPerLP() {
+  // Read MfT/WETH price from V4 pool to convert MfT-denominated LP values to WETH
+  // These are token/MfT pairs, so: LP value = 2 * MfT reserve / supply * mftToWethRate
+  var c = new ethers.Contract(NFT, NFT_ABI, signer);
+
+  // Get MfT→WETH rate: read WETH balance of MfT token (or use a known pair)
+  // V4 swapper handles MfT↔WETH, but we need a spot price
+  // Use the MfT contract to check — or approximate from CoinGecko
+  var mftToWeth = 0;
+  try {
+    // Try to get MfT price: check WETH balance in MfT V4 pool
+    // Simpler: just read MfT balance of WETH and vice versa from a known source
+    // For now use CoinGecko
+    var resp = await fetch('https://api.coingecko.com/api/v3/simple/token_price/base?contract_addresses=' + MFT + '&vs_currencies=eth');
+    var json = await resp.json();
+    var key = MFT.toLowerCase();
+    if (json[key] && json[key].eth) {
+      mftToWeth = json[key].eth;
+      log('MfT price: ' + mftToWeth + ' WETH per MfT', 'log-info');
+    }
+  } catch(e) {
+    log('MfT price fetch failed, using fallback', 'log-err');
+  }
+
+  // Fallback: estimate from WETH balance in MfT contract or hardcode
+  if (mftToWeth === 0) {
+    // Read MfT/WETH from the V4 swapper's pool if possible
+    // Last resort: use a rough estimate
+    mftToWeth = 0.000001; // placeholder — update manually
+    log('Using fallback MfT/WETH rate: ' + mftToWeth, 'log-info');
+  }
+
+  var keys = ['tgn','burgers','azusd'];
+  for (var i = 0; i < keys.length; i++) {
+    var pa = LP_PAIRS[keys[i]];
+    try {
+      var pair = new ethers.Contract(pa, PAIR_ABI, provider);
+      var [r0, r1] = await pair.getReserves();
+      var supply = await pair.totalSupply();
+      var t0 = await pair.token0();
+
+      var mftReserve = t0.toLowerCase() === MFT.toLowerCase() ? r0 : r1;
+      log(keys[i] + ': mftReserve=' + fmtE(mftReserve) + ' supply=' + fmtE(supply), 'log-info');
+
+      // wethPerLP = (2 * mftReserve * mftToWeth) / supply
+      // In 18-decimal math:
+      var mftPerLP = Number(ethers.formatEther(mftReserve)) * 2 / Number(ethers.formatEther(supply));
+      var wethPerLP = mftPerLP * mftToWeth;
+      log(keys[i] + ': mftPerLP=' + mftPerLP.toFixed(6) + ' => wethPerLP=' + wethPerLP.toFixed(18), 'log-info');
+
+      var tx = await c.setPairWethPerLP(pa, ethers.parseEther(wethPerLP.toFixed(18)));
+      await tx.wait();
+      log(keys[i] + ' wethPerLP set!', 'log-ok');
+    } catch(e) {
+      log(keys[i] + ' error: ' + e.message, 'log-err');
+    }
+  }
+  refreshAll();
+}
+
+async function setAllFamilyPairsNFT() {
+  var c = new ethers.Contract(NFT, NFT_ABI, signer);
+  var pairs = [LP_PAIRS.tgn, LP_PAIRS.burgers, LP_PAIRS.azusd];
+  for (var i = 0; i < 3; i++) {
+    log('Setting NFT familyPair ' + i + '...', 'log-info');
+    var tx = await c.setFamilyPair(i, pairs[i]);
+    await tx.wait();
+    log('NFT familyPair ' + i + ' set!', 'log-ok');
+  }
+  refreshAll();
+}
+
+async function setAllFamilyPairsRouter() {
+  var c = new ethers.Contract(ROUTER, ROUTER_ABI, signer);
+  var pairs = [LP_PAIRS.tgn, LP_PAIRS.burgers, LP_PAIRS.azusd];
+  for (var i = 0; i < 3; i++) {
+    log('Setting Router familyLPPair ' + i + '...', 'log-info');
+    var tx = await c.setFamilyLPPair(i, pairs[i]);
+    await tx.wait();
+    log('Router familyLPPair ' + i + ' set!', 'log-ok');
+  }
+  refreshAll();
+}
+
+async function setPowerPlant() {
+  var c = new ethers.Contract(NFT, NFT_ABI, signer);
+  log('Setting power plant to ' + short(PP) + '...', 'log-info');
+  var tx = await c.setPowerPlant(PP);
+  await tx.wait();
+  log('Power plant set!', 'log-ok');
+  refreshAll();
+}
+
+// --- Full Setup (runs everything that's not already configured) ---
+
+async function fullSetup() {
+  if (!signer) { log('Connect wallet first!', 'log-err'); return; }
+  log('=== STARTING FULL SETUP ===', 'log-info');
+
+  var pc = new ethers.Contract(POOP, POOP_ABI, signer);
+  var nc = new ethers.Contract(NFT, NFT_ABI, signer);
+  var rc = new ethers.Contract(ROUTER, ROUTER_ABI, signer);
+  var ncRead = new ethers.Contract(NFT, NFT_ABI, provider);
+  var pcRead = new ethers.Contract(POOP, POOP_ABI, provider);
+
+  try {
+    // 1. POOP minter
+    var isMinter = await pcRead.isMinter(NFT);
+    if (!isMinter) {
+      log('1/8 Setting BaselingNFT as POOP minter...', 'log-info');
+      var tx = await pc.setMinter(NFT, true);
+      await tx.wait();
+      log('Done!', 'log-ok');
+    } else { log('1/8 POOP minter already set', 'log-ok'); }
+
+    // 2. Power plant
+    var pp = await ncRead.powerPlant();
+    if (pp === '0x0000000000000000000000000000000000000000') {
+      log('2/8 Setting power plant...', 'log-info');
+      var tx = await nc.setPowerPlant(PP);
+      await tx.wait();
+      log('Done!', 'log-ok');
+    } else { log('2/8 Power plant already set', 'log-ok'); }
+
+    // 3. Authorize router + pantry
+    var authR = await ncRead.authorized(ROUTER);
+    if (!authR) {
+      log('3/8 Authorizing router...', 'log-info');
+      var tx = await nc.setAuthorized(ROUTER, true);
+      await tx.wait();
+      log('Done!', 'log-ok');
+    } else { log('3/8 Router already authorized', 'log-ok'); }
+
+    var authP = await ncRead.authorized(PANTRY);
+    if (!authP) {
+      log('4/8 Authorizing pantry...', 'log-info');
+      var tx = await nc.setAuthorized(PANTRY, true);
+      await tx.wait();
+      log('Done!', 'log-ok');
+    } else { log('4/8 Pantry already authorized', 'log-ok'); }
+
+    // 5. Add LP pairs
+    var pairKeys = ['tgn','burgers','azusd'];
+    var allAdded = true;
+    for (var i = 0; i < pairKeys.length; i++) {
+      var pa = LP_PAIRS[pairKeys[i]];
+      try {
+        var info = await ncRead.pairs(pa);
+        if (!info[0]) { allAdded = false; break; }
+      } catch(e) { allAdded = false; break; }
+    }
+    if (!allAdded) {
+      log('5/8 Adding LP pairs...', 'log-info');
+      for (var i = 0; i < pairKeys.length; i++) {
+        var pa = LP_PAIRS[pairKeys[i]];
+        try {
+          var info = await ncRead.pairs(pa);
+          if (info[0]) continue;
+        } catch(e) {}
+        var tx = await nc.addPair(pa);
+        await tx.wait();
+        log('  ' + pairKeys[i] + ' pair added', 'log-ok');
+      }
+    } else { log('5/8 All LP pairs already added', 'log-ok'); }
+
+    // 6. Family pairs on NFT
+    log('6/8 Setting family pairs on NFT...', 'log-info');
+    var famPairs = [LP_PAIRS.tgn, LP_PAIRS.burgers, LP_PAIRS.azusd];
+    for (var i = 0; i < 3; i++) {
+      var cur = await ncRead.familyPairs(i);
+      if (cur.toLowerCase() !== famPairs[i].toLowerCase()) {
+        var tx = await nc.setFamilyPair(i, famPairs[i]);
+        await tx.wait();
+        log('  Family ' + i + ' set', 'log-ok');
+      }
+    }
+    log('Done!', 'log-ok');
+
+    // 7. Family LP pairs on Router
+    log('7/8 Setting family LP pairs on Router...', 'log-info');
+    for (var i = 0; i < 3; i++) {
+      var cur = await rc.familyLPPairs(i);
+      if (cur.toLowerCase() !== famPairs[i].toLowerCase()) {
+        var tx = await rc.setFamilyLPPair(i, famPairs[i]);
+        await tx.wait();
+        log('  Router family ' + i + ' set', 'log-ok');
+      }
+    }
+    log('Done!', 'log-ok');
+
+    // 8. Egg prices + wethPerPoop (only if not set)
+    var eRand = await ncRead.randomEggPrice();
+    if (eRand == 0n) {
+      var rp = document.getElementById('price-random').value || '0.00004';
+      var sp = document.getElementById('price-sorted').value || '0.0004';
+      var gp = document.getElementById('price-giant').value || '0.002';
+      log('8/8 Setting egg prices: ' + rp + '/' + sp + '/' + gp + '...', 'log-info');
+      var tx = await nc.setEggPrices(ethers.parseEther(rp), ethers.parseEther(sp), ethers.parseEther(gp));
+      await tx.wait();
+      log('Done!', 'log-ok');
+    } else { log('8/8 Egg prices already set', 'log-ok'); }
+
+    var wpp = await ncRead.wethPerPoop();
+    if (wpp == 0n) {
+      var wppVal = document.getElementById('wpp-input').value || '0.000004';
+      log('Setting wethPerPoop=' + wppVal + '...', 'log-info');
+      var tx = await nc.setWethPerPoop(ethers.parseEther(wppVal));
+      await tx.wait();
+      log('Done!', 'log-ok');
+    } else { log('wethPerPoop already set', 'log-ok'); }
+
+    log('=== FULL SETUP COMPLETE ===', 'log-ok');
+    refreshAll();
+  } catch(e) {
+    log('Setup error: ' + e.message, 'log-err');
+    console.error(e);
+  }
+}
+</script>
+</body></html>

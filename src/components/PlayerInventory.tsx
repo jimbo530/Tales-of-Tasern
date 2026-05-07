@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import type { CharacterSave, InventoryItem, Equipment, Coins } from "@/lib/saveSystem";
 import { formatCoins, coinWeight, totalCp, cpToCoins } from "@/lib/saveSystem";
 import { getCarryThresholds, getEncumbrance, type CarryThresholds } from "@/lib/battleStats";
-import { getItemInfo, getItemWeight } from "@/lib/itemRegistry";
+import { getItemInfo, getItemWeight, type ItemInfo } from "@/lib/itemRegistry";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -70,11 +70,189 @@ function encumbranceLabel(enc: "light" | "medium" | "heavy" | "over"): string {
   }
 }
 
+// ── Comparison helpers ───────────────────────────────────────────────────────
+
+/** Parse "+N AC" from effect string */
+function parseAC(effect?: string): number | null {
+  if (!effect) return null;
+  const m = effect.match(/\+(\d+)\s*AC/);
+  return m ? parseInt(m[1], 10) : null;
+}
+
+/** Parse armor check penalty from effect string */
+function parseArmorCheckPenalty(effect?: string): number | null {
+  if (!effect) return null;
+  const m = effect.match(/armor check penalty\s*(-?\d+)/);
+  return m ? parseInt(m[1], 10) : null;
+}
+
+/** Parse max Dex bonus from effect string */
+function parseMaxDex(effect?: string): number | null {
+  if (!effect) return null;
+  const m = effect.match(/max Dex\s*\+(\d+)/);
+  return m ? parseInt(m[1], 10) : null;
+}
+
+/** Parse damage dice like "1d8" or "2d6" and return average damage */
+function parseDamageAvg(effect?: string): number | null {
+  if (!effect) return null;
+  const m = effect.match(/(\d+)d(\d+)/);
+  if (!m) return null;
+  const n = parseInt(m[1], 10);
+  const sides = parseInt(m[2], 10);
+  return n * ((sides + 1) / 2);
+}
+
+/** Parse full damage dice string like "1d8" */
+function parseDamageDice(effect?: string): string | null {
+  if (!effect) return null;
+  const m = effect.match(/(\d+d\d+)/);
+  return m ? m[1] : null;
+}
+
+/** Parse crit range like "19-20/x2" or "x3" */
+function parseCrit(effect?: string): string | null {
+  if (!effect) return null;
+  const m = effect.match(/((?:\d+-\d+\/)?x\d+)\s*crit/);
+  return m ? m[1] : null;
+}
+
+/** Parse damage type like "slashing", "piercing", "bludgeoning" */
+function parseDamageType(effect?: string): string | null {
+  if (!effect) return null;
+  const m = effect.match(/(slashing|piercing|bludgeoning)/i);
+  return m ? m[1] : null;
+}
+
+type StatDelta = {
+  label: string;
+  oldVal: string;
+  newVal: string;
+  delta: number | null;     // numeric delta for coloring, null = info-only
+  isBetter: boolean | null; // true = green, false = red, null = neutral
+};
+
+function buildComparison(hoveredInfo: ItemInfo, equippedInfo: ItemInfo | null, slot: keyof Equipment): StatDelta[] {
+  const deltas: StatDelta[] = [];
+
+  if (slot === "weapon") {
+    // Damage dice
+    const hDice = parseDamageDice(hoveredInfo.effect);
+    const eDice = equippedInfo ? parseDamageDice(equippedInfo.effect) : null;
+    const hAvg = parseDamageAvg(hoveredInfo.effect);
+    const eAvg = equippedInfo ? parseDamageAvg(equippedInfo.effect) : null;
+    if (hDice || eDice) {
+      const avgDelta = (hAvg ?? 0) - (eAvg ?? 0);
+      deltas.push({
+        label: "Damage",
+        oldVal: eDice ? `${eDice}` : "none",
+        newVal: hDice ? `${hDice}` : "none",
+        delta: avgDelta,
+        isBetter: avgDelta !== 0 ? avgDelta > 0 : null,
+      });
+    }
+
+    // Damage type
+    const hType = parseDamageType(hoveredInfo.effect);
+    const eType = equippedInfo ? parseDamageType(equippedInfo.effect) : null;
+    if (hType || eType) {
+      deltas.push({
+        label: "Type",
+        oldVal: eType ?? "none",
+        newVal: hType ?? "none",
+        delta: null,
+        isBetter: null,
+      });
+    }
+
+    // Crit
+    const hCrit = parseCrit(hoveredInfo.effect);
+    const eCrit = equippedInfo ? parseCrit(equippedInfo.effect) : null;
+    if (hCrit || eCrit) {
+      deltas.push({
+        label: "Crit",
+        oldVal: eCrit ?? "none",
+        newVal: hCrit ?? "none",
+        delta: null,
+        isBetter: null,
+      });
+    }
+  }
+
+  if (slot === "armor" || slot === "shield") {
+    // AC
+    const hAC = parseAC(hoveredInfo.effect);
+    const eAC = equippedInfo ? parseAC(equippedInfo.effect) : null;
+    if (hAC !== null || eAC !== null) {
+      const d = (hAC ?? 0) - (eAC ?? 0);
+      deltas.push({
+        label: "AC",
+        oldVal: eAC !== null ? `+${eAC}` : "none",
+        newVal: hAC !== null ? `+${hAC}` : "none",
+        delta: d,
+        isBetter: d !== 0 ? d > 0 : null,
+      });
+    }
+
+    // Max Dex
+    const hDex = parseMaxDex(hoveredInfo.effect);
+    const eDex = equippedInfo ? parseMaxDex(equippedInfo.effect) : null;
+    if (hDex !== null || eDex !== null) {
+      const d = (hDex ?? 99) - (eDex ?? 99);
+      deltas.push({
+        label: "Max Dex",
+        oldVal: eDex !== null ? `+${eDex}` : "none",
+        newVal: hDex !== null ? `+${hDex}` : "none",
+        delta: d,
+        isBetter: d !== 0 ? d > 0 : null,
+      });
+    }
+
+    // Armor check penalty (less negative = better)
+    const hPen = parseArmorCheckPenalty(hoveredInfo.effect);
+    const ePen = equippedInfo ? parseArmorCheckPenalty(equippedInfo.effect) : null;
+    if (hPen !== null || ePen !== null) {
+      const d = (hPen ?? 0) - (ePen ?? 0);
+      deltas.push({
+        label: "Check Penalty",
+        oldVal: ePen !== null ? `${ePen}` : "0",
+        newVal: hPen !== null ? `${hPen}` : "0",
+        delta: d,
+        isBetter: d !== 0 ? d > 0 : null, // less negative (higher) is better
+      });
+    }
+  }
+
+  // Weight (always show, lower is better)
+  const wDelta = hoveredInfo.weight - (equippedInfo?.weight ?? 0);
+  deltas.push({
+    label: "Weight",
+    oldVal: equippedInfo ? `${equippedInfo.weight} lb` : "0 lb",
+    newVal: `${hoveredInfo.weight} lb`,
+    delta: wDelta,
+    isBetter: wDelta !== 0 ? wDelta < 0 : null, // lighter is better
+  });
+
+  // Value (always show, higher is better)
+  const vDelta = hoveredInfo.valueCp - (equippedInfo?.valueCp ?? 0);
+  deltas.push({
+    label: "Value",
+    oldVal: equippedInfo ? formatCoins(cpToCoins(equippedInfo.valueCp)) : "0 cp",
+    newVal: formatCoins(cpToCoins(hoveredInfo.valueCp)),
+    delta: vDelta,
+    isBetter: vDelta !== 0 ? vDelta > 0 : null,
+  });
+
+  return deltas;
+}
+
 // ── Component ────────────────────────────────────────────────────────────────
 
 export function PlayerInventory({ save, str, followerCarryBonus, onEquip, onDrop, onBack }: Props) {
   const [sortMode, setSortMode] = useState<SortMode>("name");
   const [dropConfirm, setDropConfirm] = useState<string | null>(null);
+  const [compareItem, setCompareItem] = useState<string | null>(null);
+  const itemListRef = useRef<HTMLDivElement>(null);
 
   const thresholds = getCarryThresholds(str);
   const totalCapacity = thresholds.heavy + followerCarryBonus;
@@ -302,94 +480,198 @@ export function PlayerInventory({ save, str, followerCarryBonus, onEquip, onDrop
             Your pack is empty.
           </div>
         ) : (
-          <div className="flex flex-col gap-1">
+          <div ref={itemListRef} className="flex flex-col gap-1" style={{ position: "relative" }}>
             {sorted.map(item => {
               const info = getItemInfo(item.id);
               const w = (item.itemWeight ?? getItemWeight(item.id)) * item.qty;
               const vCp = (info?.valueCp ?? 0) * item.qty;
               const isEquipped = Object.values(save.equipment).includes(item.id);
+              const slot = getEquipSlot(item.id);
+              const showCompare = compareItem === item.id && slot && !isEquipped;
+
+              // Build comparison data when hovered
+              let comparisonDeltas: StatDelta[] | null = null;
+              let equippedName: string | null = null;
+              if (showCompare && info && slot) {
+                const equippedId = save.equipment[slot];
+                const equippedInfo = equippedId ? getItemInfo(equippedId) : null;
+                equippedName = equippedInfo?.name ?? null;
+                comparisonDeltas = buildComparison(info, equippedInfo ?? null, slot);
+              }
 
               return (
-                <div key={item.id} className="flex items-center gap-2 rounded-lg px-3 py-2"
-                  style={{ background: "rgba(0,0,0,0.2)", border: `1px solid rgba(201,168,76,0.08)` }}>
-                  {/* Item info */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold truncate" style={{ color: isEquipped ? "rgba(96,165,250,0.9)" : "rgba(232,213,176,0.9)" }}>
-                        {item.name}
-                      </span>
-                      {isEquipped && (
-                        <span style={{ fontSize: "0.5rem", color: "rgba(96,165,250,0.5)", border: "1px solid rgba(96,165,250,0.2)", borderRadius: 3, padding: "0 3px" }}>
-                          EQ
+                <div key={item.id} style={{ position: "relative" }}
+                  onMouseEnter={() => { if (slot && !isEquipped) setCompareItem(item.id); }}
+                  onMouseLeave={() => setCompareItem(null)}
+                  onTouchStart={() => { if (slot && !isEquipped) setCompareItem(prev => prev === item.id ? null : item.id); }}
+                >
+                  <div className="flex items-center gap-2 rounded-lg px-3 py-2"
+                    style={{
+                      background: showCompare ? "rgba(201,168,76,0.06)" : "rgba(0,0,0,0.2)",
+                      border: `1px solid ${showCompare ? "rgba(201,168,76,0.25)" : "rgba(201,168,76,0.08)"}`,
+                      transition: "background 0.15s, border-color 0.15s",
+                    }}>
+                    {/* Item info */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold truncate" style={{ color: isEquipped ? "rgba(96,165,250,0.9)" : "rgba(232,213,176,0.9)" }}>
+                          {item.name}
                         </span>
-                      )}
-                      {item.qty > 1 && (
-                        <span className="font-bold" style={{ fontSize: "0.6rem", color: textGold }}>x{item.qty}</span>
+                        {isEquipped && (
+                          <span style={{ fontSize: "0.5rem", color: "rgba(96,165,250,0.5)", border: "1px solid rgba(96,165,250,0.2)", borderRadius: 3, padding: "0 3px" }}>
+                            EQ
+                          </span>
+                        )}
+                        {item.qty > 1 && (
+                          <span className="font-bold" style={{ fontSize: "0.6rem", color: textGold }}>x{item.qty}</span>
+                        )}
+                      </div>
+                      {info?.description && (
+                        <div style={{ fontSize: "0.5rem", color: textDim, lineHeight: 1.3 }} className="truncate">
+                          {info.description}
+                        </div>
                       )}
                     </div>
-                    {info?.description && (
-                      <div style={{ fontSize: "0.5rem", color: textDim, lineHeight: 1.3 }} className="truncate">
-                        {info.description}
-                      </div>
-                    )}
-                  </div>
 
-                  {/* Weight & value */}
-                  <div className="flex flex-col items-end gap-0.5 shrink-0">
-                    <span style={{ fontSize: "0.55rem", color: "rgba(201,168,76,0.5)" }}>{w.toFixed(1)} lb</span>
-                    {vCp > 0 && (
-                      <span style={{ fontSize: "0.5rem", color: "rgba(201,168,76,0.3)" }}>{formatCoins(cpToCoins(vCp))}</span>
-                    )}
-                  </div>
+                    {/* Weight & value */}
+                    <div className="flex flex-col items-end gap-0.5 shrink-0">
+                      <span style={{ fontSize: "0.55rem", color: "rgba(201,168,76,0.5)" }}>{w.toFixed(1)} lb</span>
+                      {vCp > 0 && (
+                        <span style={{ fontSize: "0.5rem", color: "rgba(201,168,76,0.3)" }}>{formatCoins(cpToCoins(vCp))}</span>
+                      )}
+                    </div>
 
-                  {/* Actions */}
-                  <div className="flex gap-1 shrink-0">
-                    {/* Equip button — single button for the correct slot */}
-                    {(() => {
-                      const slot = getEquipSlot(item.id);
-                      if (!slot) return null;
-                      if (save.equipment[slot] === item.id) return null; // already equipped
-                      const replacing = save.equipment[slot];
-                      const replaceInfo = replacing ? getItemInfo(replacing) : null;
-                      return (
-                        <button onClick={() => onEquip(slot, item.id)}
-                          className="px-1.5 py-0.5 rounded"
-                          style={{ fontSize: "0.5rem", color: "rgba(96,165,250,0.8)", border: "1px solid rgba(96,165,250,0.3)", background: "rgba(96,165,250,0.08)" }}
-                          title={replaceInfo ? `Replaces: ${replaceInfo.name}` : `Equip as ${SLOT_LABELS[slot]}`}>
-                          Equip {SLOT_LABELS[slot]}
-                        </button>
-                      );
-                    })()}
+                    {/* Actions */}
+                    <div className="flex gap-1 shrink-0">
+                      {/* Equip button — single button for the correct slot */}
+                      {(() => {
+                        if (!slot) return null;
+                        if (save.equipment[slot] === item.id) return null; // already equipped
+                        const replacing = save.equipment[slot];
+                        const replaceInfo = replacing ? getItemInfo(replacing) : null;
+                        return (
+                          <button onClick={() => onEquip(slot, item.id)}
+                            className="px-1.5 py-0.5 rounded"
+                            style={{ fontSize: "0.5rem", color: "rgba(96,165,250,0.8)", border: "1px solid rgba(96,165,250,0.3)", background: "rgba(96,165,250,0.08)" }}
+                            title={replaceInfo ? `Replaces: ${replaceInfo.name}` : `Equip as ${SLOT_LABELS[slot]}`}>
+                            Equip {SLOT_LABELS[slot]}
+                          </button>
+                        );
+                      })()}
 
-                    {/* Drop */}
-                    {dropConfirm === item.id ? (
-                      <div className="flex gap-1">
-                        <button onClick={() => { onDrop(item.id, 1); setDropConfirm(null); }}
-                          className="px-1.5 py-0.5 rounded"
-                          style={{ fontSize: "0.5rem", color: "rgba(239,68,68,0.9)", border: "1px solid rgba(239,68,68,0.3)" }}>
-                          Drop 1
-                        </button>
-                        {item.qty > 1 && (
-                          <button onClick={() => { onDrop(item.id, item.qty); setDropConfirm(null); }}
+                      {/* Drop */}
+                      {dropConfirm === item.id ? (
+                        <div className="flex gap-1">
+                          <button onClick={() => { onDrop(item.id, 1); setDropConfirm(null); }}
                             className="px-1.5 py-0.5 rounded"
                             style={{ fontSize: "0.5rem", color: "rgba(239,68,68,0.9)", border: "1px solid rgba(239,68,68,0.3)" }}>
-                            All
+                            Drop 1
                           </button>
-                        )}
-                        <button onClick={() => setDropConfirm(null)}
+                          {item.qty > 1 && (
+                            <button onClick={() => { onDrop(item.id, item.qty); setDropConfirm(null); }}
+                              className="px-1.5 py-0.5 rounded"
+                              style={{ fontSize: "0.5rem", color: "rgba(239,68,68,0.9)", border: "1px solid rgba(239,68,68,0.3)" }}>
+                              All
+                            </button>
+                          )}
+                          <button onClick={() => setDropConfirm(null)}
+                            className="px-1.5 py-0.5 rounded"
+                            style={{ fontSize: "0.5rem", color: textDim, border: `1px solid ${borderGold}` }}>
+                            X
+                          </button>
+                        </div>
+                      ) : (
+                        <button onClick={() => setDropConfirm(item.id)}
                           className="px-1.5 py-0.5 rounded"
-                          style={{ fontSize: "0.5rem", color: textDim, border: `1px solid ${borderGold}` }}>
-                          X
+                          style={{ fontSize: "0.5rem", color: "rgba(251,113,133,0.5)", border: "1px solid rgba(251,113,133,0.15)" }}>
+                          Drop
                         </button>
-                      </div>
-                    ) : (
-                      <button onClick={() => setDropConfirm(item.id)}
-                        className="px-1.5 py-0.5 rounded"
-                        style={{ fontSize: "0.5rem", color: "rgba(251,113,133,0.5)", border: "1px solid rgba(251,113,133,0.15)" }}>
-                        Drop
-                      </button>
-                    )}
+                      )}
+                    </div>
                   </div>
+
+                  {/* ── Comparison Tooltip ──────────────────────────────── */}
+                  {showCompare && comparisonDeltas && slot && (
+                    <div style={{
+                      position: "absolute",
+                      top: 0,
+                      right: "calc(100% + 8px)",
+                      zIndex: 50,
+                      minWidth: 200,
+                      maxWidth: 260,
+                      background: "rgba(10,6,8,0.95)",
+                      border: "1px solid rgba(201,168,76,0.6)",
+                      borderRadius: 8,
+                      padding: "10px 12px",
+                      boxShadow: "0 4px 20px rgba(0,0,0,0.7), inset 0 1px 0 rgba(201,168,76,0.1)",
+                      pointerEvents: "none",
+                    }}>
+                      {/* Header */}
+                      <div style={{ marginBottom: 8, borderBottom: "1px solid rgba(201,168,76,0.2)", paddingBottom: 6 }}>
+                        <div style={{ fontSize: "0.65rem", fontWeight: 800, color: "#f0d070", letterSpacing: "0.05em", textTransform: "uppercase", marginBottom: 2 }}>
+                          {info?.name}
+                        </div>
+                        <div style={{ fontSize: "0.5rem", color: "rgba(201,168,76,0.4)" }}>
+                          vs {equippedName ? (
+                            <span style={{ color: "rgba(96,165,250,0.7)" }}>{equippedName}</span>
+                          ) : (
+                            <span style={{ color: "rgba(201,168,76,0.3)", fontStyle: "italic" }}>Empty {SLOT_LABELS[slot]} slot</span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Stat rows */}
+                      {comparisonDeltas.map((stat, i) => (
+                        <div key={i} style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          padding: "2px 0",
+                          borderBottom: i < comparisonDeltas!.length - 1 ? "1px solid rgba(201,168,76,0.06)" : "none",
+                        }}>
+                          <span style={{ fontSize: "0.55rem", color: "rgba(201,168,76,0.5)", fontWeight: 600, minWidth: 70 }}>
+                            {stat.label}
+                          </span>
+                          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                            <span style={{ fontSize: "0.5rem", color: "rgba(201,168,76,0.3)" }}>
+                              {stat.oldVal}
+                            </span>
+                            <span style={{ fontSize: "0.5rem", color: "rgba(201,168,76,0.3)" }}>
+                              {"\u2192"}
+                            </span>
+                            <span style={{ fontSize: "0.55rem", fontWeight: 700, color: "rgba(232,213,176,0.9)" }}>
+                              {stat.newVal}
+                            </span>
+                            {stat.delta !== null && stat.delta !== 0 && (
+                              <span style={{
+                                fontSize: "0.55rem",
+                                fontWeight: 800,
+                                color: stat.isBetter ? "rgba(74,222,128,0.9)" : "rgba(239,68,68,0.9)",
+                                marginLeft: 2,
+                              }}>
+                                ({stat.delta > 0 ? "+" : ""}{stat.delta % 1 === 0 ? stat.delta : stat.delta.toFixed(1)})
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+
+                      {/* Effect text if present */}
+                      {info?.effect && (
+                        <div style={{
+                          marginTop: 6,
+                          paddingTop: 6,
+                          borderTop: "1px solid rgba(201,168,76,0.15)",
+                          fontSize: "0.48rem",
+                          color: "rgba(201,168,76,0.35)",
+                          lineHeight: 1.4,
+                          fontStyle: "italic",
+                        }}>
+                          {info.effect}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               );
             })}

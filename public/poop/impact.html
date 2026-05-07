@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>POOP &mdash; What It Grows</title>
+    <style>
+        *{margin:0;padding:0;box-sizing:border-box}
+        body{background:#0b0e11;color:#c9d1d9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;line-height:1.8}
+        .wrap{max-width:800px;margin:0 auto;padding:3rem 1.5rem}
+        h1{font-size:2rem;color:#e6edf3;margin-bottom:.5rem}
+        .subtitle{color:#6e7681;font-size:.9rem;margin-bottom:2rem}
+        h2{font-size:1.1rem;color:#3fb950;margin:2.5rem 0 .75rem;padding-top:1.5rem;border-top:1px solid #21262d}
+        h2:first-of-type{border-top:none;padding-top:0}
+        p{margin-bottom:1rem;font-size:.95rem}
+        .flow{background:#151a21;border:1px solid #21262d;border-radius:10px;padding:1.5rem;margin:1.5rem 0;font-family:'SF Mono','Cascadia Code',monospace;font-size:.82rem;line-height:2.2;color:#8b949e}
+        .flow strong{color:#e6edf3}
+        .flow .label{color:#3fb950;font-size:.7rem;text-transform:uppercase;letter-spacing:.05em}
+        .highlight{background:#151a21;border-left:3px solid #3fb950;padding:1rem 1.25rem;margin:1.5rem 0;border-radius:0 8px 8px 0;font-size:.9rem}
+        .section{background:#151a21;border:1px solid #21262d;border-radius:10px;padding:1.5rem;margin:1.5rem 0}
+        .section h3{font-size:.95rem;color:#e6edf3;margin-bottom:.75rem}
+        ul{list-style:none;margin:.75rem 0}
+        ul li{padding:.35rem 0 .35rem 1.5rem;position:relative;font-size:.9rem}
+        ul li::before{content:'\2192';position:absolute;left:0;color:#6e7681}
+        a{color:#58a6ff;text-decoration:none}a:hover{text-decoration:underline}
+        .accent{color:#3fb950}
+        .dim{color:#6e7681;font-size:.85rem}
+        .share-btn{background:#151a21;border:1px solid #21262d;color:#58a6ff;padding:.5rem 1.2rem;border-radius:6px;cursor:pointer;font-size:.85rem;font-family:inherit;margin-top:.5rem;display:inline-block;transition:background .2s}
+        .share-btn:hover{background:#21262d}
+        .share-msg{font-size:.75rem;color:#3fb950;margin-top:.3rem;min-height:1.2em}
+        footer{text-align:center;padding:2.5rem 0;color:#6e7681;font-size:.85rem}
+        @media(max-width:600px){.wrap{padding:2rem 1rem}h1{font-size:1.5rem}}
+    </style>
+</head>
+<body>
+<div class="wrap">
+
+    <h1>What does holding POOP grow?</h1>
+    <div class="subtitle">Your position. Here's the math.</div>
+    <button class="share-btn" onclick="sharePage()">Share</button>
+    <div class="share-msg" id="shareMsg"></div>
+
+    <h2>Why Your Bag Gets Scarcer</h2>
+
+    <p>POOP has 11 Uniswap V3 pools on Base, all at a 1% fee tier. Every swap &mdash; buy or sell &mdash; generates fees. Every 2.4 hours, a keeper collects those fees and burns the POOP side permanently. The other side gets sold for blue chips or locked as LP.</p>
+
+    <p>The mint rate is fixed. Baselings (game pets) produce POOP based on locked LP value. That rate does not change with demand, volume, or price. It is what it is.</p>
+
+    <p>The burn rate scales with volume. More trades, more fees, more burns. A few hundred dollars of daily volume across those 11 pools already outpaces what the game mints. From there it compounds: less supply, higher price, more trading interest, more burns.</p>
+
+    <div class="highlight">
+        <strong>The math:</strong> fixed mint + volume-scaled burns = deflationary at modest volume. Every 2.4 hours the supply gets smaller and the liquidity gets deeper. Your share of what remains grows without you doing anything.
+    </div>
+
+    <h2>Where the Money Comes From</h2>
+
+    <div class="flow">
+        <span class="label">Trading fees</span><br>
+        <strong>1% on every swap</strong> across 11 pools (WETH, USDC, cbBTC + 8 community tokens)<br>
+        Collected and processed every 2.4 hours<br><br>
+
+        <span class="label">Game activity</span><br>
+        Egg purchases, food buys, house upgrades, garden staking<br>
+        Every action locks LP permanently and generates yield<br><br>
+
+        <span class="label">Power Plant</span><br>
+        Burns POOP + community tokens, pays players in <strong>ETH and USDC</strong><br>
+        Higher skilled workers earn more blue chips, lower skilled burn more supply<br><br>
+
+        <span class="label">Dead assets</span><br>
+        Inactive players' pets die or freeze &mdash; their POOP output becomes <strong>pure burn</strong><br>
+        Other people quitting makes your position better
+    </div>
+
+    <h2>What Makes This Different From Every Other Meme Token</h2>
+
+    <ul>
+        <li><strong>11 burn pools running 24/7</strong> &mdash; not a single LP pair, an entire network of burn engines</li>
+        <li><strong>LP locked forever</strong> &mdash; not locked for a year, not team-controlled. Forever. Verify on-chain.</li>
+        <li><strong>1% fee tier</strong> &mdash; aggressive. Every trade burns meaningful supply.</li>
+        <li><strong>Burns compound every 2.4 hours</strong> &mdash; deeper liquidity each cycle, smoother trades, more fee capture</li>
+        <li><strong>External volatility burns POOP</strong> &mdash; when ETH or BTC moves, the POOP/WETH and POOP/cbBTC pools generate fees. Market volatility in any direction burns your token's supply for free.</li>
+        <li><strong>Real game behind it</strong> &mdash; not just a contract and a Telegram. Baselings is a playable pet game with an agent SDK. Real users, real activity, real burns.</li>
+        <li><strong>No max supply but it doesn't matter</strong> &mdash; emissions are bounded by game economics. Burns are bounded by nothing except volume.</li>
+        <li><strong>24hr timelock on minting roles</strong> &mdash; every minter change is visible on-chain a full day before it takes effect. Currently only the game contract can mint.</li>
+    </ul>
+
+    <h2>Who Benefits and How</h2>
+
+    <div class="section">
+        <h3>Traders</h3>
+        <p>Thin liquidity across 11 pools means wide spreads and swing opportunities. Every trade you make burns supply of what you hold. You profit on the trade AND on the deflation. The 2.4hr keeper cycle means liquidity deepens predictably &mdash; early volume has outsized impact.</p>
+    </div>
+
+    <div class="section">
+        <h3>Holders</h3>
+        <p>Do nothing. Supply shrinks every 2.4 hours as fees are burned. Dead and frozen game pets become permanent burn engines. Other people's trading volume reduces the supply of what you're sitting on. Time is on your side.</p>
+    </div>
+
+    <div class="section">
+        <h3>Agents</h3>
+        <p>35 MCP tools and a REST API let AI agents play the game or trade the pools autonomously. Agent volume is machine-speed burn pressure. The SDK includes 5 strategy playbooks and a proven build order. Plug in a wallet and let it run.</p>
+    </div>
+
+    <div class="section">
+        <h3>Players</h3>
+        <p>Feed pets, grow gardens, work the power plant, earn ETH and USDC. Behind every game action: LP locked, POOP burned, your economy getting tighter. You don't need to understand DeFi. You need to keep your baseling alive.</p>
+    </div>
+
+    <h2>Everything Is Verifiable</h2>
+
+    <p>The contract is 130 lines of Solidity. No proxy, no inheritance, no upgradeable pattern. <code>totalMinted()</code>, <code>totalBurned()</code>, and <code>totalSupply()</code> are on-chain. The LP locks are permanent and visible. The keeper posts transactions every 2.4 hours that anyone can audit. The minter timelock shows every pending change 24 hours before it takes effect.</p>
+
+    <p>Don't trust any of this. <a href="index.html">Check the live data.</a> Read the contract on <a href="https://basescan.org/address/0x126555aecBAC290b25644e4b7f29c016aE95f4dc#code" target="_blank" rel="noopener">Basescan</a>. Verify every claim yourself.</p>
+
+    <h2>Oh, and One More Thing</h2>
+
+    <p class="dim">You probably came here for the numbers above. That's fine. But there's a reason this project is called <strong>meme for trees</strong>.</p>
+
+    <p>All of that MfT buy pressure &mdash; from gardens, from NFT sales, from every game action &mdash; flows into MfT, the hub token. MfT is deflationary. As its value grows, the treasury behind it funds carbon credit purchases, tree planting programs, and food charities.</p>
+
+    <p>You didn't need to know that for the trade to make sense. POOP burns faster than it mints regardless of why the system was built. But it was built to turn degens, gamers, and AI agents into an involuntary reforestation program.</p>
+
+    <div class="highlight">
+        Every trade you made for profit planted a fraction of a tree. Every game action that locked LP funded a meal. You didn't have to care. The math did it anyway.
+    </div>
+
+    <p>The selfish play and the good play are the same play. That was the whole idea.</p>
+
+    <p class="accent" style="font-size:1.05rem;margin-top:2rem"><strong>You profit. Trees grow. People eat.</strong></p>
+
+    <footer>
+        <a href="index.html">&larr; POOP data</a>
+        &nbsp;&middot;&nbsp;
+        <a href="/baseling/">play baselings</a>
+    </footer>
+
+</div>
+<script>
+function sharePage() {
+    var url = window.location.href;
+    if (navigator.share) {
+        navigator.share({title:'POOP — What It Grows', text:'You profit. Trees grow. People eat.', url:url}).catch(function(){});
+    } else {
+        navigator.clipboard.writeText(url).then(function(){
+            document.getElementById('shareMsg').textContent = 'Link copied';
+            setTimeout(function(){ document.getElementById('shareMsg').textContent = ''; }, 2000);
+        });
+    }
+}
+</script>
+</body>
+</html>

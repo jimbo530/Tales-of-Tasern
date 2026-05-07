@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TASERN.QUEST - Arcade</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0a0a1a;
+    color: #e0e0ff;
+    font-family: 'Press Start 2P', monospace;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+  .scanlines {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.15) 2px, rgba(0,0,0,0.15) 4px);
+    pointer-events: none; z-index: 100;
+  }
+  .stars {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 0;
+  }
+  .star {
+    position: absolute; width: 2px; height: 2px; background: #fff; border-radius: 50%;
+    animation: twinkle 3s infinite alternate;
+  }
+  @keyframes twinkle { 0% { opacity: 0.2; } 100% { opacity: 1; } }
+  .container {
+    position: relative; z-index: 1;
+    max-width: 900px; margin: 0 auto; padding: 40px 20px;
+    text-align: center;
+  }
+  .logo {
+    font-size: 2.5rem; color: #ffcc00;
+    text-shadow: 0 0 20px #ffcc00, 0 0 40px #ff8800, 0 0 60px #ff4400;
+    margin-bottom: 8px;
+    animation: glow 2s ease-in-out infinite alternate;
+  }
+  @keyframes glow {
+    from { text-shadow: 0 0 20px #ffcc00, 0 0 40px #ff8800; }
+    to { text-shadow: 0 0 30px #ffee44, 0 0 50px #ffaa00, 0 0 80px #ff6600; }
+  }
+  .subtitle {
+    font-size: 0.7rem; color: #8888cc; margin-bottom: 50px;
+    letter-spacing: 4px;
+  }
+  .games {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 24px; margin-bottom: 50px;
+  }
+  .game-card {
+    background: linear-gradient(135deg, #1a1a3a 0%, #0d0d2a 100%);
+    border: 2px solid #333366;
+    border-radius: 12px;
+    padding: 30px 20px;
+    text-decoration: none; color: inherit;
+    transition: all 0.2s;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+  }
+  .game-card:hover {
+    border-color: #ffcc00;
+    transform: translateY(-4px);
+    box-shadow: 0 8px 30px rgba(255,204,0,0.2);
+  }
+  .game-card::before {
+    content: ''; position: absolute; top: 0; left: -100%; width: 100%; height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,204,0,0.05), transparent);
+    transition: left 0.5s;
+  }
+  .game-card:hover::before { left: 100%; }
+  .game-icon { font-size: 3rem; margin-bottom: 16px; display: block; }
+  .game-title {
+    font-size: 0.9rem; color: #ffcc00; margin-bottom: 10px;
+    text-shadow: 0 0 10px rgba(255,204,0,0.3);
+  }
+  .game-desc { font-size: 0.55rem; line-height: 1.8; color: #8888bb; }
+  .game-tag {
+    display: inline-block; font-size: 0.45rem; padding: 4px 10px;
+    border-radius: 20px; margin-top: 14px;
+  }
+  .tag-live { background: #0a3a0a; color: #44ff44; border: 1px solid #226622; }
+  .tag-soon { background: #3a3a0a; color: #ffff44; border: 1px solid #666622; }
+  .tag-dev { background: #3a0a0a; color: #ff6644; border: 1px solid #662222; }
+  .footer {
+    font-size: 0.5rem; color: #444466; padding: 30px 0;
+    border-top: 1px solid #222244;
+  }
+  .footer a { color: #6666aa; text-decoration: none; }
+  .footer a:hover { color: #ffcc00; }
+  .insert-coin {
+    font-size: 0.7rem; color: #ffcc00; margin-bottom: 40px;
+    animation: blink 1.2s step-end infinite;
+  }
+  @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0; } }
+  @media (max-width: 600px) {
+    .logo { font-size: 1.5rem; }
+    .games { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="scanlines"></div>
+<div class="stars" id="stars"></div>
+<div class="container">
+  <div class="logo">TASERN.QUEST</div>
+  <div class="subtitle">MEME FOR TREES ARCADE</div>
+  <div class="insert-coin">SELECT A GAME</div>
+  <div class="games">
+    <a class="game-card" href="/baseling/">
+      <span class="game-icon">&#x1F423;</span>
+      <div class="game-title">BASELING</div>
+      <div class="game-desc">Hatch eggs, feed pets, grow legends. On-chain Tamagotchi on Base.</div>
+      <span class="game-tag tag-live">LIVE</span>
+    </a>
+    <a class="game-card" href="/ooze-battle/">
+      <span class="game-icon">&#x1F9EA;</span>
+      <div class="game-title">OOZE BATTLE</div>
+      <div class="game-desc">Puyo-style puzzle combat. Wager $MfT tokens. P2P multiplayer.</div>
+      <span class="game-tag tag-live">LIVE</span>
+    </a>
+    <a class="game-card" href="/tot/">
+      <span class="game-icon">&#x2694;</span>
+      <div class="game-title">TALES OF TASERN</div>
+      <div class="game-desc">D20 hex RPG. Explore, fight, loot. Your NFTs are your party.</div>
+      <span class="game-tag tag-live">LIVE</span>
+    </a>
+    <a class="game-card" href="/cards/">
+      <span class="game-icon">&#x1F3B4;</span>
+      <div class="game-title">NFT CARD GAME</div>
+      <div class="game-desc">Battle with your NFTs. Stats from real LP positions.</div>
+      <span class="game-tag tag-live">LIVE</span>
+    </a>
+    <a class="game-card" href="/cards/marketplace">
+      <span class="game-icon">&#x1F3EA;</span>
+      <div class="game-title">NFT MARKETPLACE</div>
+      <div class="game-desc">Buy and sell game NFTs. Impact tokens, gear, and more.</div>
+      <span class="game-tag tag-live">LIVE</span>
+    </a>
+    <a class="game-card" href="#">
+      <span class="game-icon">&#x1F3F0;</span>
+      <div class="game-title">WORLD OF WAR</div>
+      <div class="game-desc">Castles, armies, supply lines. Strategic kingdom warfare.</div>
+      <span class="game-tag tag-dev">IN DEV</span>
+    </a>
+  </div>
+  <div class="footer">
+    <p>POWERED BY <a href="https://www.base.org" target="_blank">BASE</a> &amp; <a href="https://memefortrees.com" target="_blank">MEME FOR TREES</a></p>
+    <p style="margin-top:10px">memefortrees.base.eth</p>
+  </div>
+</div>
+<script>
+// Generate random stars
+var c=document.getElementById('stars');
+for(var i=0;i<80;i++){
+  var s=document.createElement('div');
+  s.className='star';
+  s.style.left=Math.random()*100+'%';
+  s.style.top=Math.random()*100+'%';
+  s.style.animationDelay=Math.random()*3+'s';
+  s.style.animationDuration=(2+Math.random()*3)+'s';
+  s.style.width=s.style.height=(1+Math.random()*2)+'px';
+  c.appendChild(s);
+}
+</script>
+</body>
+</html>

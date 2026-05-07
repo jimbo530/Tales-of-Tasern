@@ -98,9 +98,11 @@ export function CharacterCard({ character, maxStats, selectable, selected, onSel
   // Use pre-resolved imageUrl from API, fall back to client-side resolution
   const [imageUrl, setImageUrl] = useState<string | null>(character.imageUrl ?? null);
   const [imgFailed, setImgFailed] = useState(!character.imageUrl && !metadataUri);
+  const [imgLoaded, setImgLoaded] = useState(false);
   const [flipped, setFlipped] = useState(false);
 
   useEffect(() => {
+    setImgLoaded(false);
     if (character.imageUrl) { setImageUrl(character.imageUrl); setImgFailed(false); return; }
     if (!metadataUri) { setImgFailed(true); return; }
     let cancelled = false;
@@ -191,23 +193,44 @@ export function CharacterCard({ character, maxStats, selectable, selected, onSel
 
           {/* Image */}
           <div className="relative w-full flex-shrink-0" style={{ minHeight: '120px', background: '#0a0810' }}>
-            {imgFailed ? (
-              <div className="flex items-center justify-center py-8 opacity-20">
-                <span className="text-3xl">🛡️</span>
-              </div>
-            ) : imageUrl ? (
+            {/* Shimmer skeleton — shown while resolving URL or downloading image */}
+            {!imgLoaded && !imgFailed && (
+              <div style={{
+                width: '100%',
+                height: '120px',
+                background: 'linear-gradient(90deg, rgba(201,168,76,0.1) 25%, rgba(201,168,76,0.2) 50%, rgba(201,168,76,0.1) 75%)',
+                backgroundSize: '200% 100%',
+                animation: 'shimmer 1.5s infinite',
+                borderRadius: '8px',
+              }} />
+            )}
+            {/* Actual image — hidden until loaded */}
+            {imageUrl && !imgFailed && (
               /* eslint-disable-next-line @next/next/no-img-element */
               <img
                 src={imageUrl}
                 alt={name}
                 className="w-full"
-                style={{ maxHeight: '150px', objectFit: 'contain' }}
+                style={{ maxHeight: '150px', objectFit: 'contain', display: imgLoaded ? 'block' : 'none' }}
+                onLoad={() => setImgLoaded(true)}
                 onError={() => setImgFailed(true)}
               />
-            ) : (
-              <div className="flex items-center justify-center py-8">
-                <div className="w-6 h-6 border-2 rounded-full animate-spin"
-                  style={{ borderColor: 'rgba(201,168,76,0.2)', borderTopColor: 'rgba(201,168,76,0.7)' }} />
+            )}
+            {/* Error fallback */}
+            {imgFailed && (
+              <div style={{
+                width: '100%',
+                height: '120px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                background: 'rgba(10,6,8,0.8)',
+                border: '1px solid rgba(201,168,76,0.3)',
+                borderRadius: '8px',
+                color: 'rgba(201,168,76,0.6)',
+                fontSize: '2rem',
+              }}>
+                🛡️
               </div>
             )}
           </div>

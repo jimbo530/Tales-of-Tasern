@@ -853,6 +853,14 @@ const MAGIC_FEATS: Feat[] = [
     prereqs: {},
     benefit: "An enlarged spell has its range doubled. Uses a slot one level higher.",
   },
+  {
+    id: "sculpt-spell",
+    name: "Sculpt Spell",
+    category: "magic",
+    description: "You can shape area spells to exclude allies.",
+    prereqs: {},
+    benefit: "When casting an area spell, you may exclude a number of allies equal to your casting stat modifier from the effect.",
+  },
 
   // ─── Item creation feats ───
   {
@@ -1178,6 +1186,8 @@ export type FeatCombatFlags = {
   preciseShot: boolean;        // no -4 for shooting into melee
   rapidShot: boolean;          // one extra ranged attack at -2 to all
   farShot: boolean;            // range increment penalty halved (-1 instead of -2)
+  // ── Magic ──
+  sculptSpell: boolean;        // exclude allies from AoE spells/abilities
 };
 
 /** Extract active combat flags from feat ID list */
@@ -1191,5 +1201,6 @@ export function getFeatCombatFlags(featIds: string[]): FeatCombatFlags {
     preciseShot: s.has("precise-shot"),
     rapidShot: s.has("rapid-shot"),
     farShot: s.has("far-shot"),
+    sculptSpell: s.has("sculpt-spell"),
   };
 }

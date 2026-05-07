@@ -15,6 +15,7 @@ import {
 import { CLASSES, type CharacterClass } from "@/lib/classes";
 import { isCharge, isConscious, isAlive, isDead, isUnconscious, type EnemySpec, type SpellUnitInfo, abilityMod } from "@/lib/hexCombat";
 import { getSpell, getSpellSlots, bonusSpells, type Spell } from "@/lib/spells";
+import { getAvailableAbilities, ABILITY_DEFS, type AvailableAbility } from "@/lib/classAbilities";
 
 export type QuestEncounter = {
   questId: string;
@@ -139,10 +140,14 @@ export function HexBattle({ characters, questEncounter, playerFeats, playerWeapo
   const [boundPrisoners, setBoundPrisoners] = useState<string[]>([]);
   const [bindResults, setBindResults] = useState<Record<string, { roll: number; total: number; success: boolean }>>({});
   const [pendingSpell, setPendingSpell] = useState<Spell | null>(null);
+  const [showRetreatPicker, setShowRetreatPicker] = useState(false);
+  const [showAbilityPicker, setShowAbilityPicker] = useState(false);
+  const [pendingAbility, setPendingAbility] = useState<AvailableAbility | null>(null);
   const logEndRef = useRef<HTMLDivElement>(null);
   const questStarted = useRef(false);
+  const [damagePopups, setDamagePopups] = useState<Array<{ id: string; x: number; y: number; text: string; type: 'damage' | 'heal' | 'miss'; timestamp: number }>>([]);
 
-  const { state, activeUnit, isPlayerTurn, startBattle, startQuestBattle, clickHex, playerRoll, skipMove, readyAttack, endTurn, castSpell, attemptRetreat, takeAoO, passAoO } = useHexBattle();
+  const { state, activeUnit, isPlayerTurn, startBattle, startQuestBattle, clickHex, playerRoll, skipMove, readyAttack, endTurn, castSpell, useAbility, attemptRetreat, takeAoO, passAoO } = useHexBattle();
 
   /** Build SpellUnitInfo from props + selected class */
   const buildSpellInfo = useCallback((char: NftCharacter, cls: CharacterClass): SpellUnitInfo | undefined => {
@@ -169,6 +174,66 @@ export function HexBattle({ characters, questEncounter, playerFeats, playerWeapo
 
   // Auto-scroll combat log
   useEffect(() => { logEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [state.combatLog.length]);
+
+  // ── Floating damage popups: watch combat log for new entries ──
+  const prevLogLen = useRef(0);
+  useEffect(() => {
+    const newEntries = state.combatLog.slice(prevLogLen.current);
+    prevLogLen.current = state.combatLog.length;
+    if (newEntries.length === 0) return;
+
+    const pops: typeof damagePopups = [];
+    for (const entry of newEntries) {
+      // Parse damage: "X deals 5 damage to Y" / "X attacks Y: ... 7 damage"
+      const dmgMatch = entry.text.match(/(\d+)\s*(?:damage|dmg)\s*to\s+(\S.+?)(?:\s*[.!]|$)/i)
+        ?? entry.text.match(/attacks?\s+(\S.+?)[\s:].+?(\d+)\s*(?:damage|dmg)/i);
+      // Parse heal: "heals X for 5" / "5 healing"
+      const healMatch = entry.text.match(/heals?\s+(\S.+?)\s+for\s+(\d+)/i)
+        ?? entry.text.match(/(\S.+?)\s+(?:heals?|regains?)\s+(\d+)/i);
+      // Miss entries
+      const isMiss = entry.type === "miss";
+
+      if (dmgMatch || healMatch || isMiss) {
+        // Find which unit was targeted
+        let targetUnit = null;
+        if (dmgMatch) {
+          // targetName is in the match — find matching unit
+          const tName = (dmgMatch[2] ?? dmgMatch[1]).trim().toLowerCase();
+          targetUnit = state.units.find(u => u.name.toLowerCase() === tName || tName.startsWith(u.name.toLowerCase()));
+        } else if (healMatch) {
+          const tName = (healMatch[1]).trim().toLowerCase();
+          targetUnit = state.units.find(u => u.name.toLowerCase() === tName || tName.startsWith(u.name.toLowerCase()));
+        } else if (isMiss) {
+          // "X attacks Y" — target is after "attacks"
+          const atkMatch = entry.text.match(/attacks?\s+(\S.+?)[\s:]/i);
+          if (atkMatch) {
+            const tName = atkMatch[1].trim().toLowerCase();
+            targetUnit = state.units.find(u => u.name.toLowerCase() === tName || tName.startsWith(u.name.toLowerCase()));
+          }
+        }
+
+        if (targetUnit) {
+          const { x, y } = hexToPixel(targetUnit.position);
+          const popType = healMatch ? 'heal' as const : isMiss && !dmgMatch ? 'miss' as const : 'damage' as const;
+          const popText = healMatch ? `+${healMatch[2]}` : dmgMatch ? `-${dmgMatch[2] ?? dmgMatch[1]}` : "MISS";
+          pops.push({ id: `${Date.now()}-${entry.id}`, x, y: y - 10, text: popText, type: popType, timestamp: Date.now() });
+        }
+      }
+    }
+    if (pops.length > 0) {
+      setDamagePopups(prev => [...prev, ...pops]);
+    }
+  }, [state.combatLog.length, state.combatLog, state.units]);
+
+  // Auto-remove damage popups after 1.5 seconds
+  useEffect(() => {
+    if (damagePopups.length === 0) return;
+    const timer = setTimeout(() => {
+      const now = Date.now();
+      setDamagePopups(prev => prev.filter(p => now - p.timestamp < 1500));
+    }, 1600);
+    return () => clearTimeout(timer);
+  }, [damagePopups]);
 
   // Quest encounter: auto-start immediately if character/class provided, skip all pickers
   useEffect(() => {
@@ -217,15 +282,25 @@ export function HexBattle({ characters, questEncounter, playerFeats, playerWeapo
     return spells.sort((a, b) => a.level - b.level || a.spell.name.localeCompare(b.spell.name));
   }, [playerUnit]);
 
-  // Handle hex click with spell targeting
+  // Handle hex click with spell/ability targeting
   const handleHexClick = useCallback((hex: HexCoord) => {
+    // Ability targeting
+    if (pendingAbility && state.phase === "playerTurn" && playerUnit) {
+      const enemy = state.units.find(u => u.position.q === hex.q && u.position.r === hex.r && !u.isPlayer && isConscious(u));
+      if (enemy) {
+        const def = ABILITY_DEFS[pendingAbility.effectId];
+        if (def && hexDistance(playerUnit.position, enemy.position) <= def.range) {
+          useAbility(pendingAbility.effectId, enemy.id);
+          setPendingAbility(null);
+        }
+      }
+      return;
+    }
+    // Spell targeting
     if (pendingSpell && state.phase === "playerTurn" && playerUnit) {
       const battle = pendingSpell.battle;
       if (!battle) return;
-      // Self-targeting handled at selection time
-      // Find unit at clicked hex
       if (battle.type === "healing" || battle.type === "buff") {
-        // Target self
         if (hex.q === playerUnit.position.q && hex.r === playerUnit.position.r) {
           castSpell(pendingSpell.id, playerUnit.id);
           setPendingSpell(null);
@@ -243,7 +318,7 @@ export function HexBattle({ characters, questEncounter, playerFeats, playerWeapo
       return;
     }
     clickHex(hex);
-  }, [pendingSpell, state.phase, state.units, playerUnit, clickHex, castSpell]);
+  }, [pendingAbility, pendingSpell, state.phase, state.units, playerUnit, clickHex, castSpell, useAbility]);
 
   /** Select a spell from the picker */
   const selectSpell = useCallback((spell: Spell) => {
@@ -272,6 +347,45 @@ export function HexBattle({ characters, questEncounter, playerFeats, playerWeapo
         .map(u => `${u.position.q},${u.position.r}`)
     );
   }, [pendingSpell, playerUnit, state.units]);
+
+  // ── Class Ability picker ────────────────────────────────────────────────
+  const availableAbilities = useMemo(() => {
+    if (!activeUnit || !activeUnit.isPlayer) return [];
+    return getAvailableAbilities(activeUnit);
+  }, [activeUnit]);
+
+  const hasAbilities = availableAbilities.length > 0;
+
+  const selectAbility = useCallback((ability: AvailableAbility) => {
+    setShowAbilityPicker(false);
+    if (!playerUnit) return;
+    const def = ABILITY_DEFS[ability.effectId];
+    if (!def) return;
+    // Self / allAllies / none — resolve immediately
+    if (def.targetKind === "self" || def.targetKind === "allAllies" || def.targetKind === "none") {
+      useAbility(ability.effectId);
+      return;
+    }
+    // Ally targeting — for now, target self (heal/layOnHands)
+    if (def.targetKind === "ally") {
+      // If range 1 and adjacent allies exist, could pick target — simplified to self for now
+      useAbility(ability.effectId, playerUnit.id);
+      return;
+    }
+    // Enemy targeting — enter targeting mode
+    setPendingAbility(ability);
+  }, [playerUnit, useAbility]);
+
+  // Ability targeting: highlight valid targets
+  const abilityTargetPositions = useMemo(() => {
+    if (!pendingAbility || !playerUnit) return new Set<string>();
+    const def = ABILITY_DEFS[pendingAbility.effectId];
+    if (!def) return new Set<string>();
+    return new Set(
+      state.units.filter(u => !u.isPlayer && isConscious(u) && hexDistance(playerUnit.position, u.position) <= def.range)
+        .map(u => `${u.position.q},${u.position.r}`)
+    );
+  }, [pendingAbility, playerUnit, state.units]);
 
   // ── Character Picker ───────────────────────────────────────────────────
   // Skip pickers when quest encounter provides char/class (auto-start via useEffect)
@@ -379,24 +493,117 @@ export function HexBattle({ characters, questEncounter, playerFeats, playerWeapo
   );
   const target = state.pendingTargetId ? state.units.find(u => u.id === state.pendingTargetId) : null;
 
+  // ── IMPROVEMENT 2: Turn order sorted by initiative (descending) ──
+  const turnOrderUnits = useMemo(() => {
+    if (state.units.length === 0) return [];
+    return [...state.units].sort((a, b) => b.stats.initiative - a.stats.initiative);
+  }, [state.units]);
+  const currentActiveId = state.turnOrder[state.currentTurnIndex] ?? null;
+
+  // ── IMPROVEMENT 3: Memoized hex polygon rendering ──
+  const hexPolygons = useMemo(() => {
+    return grid.map(hex => {
+      const { x, y } = hexToPixel(hex);
+      const key = `${hex.q},${hex.r}`;
+      const isReachable = reachableSet.has(key);
+      const isAttackable = attackablePositions.has(key);
+      const unit = state.units.find(u => isAlive(u) && u.position.q === hex.q && u.position.r === hex.r);
+      const isActiveUnit = unit && activeUnit && unit.id === activeUnit.id;
+
+      const isRangedTarget = isAttackable && activeUnit && hexDistance(activeUnit.position, hex) > 1;
+
+      const isSpellTarget = spellTargetPositions.has(key);
+      const isAbilityTarget = abilityTargetPositions.has(key);
+
+      let fill = "rgba(201,168,76,0.04)";
+      let stroke = "rgba(201,168,76,0.12)";
+      if (isReachable) { fill = "rgba(74,222,128,0.15)"; stroke = "rgba(74,222,128,0.4)"; }
+      if (isAttackable && isRangedTarget) { fill = "rgba(251,146,60,0.2)"; stroke = "rgba(251,146,60,0.5)"; }
+      else if (isAttackable) { fill = "rgba(220,38,38,0.2)"; stroke = "rgba(220,38,38,0.5)"; }
+      if (isSpellTarget) { fill = "rgba(168,85,247,0.25)"; stroke = "rgba(168,85,247,0.6)"; }
+      if (isAbilityTarget) { fill = "rgba(251,191,36,0.25)"; stroke = "rgba(251,191,36,0.6)"; }
+      if (isActiveUnit) { fill = "rgba(96,165,250,0.15)"; stroke = "rgba(96,165,250,0.5)"; }
+
+      const cursor = isReachable || isAttackable || !!pendingSpell || !!pendingAbility ? "pointer" : "default";
+
+      return { key, hex, x, y, fill, stroke, cursor, points: hexPolygonPoints(x, y) };
+    });
+  }, [grid, reachableSet, attackablePositions, state.units, activeUnit, spellTargetPositions, abilityTargetPositions, pendingSpell, pendingAbility]);
+
   return (
     <div className="flex flex-col gap-3">
       {/* Header bar */}
       <div className="flex items-center justify-between px-4 py-2 rounded-lg" style={{ background: "rgba(0,0,0,0.3)", border: "1px solid rgba(201,168,76,0.15)" }}>
-        {isPlayerTurn && state.phase === "playerTurn" ? (
-          <button onClick={() => {
-            // Retreat DC based on enemy motivation: territorial=5, food=12, default=15
-            const enemies = state.units.filter(u => !u.isPlayer && isConscious(u));
-            const motivation = enemies[0]?.motivation;
-            const dc = motivation === "territorial" ? 5 : motivation === "food" ? 12 : 15;
-            const au = state.units.find(u => u.id === state.turnOrder[state.currentTurnIndex]);
-            const dexMod = au ? Math.floor((au.rawAbilities.dex - 10) / 2) : 0;
-            const roll = Math.floor(Math.random() * 20) + 1;
-            attemptRetreat(roll + dexMod, dc);
-          }} className="px-3 py-1 rounded text-xs font-bold uppercase tracking-widest"
-            style={{ background: "rgba(251,191,36,0.1)", color: "rgba(251,191,36,0.6)", border: "1px solid rgba(251,191,36,0.2)" }}>
-            Retreat
-          </button>
+        {isPlayerTurn && state.phase === "playerTurn" && isConscious(state.units.find(u => u.id === "player")!) ? (
+          showRetreatPicker ? (
+            (() => {
+              const au = state.units.find(u => u.id === state.turnOrder[state.currentTurnIndex]);
+              const enemies = state.units.filter(u => !u.isPlayer && isConscious(u));
+              const motivation = enemies[0]?.motivation;
+              const dc = motivation === "territorial" ? 5 : motivation === "food" ? 12 : 15;
+              const dexMod = au ? Math.floor((au.rawAbilities.dex - 10) / 2) : 0;
+              const chaMod = au ? Math.floor((au.rawAbilities.cha - 10) / 2) : 0;
+              const ranks = au?.skillRanks ?? {};
+              // Enemies with INT >= 3 can understand speech
+              const enemiesSpeak = enemies.some(e => e.rawAbilities.int >= 3);
+              // Enemies with INT >= 1 can feel fear (not mindless)
+              const enemiesFearable = enemies.some(e => e.rawAbilities.int >= 1);
+
+              type RetreatSkill = { id: string; label: string; ability: string; mod: number; trained: boolean; available: boolean; reason?: string };
+              const skills: RetreatSkill[] = [
+                { id: "tumble", label: "Tumble", ability: "DEX", mod: dexMod, trained: (ranks.tumble ?? 0) > 0, available: (ranks.tumble ?? 0) > 0, reason: "Trained only" },
+                { id: "bluff", label: "Bluff", ability: "CHA", mod: chaMod, trained: (ranks.bluff ?? 0) > 0, available: enemiesSpeak, reason: "Enemies don't understand speech" },
+                { id: "diplomacy", label: "Diplomacy", ability: "CHA", mod: chaMod, trained: (ranks.diplomacy ?? 0) > 0, available: enemiesSpeak, reason: "Enemies don't understand speech" },
+                { id: "intimidate", label: "Intimidate", ability: "CHA", mod: chaMod, trained: (ranks.intimidate ?? 0) > 0, available: enemiesFearable, reason: "Enemies are mindless" },
+                { id: "hide", label: "Hide", ability: "DEX", mod: dexMod, trained: (ranks.hide ?? 0) > 0, available: true },
+              ];
+
+              const rollRetreat = (skill: RetreatSkill) => {
+                const skillRanks = ranks[skill.id] ?? 0;
+                const natural = Math.floor(Math.random() * 20) + 1;
+                const total = natural + skillRanks + skill.mod;
+                const parts = [`d20(${natural})`];
+                if (skillRanks > 0) parts.push(`${skill.label} +${skillRanks}`);
+                if (skill.mod !== 0) parts.push(`${skill.ability} ${skill.mod >= 0 ? "+" : ""}${skill.mod}`);
+                setShowRetreatPicker(false);
+                attemptRetreat(total, dc, natural, parts.join(" "));
+              };
+
+              return (
+                <div className="flex items-center gap-1">
+                  {skills.map(sk => {
+                    const bonus = (ranks[sk.id] ?? 0) + sk.mod;
+                    const sign = bonus >= 0 ? "+" : "";
+                    return (
+                      <button key={sk.id} disabled={!sk.available}
+                        title={!sk.available ? sk.reason : `${sk.label} ${sign}${bonus} vs DC ${dc}`}
+                        onClick={() => rollRetreat(sk)}
+                        className="px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wide leading-tight"
+                        style={{
+                          background: sk.available ? "rgba(251,191,36,0.12)" : "rgba(100,100,100,0.1)",
+                          color: sk.available ? "rgba(251,191,36,0.8)" : "rgba(150,150,150,0.4)",
+                          border: `1px solid ${sk.available ? "rgba(251,191,36,0.3)" : "rgba(100,100,100,0.15)"}`,
+                          cursor: sk.available ? "pointer" : "not-allowed",
+                        }}>
+                        {sk.label}<br /><span className="text-[9px] opacity-60">{sign}{bonus}</span>
+                      </button>
+                    );
+                  })}
+                  <button onClick={() => setShowRetreatPicker(false)}
+                    className="px-2 py-1 rounded text-[10px] font-bold uppercase"
+                    style={{ background: "rgba(220,38,38,0.1)", color: "rgba(220,38,38,0.6)", border: "1px solid rgba(220,38,38,0.2)" }}>
+                    X
+                  </button>
+                </div>
+              );
+            })()
+          ) : (
+            <button onClick={() => setShowRetreatPicker(true)}
+              className="px-3 py-1 rounded text-xs font-bold uppercase tracking-widest"
+              style={{ background: "rgba(251,191,36,0.1)", color: "rgba(251,191,36,0.6)", border: "1px solid rgba(251,191,36,0.2)" }}>
+              Retreat
+            </button>
+          )
         ) : (
           <div style={{ width: 70 }} />
         )}
@@ -412,6 +619,40 @@ export function HexBattle({ characters, questEncounter, playerFeats, playerWeapo
         {(!isPlayerTurn || state.phase === "playerRoll" || state.phase === "playerResult") && <div />}
       </div>
 
+      {/* IMPROVEMENT 2: Turn order bar */}
+      {turnOrderUnits.length > 0 && (
+        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg overflow-x-auto" style={{ background: "rgba(0,0,0,0.25)", border: "1px solid rgba(201,168,76,0.1)" }}>
+          <span style={{ fontSize: "0.5rem", color: "rgba(201,168,76,0.4)", whiteSpace: "nowrap", textTransform: "uppercase", letterSpacing: "0.1em", fontWeight: 700 }}>Init</span>
+          {turnOrderUnits.map(u => {
+            const isActive = u.id === currentActiveId;
+            const dead = isDead(u);
+            const unconscious = isUnconscious(u);
+            const initials = u.name.slice(0, 2).toUpperCase();
+            const borderColor = dead ? "rgba(100,100,100,0.3)" : unconscious ? "rgba(120,80,80,0.5)" : isActive ? "rgba(251,191,36,1)" : u.isPlayer ? "rgba(96,165,250,0.6)" : "rgba(220,38,38,0.5)";
+            const bgColor = dead ? "rgba(50,50,50,0.4)" : unconscious ? "rgba(60,40,40,0.4)" : isActive ? "rgba(251,191,36,0.15)" : "rgba(0,0,0,0.3)";
+            return (
+              <div key={u.id} className="flex items-center gap-1 shrink-0" title={`${u.name} (Init ${Math.round(u.stats.initiative)})`}>
+                <div style={{
+                  width: 20, height: 20, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
+                  border: `2px solid ${borderColor}`, background: bgColor,
+                  boxShadow: isActive ? "0 0 8px rgba(251,191,36,0.5)" : "none",
+                  fontSize: "0.45rem", fontWeight: 900, color: dead ? "rgba(100,100,100,0.5)" : "rgba(232,213,176,0.8)",
+                }}>
+                  {initials}
+                </div>
+                <span style={{
+                  fontSize: "0.45rem", color: dead ? "rgba(100,100,100,0.4)" : unconscious ? "rgba(120,80,80,0.5)" : "rgba(232,213,176,0.5)",
+                  textDecoration: dead ? "line-through" : undefined, whiteSpace: "nowrap",
+                  fontWeight: isActive ? 700 : 400,
+                }}>
+                  {u.name.length > 8 ? u.name.slice(0, 7) + ".." : u.name}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       {/* Main content: grid + action panel */}
       <div className="flex gap-3 flex-col lg:flex-row">
         {/* SVG Hex Grid */}
@@ -422,40 +663,12 @@ export function HexBattle({ characters, questEncounter, playerFeats, playerWeapo
               <image href={questEncounter.mapImage} x="0" y="0" width={svgW} height={svgH}
                 preserveAspectRatio="xMidYMid slice" opacity="0.6" />
             )}
-            {/* Grid hexes */}
-            {grid.map(hex => {
-              const { x, y } = hexToPixel(hex);
-              const key = `${hex.q},${hex.r}`;
-              const isReachable = reachableSet.has(key);
-              const isAttackable = attackablePositions.has(key);
-              const unit = state.units.find(u => isAlive(u) && u.position.q === hex.q && u.position.r === hex.r);
-              const isActiveUnit = unit && activeUnit && unit.id === activeUnit.id;
-
-              const isRangedTarget = isAttackable && activeUnit && hexDistance(activeUnit.position, hex) > 1;
-
-              const isSpellTarget = spellTargetPositions.has(key);
-
-              let fill = "rgba(201,168,76,0.04)";
-              let stroke = "rgba(201,168,76,0.12)";
-              if (isReachable) { fill = "rgba(74,222,128,0.15)"; stroke = "rgba(74,222,128,0.4)"; }
-              if (isAttackable && isRangedTarget) { fill = "rgba(251,146,60,0.2)"; stroke = "rgba(251,146,60,0.5)"; }  // orange for ranged
-              else if (isAttackable) { fill = "rgba(220,38,38,0.2)"; stroke = "rgba(220,38,38,0.5)"; }  // red for melee
-              if (isSpellTarget) { fill = "rgba(168,85,247,0.25)"; stroke = "rgba(168,85,247,0.6)"; }  // purple for spell targets
-              if (isActiveUnit) { fill = "rgba(96,165,250,0.15)"; stroke = "rgba(96,165,250,0.5)"; }
-
-              return (
-                <g key={key} onClick={() => handleHexClick(hex)} style={{ cursor: isReachable || isAttackable || !!pendingSpell ? "pointer" : "default" }}>
-                  <polygon
-                    points={hexPolygonPoints(x, y)}
-                    fill={fill}
-                    stroke={stroke}
-                    strokeWidth={1.5}
-                  />
-                  {/* Coord label (tiny, for debug) */}
-                  {/*<text x={x} y={y} textAnchor="middle" dominantBaseline="central" fontSize={8} fill="rgba(201,168,76,0.15)">{hex.q},{hex.r}</text>*/}
-                </g>
-              );
-            })}
+            {/* Grid hexes (IMPROVEMENT 3: memoized) */}
+            {hexPolygons.map(h => (
+              <g key={h.key} onClick={() => handleHexClick(h.hex)} style={{ cursor: h.cursor }}>
+                <polygon points={h.points} fill={h.fill} stroke={h.stroke} strokeWidth={1.5} />
+              </g>
+            ))}
 
             {/* Unit tokens */}
             {state.units.filter(u => isAlive(u)).map(unit => {
@@ -514,6 +727,25 @@ export function HexBattle({ characters, questEncounter, playerFeats, playerWeapo
                 </g>
               );
             })}
+
+            {/* IMPROVEMENT 1: Floating damage/heal/miss popups */}
+            {damagePopups.map(p => (
+              <text
+                key={p.id}
+                x={p.x}
+                y={p.y}
+                textAnchor="middle"
+                fontSize={p.type === 'miss' ? 10 : 14}
+                fontWeight="900"
+                fontFamily="'Cinzel', serif"
+                fill={p.type === 'damage' ? 'rgba(220,38,38,0.95)' : p.type === 'heal' ? 'rgba(74,222,128,0.95)' : 'rgba(156,163,175,0.8)'}
+                stroke={p.type === 'damage' ? 'rgba(0,0,0,0.6)' : p.type === 'heal' ? 'rgba(0,0,0,0.4)' : 'none'}
+                strokeWidth={0.5}
+                style={{ animation: 'floatUp 1.5s ease-out forwards', pointerEvents: 'none' }}
+              >
+                {p.text}
+              </text>
+            ))}
           </svg>
         </div>
 
@@ -560,7 +792,7 @@ export function HexBattle({ characters, questEncounter, playerFeats, playerWeapo
           )}
 
           {/* Phase-specific actions — unified playerTurn with 3 action buttons */}
-          {state.phase === "playerTurn" && !pendingSpell && !showSpellPicker && (
+          {state.phase === "playerTurn" && !pendingSpell && !showSpellPicker && !pendingAbility && !showAbilityPicker && (
             <div className="px-4 py-3 rounded-lg flex flex-col gap-2" style={{ background: "rgba(0,0,0,0.2)", border: "1px solid rgba(201,168,76,0.2)" }}>
               {/* Action buttons row */}
               <div className="flex gap-2 justify-center">
@@ -629,6 +861,12 @@ export function HexBattle({ characters, questEncounter, playerFeats, playerWeapo
                     Cast
                   </button>
                 )}
+                {hasAbilities && (
+                  <button onClick={() => setShowAbilityPicker(true)} className="px-3 py-1 rounded text-xs font-bold uppercase tracking-widest"
+                    style={{ background: "rgba(251,191,36,0.15)", color: "rgba(251,191,36,0.8)", border: "1px solid rgba(251,191,36,0.3)" }}>
+                    Ability
+                  </button>
+                )}
                 {!activeUnit?.hasActed && (
                   <button onClick={readyAttack} className="px-3 py-1 rounded text-xs font-bold uppercase tracking-widest"
                     style={{ background: "rgba(201,168,76,0.1)", color: "rgba(201,168,76,0.7)", border: "1px solid rgba(201,168,76,0.25)" }}
@@ -691,6 +929,54 @@ export function HexBattle({ characters, questEncounter, playerFeats, playerWeapo
                   </div>
                 </button>
               ))}
+            </div>
+          )}
+
+          {/* Ability targeting prompt */}
+          {state.phase === "playerTurn" && pendingAbility && (
+            <div className="px-4 py-3 rounded-lg flex items-center justify-between gap-2" style={{ background: "rgba(251,191,36,0.1)", border: "1px solid rgba(251,191,36,0.3)" }}>
+              <span className="text-xs font-bold tracking-widest uppercase" style={{ color: "rgba(251,191,36,0.9)" }}>
+                {pendingAbility.name}: click a gold-highlighted target
+              </span>
+              <button onClick={() => setPendingAbility(null)} className="px-3 py-1 rounded text-xs font-bold uppercase tracking-widest shrink-0"
+                style={{ background: "rgba(220,38,38,0.15)", color: "rgba(220,38,38,0.7)", border: "1px solid rgba(220,38,38,0.3)" }}>
+                Cancel
+              </button>
+            </div>
+          )}
+
+          {/* Ability picker overlay */}
+          {state.phase === "playerTurn" && showAbilityPicker && (
+            <div className="px-3 py-2 rounded-lg overflow-y-auto" style={{ background: "rgba(0,0,0,0.5)", border: "1px solid rgba(251,191,36,0.4)", maxHeight: 280 }}>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-black tracking-widest uppercase" style={{ color: "rgba(251,191,36,0.9)" }}>Class Abilities</span>
+                <button onClick={() => setShowAbilityPicker(false)} className="px-2 py-0.5 rounded text-xs"
+                  style={{ color: "rgba(220,38,38,0.7)", background: "rgba(220,38,38,0.1)", border: "1px solid rgba(220,38,38,0.3)" }}>X</button>
+              </div>
+              {availableAbilities.length === 0 && <div className="text-xs" style={{ color: "rgba(232,213,176,0.4)" }}>No abilities available</div>}
+              {availableAbilities.map(ab => {
+                const usesStr = ab.usesLeft === "unlimited" ? "at will" : `${ab.usesLeft}/${ab.maxUses}`;
+                const actionColor = ab.actionType === "free" ? "rgba(74,222,128,0.7)" : ab.actionType === "bonus" ? "rgba(251,191,36,0.7)" : "rgba(220,38,38,0.7)";
+                return (
+                  <button key={ab.effectId} onClick={() => selectAbility(ab)} disabled={!ab.isAvailable}
+                    className="w-full text-left px-2 py-1.5 rounded mb-1 transition-all hover:scale-[1.01]"
+                    style={{
+                      background: ab.isAvailable ? "rgba(251,191,36,0.1)" : "rgba(0,0,0,0.2)",
+                      border: `1px solid ${ab.isAvailable ? "rgba(251,191,36,0.3)" : "rgba(251,191,36,0.1)"}`,
+                      opacity: ab.isAvailable ? 1 : 0.4,
+                    }}>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold" style={{ color: "rgba(232,213,176,0.9)" }}>{ab.name}</span>
+                      <span style={{ fontSize: "0.5rem", color: "rgba(251,191,36,0.7)" }}>
+                        {usesStr} <span style={{ color: actionColor }}>{ab.actionType}</span>
+                      </span>
+                    </div>
+                    <div style={{ fontSize: "0.5rem", color: "rgba(232,213,176,0.5)" }}>
+                      {ab.description}
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           )}
 

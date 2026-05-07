@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EARTH &mdash; On-Chain Data &middot; Base</title>
+    <meta name="description" content="Live rebase tracking, burn rate, and pool data for EARTH token on Base. Deflationary rebase with autonomous liquidity deepening.">
+    <style>
+        *{margin:0;padding:0;box-sizing:border-box}
+        :root{
+            --bg:#0b0e11;--surface:rgba(21,26,33,.88);--border:rgba(55,65,81,.5);
+            --text:#c9d1d9;--dim:#8b949e;--bright:#e6edf3;
+            --accent:#58a6ff;--green:#3fb950;--orange:#d29922;
+            --mono:'SF Mono','Cascadia Code','Fira Code',monospace;
+        }
+        body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;line-height:1.6}
+        .wrap{max-width:1100px;margin:0 auto;padding:2rem 1.5rem}
+
+        header{text-align:center;margin-bottom:2.5rem}
+        .logo{font-size:4rem;margin-bottom:.25rem}
+        header h1{font-size:2.8rem;color:var(--bright);letter-spacing:.1em;margin-bottom:.25rem}
+        .tagline{color:var(--green);font-size:.95rem;margin-bottom:.75rem;font-weight:500}
+        .addr{font-family:var(--mono);font-size:.82rem;color:var(--dim);background:var(--surface);padding:.45rem 1.1rem;border-radius:8px;display:inline-block;cursor:pointer;position:relative;border:1px solid var(--border);transition:color .2s,border-color .2s}
+        .addr:hover{color:var(--green);border-color:var(--green)}
+        .copied{position:absolute;top:-1.8rem;left:50%;transform:translateX(-50%);font-size:.7rem;color:var(--green);opacity:0;transition:opacity .3s}
+        .copied.show{opacity:1}
+        .chain{font-size:.78rem;color:var(--dim);margin-top:.5rem}
+
+        .glass{background:var(--surface);border:1px solid var(--border);border-radius:12px}
+
+        .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;margin-bottom:2rem}
+        .stat{padding:1.25rem;text-align:center}
+        .stat-label{font-size:.68rem;text-transform:uppercase;letter-spacing:.1em;color:var(--dim);margin-bottom:.4rem}
+        .stat-val{font-family:var(--mono);font-size:1.4rem;font-weight:700;color:var(--bright)}
+        .stat-val.grn{color:var(--green)}.stat-val.org{color:var(--orange)}.stat-val.blu{color:var(--accent)}
+
+        .section{padding:1.5rem;margin-bottom:1.5rem}
+        .section h2{font-size:1rem;color:var(--bright);margin-bottom:1rem;padding-bottom:.75rem;border-bottom:1px solid var(--border)}
+        .section h2 span{color:var(--dim);font-weight:normal;font-size:.85rem}
+        table{width:100%;border-collapse:collapse}
+        th{text-align:left;font-size:.68rem;text-transform:uppercase;letter-spacing:.1em;color:var(--dim);padding:.5rem .75rem}
+        td{padding:.6rem .75rem;font-size:.85rem;border-top:1px solid var(--border)}
+        td.m{font-family:var(--mono);font-size:.78rem}
+        tr:hover td{background:rgba(63,185,80,.04)}
+        a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
+        .badge{font-size:.62rem;padding:.15rem .55rem;border-radius:99px;font-weight:600}
+        .badge.bc{background:rgba(88,166,255,.15);color:var(--accent)}
+        .badge.cm{background:rgba(63,185,80,.15);color:var(--green)}
+
+        .mech li{padding:.45rem 0 .45rem 1.6rem;position:relative;font-size:.9rem;list-style:none}
+        .mech li::before{content:'\2192';position:absolute;left:0;color:var(--green)}
+
+        .flow{background:rgba(11,14,17,.6);border:1px solid var(--border);border-radius:8px;padding:1.25rem;font-family:var(--mono);font-size:.8rem;line-height:2;color:var(--dim);margin:1rem 0}
+        .flow strong{color:var(--bright)}
+        .flow .step{color:var(--green);font-size:.7rem;text-transform:uppercase;letter-spacing:.05em}
+
+        .highlight{background:var(--surface);border-left:3px solid var(--green);padding:1rem 1.25rem;margin:1rem 0;border-radius:0 8px 8px 0;font-size:.9rem}
+
+        pre{background:rgba(11,14,17,.6);border:1px solid var(--border);border-radius:8px;padding:1rem;font-family:var(--mono);font-size:.78rem;overflow-x:auto;color:var(--text);line-height:1.9}
+
+        .share-btn{background:var(--surface);border:1px solid var(--border);color:var(--green);padding:.5rem 1.2rem;border-radius:8px;cursor:pointer;font-size:.85rem;font-family:inherit;margin-top:.75rem;display:inline-block;transition:background .2s,border-color .2s}
+        .share-btn:hover{background:rgba(63,185,80,.12);border-color:var(--green)}
+        .share-msg{font-size:.75rem;color:var(--green);margin-top:.3rem;min-height:1.2em}
+
+        .timestamp{text-align:center;font-size:.75rem;color:var(--dim);margin-bottom:1.5rem}
+
+        footer{text-align:center;padding:2rem 0;color:var(--dim);font-size:.85rem}
+        footer a{color:var(--green)}
+
+        @media(max-width:768px){
+            .stats{grid-template-columns:repeat(2,1fr)}
+            header h1{font-size:2rem}
+            .addr{font-size:.68rem;word-break:break-all}
+            .stat-val{font-size:1.1rem}
+        }
+    </style>
+</head>
+<body>
+<div class="wrap">
+
+    <header>
+        <div class="logo">&#x1F30D;</div>
+        <h1>EARTH</h1>
+        <div class="tagline">Deflationary rebase. Autonomous liquidity. Burns more than it mints.</div>
+        <div class="addr" id="addrCopy" title="Click to copy">
+            <span class="copied" id="copiedTip">Copied</span>
+            0x5CfBecf0209F7ada1EdF1fC0D2Fce3a809C0aE08
+        </div>
+        <div class="chain">Base (8453) &middot; Rebase ERC20 &middot; 18 decimals &middot; 1% fee pools</div>
+        <button class="share-btn" onclick="sharePage()">Share</button>
+        <div class="share-msg" id="shareMsg"></div>
+    </header>
+
+    <div class="timestamp" id="ts">Loading data&hellip;</div>
+
+    <!-- LIVE STATS -->
+    <div class="stats">
+        <div class="stat glass">
+            <div class="stat-label">Total Supply</div>
+            <div class="stat-val" id="sSupply">&mdash;</div>
+        </div>
+        <div class="stat glass">
+            <div class="stat-label">Rebase Index</div>
+            <div class="stat-val blu" id="sIndex">&mdash;</div>
+        </div>
+        <div class="stat glass">
+            <div class="stat-label">Reactor Pools</div>
+            <div class="stat-val grn" id="sPools">&mdash;</div>
+        </div>
+        <div class="stat glass">
+            <div class="stat-label">Cooldown</div>
+            <div class="stat-val org" id="sCooldown">&mdash;</div>
+        </div>
+    </div>
+
+    <!-- HOW IT WORKS -->
+    <div class="section glass">
+        <h2>How It Works</h2>
+        <p style="margin-bottom:1rem;font-size:.9rem">EARTH has a Reactor &mdash; an immutable contract that runs every 2 hours. Anyone can call <code>execute()</code>. No admin keys needed. It collects trading fees from 9 V3 pools, then:</p>
+        <div class="flow">
+            <span class="step">1. Collect</span> &rarr; Pull accrued fees from all pools (EARTH + X token)<br>
+            <span class="step">2. Burn</span> &rarr; <strong>All EARTH fees burned forever</strong> (-0.5% of volume)<br>
+            <span class="step">3. Buyback</span> &rarr; Half of X fees buy EARTH from the pool (buy pressure)<br>
+            <span class="step">4. Deepen</span> &rarr; Bought EARTH + remaining X deposited back as LP (deeper liquidity)<br>
+            <span class="step">5. Rebase</span> &rarr; Mint 0.3% of volume to all holders (your balance grows)
+        </div>
+        <div class="highlight">
+            <strong>The math:</strong> -0.5% burned + 0.3% minted = <strong>-0.2% of volume permanently removed</strong> from supply every cycle. Supply can only decrease. Your balance still grows via rebase.
+        </div>
+    </div>
+
+    <!-- REBASE -->
+    <div class="section glass">
+        <h2>The Rebase</h2>
+        <ul class="mech">
+            <li>Your wallet holds <em>shares</em>. A global rebaseIndex converts shares to tokens.</li>
+            <li>When the Reactor runs, it increases rebaseIndex &mdash; every holder's balance grows proportionally without any transfers.</li>
+            <li>Pools and the Reactor are excluded from rebase so they don't receive phantom tokens.</li>
+            <li>Rebases compound every 2 hours &mdash; 4,380 times per year.</li>
+            <li>Started with 1.000000 EARTH. Supply is now net deflationary despite continuous rebasing.</li>
+        </ul>
+    </div>
+
+    <!-- TRADING -->
+    <div class="section glass">
+        <h2>Trading Opportunity</h2>
+        <ul class="mech">
+            <li>9 pools burning simultaneously: WETH, USDC, cbBTC, MfT, CHAR, POOP, BURGERS, TGN, AZUSD</li>
+            <li>1% fee tier means every trade burns meaningful supply</li>
+            <li>Reactor buys back EARTH every 2 hours &mdash; constant buy pressure</li>
+            <li>LP deepens every cycle &mdash; smoother trades, less slippage over time</li>
+            <li>External volatility (ETH/BTC price moves) generates burns passively</li>
+            <li>Hold and your balance grows from rebase. Trade and the supply shrinks. Both work.</li>
+        </ul>
+    </div>
+
+    <!-- POOLS -->
+    <div class="section glass">
+        <h2>Active Pools <span id="poolCt"></span></h2>
+        <table>
+            <thead><tr><th>Pool</th><th>Address</th><th>Fee</th><th>Type</th><th></th></tr></thead>
+            <tbody id="poolTb"><tr><td colspan="5" style="color:var(--dim);font-size:.85rem">Loading&hellip;</td></tr></tbody>
+        </table>
+    </div>
+
+    <!-- TRUSTLESS -->
+    <div class="section glass">
+        <h2>Why It's Trustless</h2>
+        <ul class="mech">
+            <li><strong>No admin mint:</strong> only the Reactor can mint, and only via the rebase formula</li>
+            <li><strong>No token drain:</strong> Reactor has no withdraw function &mdash; LP is locked forever</li>
+            <li><strong>Permissionless execute:</strong> anyone can call execute() after the 2-hour cooldown</li>
+            <li><strong>Deployer renounced:</strong> setReactor() can only be called once, ever. Already called.</li>
+            <li><strong>Immutable burn:</strong> burn() is permanent &mdash; tokens are gone</li>
+            <li><strong>No pause or freeze:</strong> transfers cannot be blocked. No admin override exists.</li>
+            <li><strong>Two contracts, no proxy:</strong> read them yourself on <a href="https://basescan.org/address/0x5CfBecf0209F7ada1EdF1fC0D2Fce3a809C0aE08#code" target="_blank" rel="noopener">Basescan</a></li>
+        </ul>
+    </div>
+
+    <!-- FLYWHEEL -->
+    <div class="section glass">
+        <h2>The Flywheel</h2>
+        <ul class="mech">
+            <li>Trade happens &rarr; 1% fee collected</li>
+            <li>EARTH side burned (supply shrinks)</li>
+            <li>X side: half buys EARTH (price support), half stays for LP</li>
+            <li>Bought EARTH + remaining X deposited as LP (pool deeper)</li>
+            <li>Deeper pool &rarr; less slippage &rarr; more attractive to trade</li>
+            <li>More volume &rarr; more fees &rarr; more burns &rarr; cycle repeats</li>
+            <li>Meanwhile holders get rebased every 2 hours</li>
+        </ul>
+        <div class="highlight">
+            The system is designed so that doing nothing (holding) and doing something (trading) both make EARTH stronger. There is no action that weakens the flywheel except stopping all trading entirely.
+        </div>
+    </div>
+
+    <!-- PART OF SOMETHING BIGGER -->
+    <div class="section glass">
+        <h2>Part of Something Bigger</h2>
+        <p style="font-size:.9rem;margin-bottom:.75rem">EARTH is one of several tokens in the memefortrees ecosystem. The Reactor burns and deepens liquidity across pairs that include MfT (the hub token), POOP (from the Baselings game), CHAR (biochar credits), and blue chips.</p>
+        <p style="font-size:.9rem;margin-bottom:.75rem">Every EARTH trade that touches the MfT or POOP pools feeds those ecosystems too. The Reactor doesn't just burn EARTH &mdash; it connects ecosystems. Volume in any pool benefits all pools through the shared burn-and-deepen cycle.</p>
+        <p style="font-size:.9rem;color:var(--green)">You profit. Liquidity deepens. Trees grow. That's the whole idea.</p>
+    </div>
+
+    <!-- FOR AGENTS -->
+    <div class="section glass">
+        <h2>For Agents &amp; Developers</h2>
+        <pre>Contract:  0x5CfBecf0209F7ada1EdF1fC0D2Fce3a809C0aE08
+Reactor:   0x424D8BC900C6cc22E791C01d7E92CEd149a232f7
+Chain:     Base (8453)
+Decimals:  18
+Type:      Rebase ERC20 (share-based)
+LP:        All locked forever in Reactor.
+
+totalSupply()    = current supply after burns
+balanceOf(addr)  = auto-rebased balance
+rebaseIndex()    = global multiplier (starts 1e18)
+
+reactor.poolCount()    = number of pools
+reactor.lastExecute()  = timestamp of last run
+reactor.execute()      = permissionless, burns + rebases
+
+Factory: 0x33128a8fC17869897dcE68Ed026d694621f6FDfD
+getPool(EARTH, tokenX, 10000) = pool address</pre>
+    </div>
+
+    <footer>
+        <a href="/earth/reactors.html">Reactor Network</a>
+        &nbsp;&middot;&nbsp;
+        <a href="https://app.uniswap.org/swap?chain=base&outputCurrency=0x5CfBecf0209F7ada1EdF1fC0D2Fce3a809C0aE08" target="_blank" rel="noopener">Buy on Uniswap</a>
+        &nbsp;&middot;&nbsp;
+        <a href="/poop/">POOP data</a>
+        &nbsp;&middot;&nbsp;
+        <a href="/mft/">MfT burns</a>
+        &nbsp;&middot;&nbsp;
+        <a href="/">home</a>
+    </footer>
+
+</div>
+<script>
+const SCAN = 'https://basescan.org';
+const fAddr = a => a.slice(0,6)+'...'+a.slice(-4);
+
+document.getElementById('addrCopy').onclick = () => {
+    navigator.clipboard.writeText('0x5CfBecf0209F7ada1EdF1fC0D2Fce3a809C0aE08');
+    const tip = document.getElementById('copiedTip');
+    tip.classList.add('show');
+    setTimeout(() => tip.classList.remove('show'), 1200);
+};
+
+function sharePage() {
+    const url = window.location.href;
+    if (navigator.share) {
+        navigator.share({title:'EARTH \u2014 On-Chain Data', text:'Deflationary rebase token on Base. Burns more than it mints.', url}).catch(() => {});
+    } else {
+        navigator.clipboard.writeText(url).then(() => {
+            document.getElementById('shareMsg').textContent = 'Link copied';
+            setTimeout(() => document.getElementById('shareMsg').textContent = '', 2000);
+        });
+    }
+}
+
+fetch('data.json').then(r => r.json()).then(data => {
+    const supplyNum = parseFloat(data.totalSupply);
+    document.getElementById('sSupply').textContent = supplyNum < 100
+        ? supplyNum.toFixed(6) : supplyNum.toLocaleString('en-US', {maximumFractionDigits: 2});
+
+    const indexNum = parseFloat(data.rebaseIndex);
+    document.getElementById('sIndex').textContent = indexNum.toFixed(6);
+
+    document.getElementById('sPools').textContent = data.poolCount;
+
+    const now = Math.floor(Date.now() / 1000);
+    const nextExec = parseInt(data.lastExecute) + 7200;
+    if (now >= nextExec) {
+        document.getElementById('sCooldown').textContent = 'READY';
+        document.getElementById('sCooldown').className = 'stat-val grn';
+    } else {
+        const mins = Math.ceil((nextExec - now) / 60);
+        document.getElementById('sCooldown').textContent = mins + 'm';
+    }
+
+    // Pools
+    const tbody = document.getElementById('poolTb');
+    tbody.innerHTML = '';
+    for (const p of data.pools) {
+        const badge = p.type === 'bc'
+            ? '<span class="badge bc">blue chip</span>'
+            : '<span class="badge cm">ecosystem</span>';
+        const tr = document.createElement('tr');
+        tr.innerHTML = '<td>EARTH / '+p.sym+'</td>'
+            + '<td class="m"><a href="'+SCAN+'/address/'+p.pool+'" target="_blank" rel="noopener">'+fAddr(p.pool)+'</a></td>'
+            + '<td>1%</td><td>'+badge+'</td>'
+            + '<td><a href="'+SCAN+'/address/'+p.pool+'" target="_blank" rel="noopener">verify</a></td>';
+        tbody.appendChild(tr);
+    }
+    document.getElementById('poolCt').textContent = '('+data.pools.length+')';
+
+    const when = new Date(data.updated);
+    document.getElementById('ts').innerHTML =
+        'Last updated ' + when.toLocaleDateString() + ' ' + when.toLocaleTimeString() +
+        ' &mdash; <a href="'+SCAN+'/token/0x5CfBecf0209F7ada1EdF1fC0D2Fce3a809C0aE08" target="_blank" rel="noopener" style="color:var(--green)">verify on Basescan</a>';
+}).catch(err => {
+    console.error('Failed to load data:', err);
+    document.getElementById('ts').textContent = 'Failed to load data';
+});
+</script>
+</body>
+</html>

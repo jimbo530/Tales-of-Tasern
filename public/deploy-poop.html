@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html>
+<head><title>Deploy POOP Token — Baselings</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.1/ethers.umd.min.js"></script>
+</head>
+<body style="background:#0a0608;color:#e8d5b0;font-family:Georgia;padding:30px;max-width:700px;margin:0 auto;">
+
+<h1 style="color:#c9a84c;text-align:center;">POOP Token</h1>
+<p style="text-align:center;color:#888;margin-bottom:25px;">Deploy the Baseling Poop ERC20. Minted by Baseling NFT contract when players feed their pets. Poop output is relative to LP yields — a fun bonus, not extracted from them.</p>
+
+<div style="text-align:center;margin-bottom:25px;">
+  <button id="connectBtn" onclick="connect()" style="background:#c9a84c;color:#0a0608;border:none;padding:12px 30px;font-size:15px;font-weight:bold;border-radius:8px;cursor:pointer;font-family:Georgia;">Connect Wallet</button>
+  <p id="walletStatus" style="margin-top:8px;color:#888;font-size:13px;"></p>
+</div>
+
+<!-- DEPLOY -->
+<div style="margin-bottom:20px;padding:18px;background:#1a1418;border:1px solid #c9a84c44;border-radius:8px;">
+  <h3 style="color:#c9a84c;margin-bottom:10px;">Step 1: Deploy POOP Token</h3>
+  <p style="color:#888;font-size:12px;margin-bottom:12px;">No constructor args — owner is set to deployer. Grant minter role to Baseling contract after.</p>
+  <button id="deployBtn" onclick="deploy()" disabled style="background:#c9a84c;color:#0a0608;border:none;padding:10px 25px;font-size:14px;font-weight:bold;border-radius:6px;cursor:pointer;font-family:Georgia;opacity:0.5;">Deploy PoopToken</button>
+  <p id="deployStatus" style="margin-top:8px;font-size:13px;color:#888;"></p>
+  <div style="margin-top:10px;">
+    <label style="color:#888;font-size:12px;">Or load existing:</label>
+    <div style="display:flex;gap:8px;margin-top:4px;">
+      <input id="existingAddr" placeholder="0x..." style="flex:1;padding:8px;background:#0a0608;color:#e8d5b0;border:1px solid #c9a84c44;border-radius:4px;font-family:monospace;font-size:13px;" />
+      <button onclick="loadExisting()" style="background:#c9a84c;color:#0a0608;border:none;padding:8px 14px;font-size:12px;font-weight:bold;border-radius:4px;cursor:pointer;font-family:Georgia;">Load</button>
+    </div>
+  </div>
+  <div style="margin-top:10px;padding:10px;background:#0a0608;border:1px solid #c9a84c44;border-radius:6px;">
+    <p style="color:#888;font-size:12px;">POOP Token Address:</p>
+    <p id="tokenAddr" style="color:#f0d070;font-family:monospace;font-size:15px;word-break:break-all;user-select:all;">Not deployed yet</p>
+  </div>
+</div>
+
+<!-- MANAGE -->
+<div style="margin-bottom:20px;padding:18px;background:#1a1418;border:1px solid #c9a84c44;border-radius:8px;">
+  <h3 style="color:#c9a84c;margin-bottom:10px;">Step 2: Manage Minters</h3>
+  <p style="color:#888;font-size:12px;margin-bottom:10px;">Grant minter role to the Baseling NFT contract so it can mint POOP on feed.</p>
+  <label style="color:#888;font-size:12px;">Minter Address (Baseling contract)</label>
+  <div style="display:flex;gap:8px;margin-top:4px;margin-bottom:10px;">
+    <input id="minterAddr" placeholder="0x..." style="flex:1;padding:8px;background:#0a0608;color:#e8d5b0;border:1px solid #c9a84c44;border-radius:4px;font-family:monospace;font-size:13px;" />
+    <button onclick="setMinter(true)" style="background:#4ade80;color:#0a0608;border:none;padding:8px 14px;font-size:12px;font-weight:bold;border-radius:4px;cursor:pointer;font-family:Georgia;">Grant</button>
+    <button onclick="setMinter(false)" style="background:#ef4444;color:#fff;border:none;padding:8px 14px;font-size:12px;font-weight:bold;border-radius:4px;cursor:pointer;font-family:Georgia;">Revoke</button>
+  </div>
+  <p id="minterStatus" style="font-size:13px;color:#888;"></p>
+</div>
+
+<!-- INFO -->
+<div style="margin-bottom:20px;padding:18px;background:#1a1418;border:1px solid #c9a84c44;border-radius:8px;">
+  <h3 style="color:#c9a84c;margin-bottom:10px;">Token Info</h3>
+  <div style="display:flex;gap:20px;flex-wrap:wrap;">
+    <div><label style="color:#888;font-size:12px;">Name</label><p id="infoName" style="color:#e8d5b0;font-size:14px;">—</p></div>
+    <div><label style="color:#888;font-size:12px;">Symbol</label><p id="infoSymbol" style="color:#e8d5b0;font-size:14px;">—</p></div>
+    <div><label style="color:#888;font-size:12px;">Total Supply</label><p id="infoSupply" style="color:#4ade80;font-family:monospace;font-size:14px;">—</p></div>
+    <div><label style="color:#888;font-size:12px;">Owner</label><p id="infoOwner" style="color:#f0d070;font-family:monospace;font-size:11px;word-break:break-all;">—</p></div>
+  </div>
+  <div style="margin-top:10px;">
+    <label style="color:#888;font-size:12px;">Check if address is minter:</label>
+    <div style="display:flex;gap:8px;margin-top:4px;">
+      <input id="checkAddr" placeholder="0x..." style="flex:1;padding:8px;background:#0a0608;color:#e8d5b0;border:1px solid #c9a84c44;border-radius:4px;font-family:monospace;font-size:13px;" />
+      <button onclick="checkMinter()" style="background:rgba(255,255,255,0.1);color:#e8d5b0;border:1px solid #c9a84c44;padding:8px 14px;font-size:12px;border-radius:4px;cursor:pointer;font-family:Georgia;">Check</button>
+    </div>
+    <p id="checkResult" style="font-size:13px;color:#888;margin-top:4px;"></p>
+  </div>
+  <button onclick="refreshInfo()" style="margin-top:10px;background:rgba(255,255,255,0.1);color:#e8d5b0;border:1px solid #c9a84c44;padding:6px 14px;font-size:12px;border-radius:4px;cursor:pointer;font-family:Georgia;">Refresh</button>
+</div>
+
+<!-- TEST MINT -->
+<div style="margin-bottom:20px;padding:18px;background:#1a1418;border:1px solid #c9a84c44;border-radius:8px;">
+  <h3 style="color:#c9a84c;margin-bottom:10px;">Test Mint (Owner must be minter)</h3>
+  <p style="color:#888;font-size:12px;margin-bottom:8px;">Grant yourself minter role first, then test mint some POOP.</p>
+  <div style="display:flex;gap:8px;align-items:end;">
+    <div>
+      <label style="color:#888;font-size:12px;">Amount</label>
+      <input id="mintAmt" value="1000" style="width:120px;padding:8px;background:#0a0608;color:#e8d5b0;border:1px solid #c9a84c44;border-radius:4px;font-family:monospace;font-size:13px;" />
+    </div>
+    <button onclick="testMint()" style="background:#a78bfa;color:#0a0608;border:none;padding:8px 14px;font-size:12px;font-weight:bold;border-radius:4px;cursor:pointer;font-family:Georgia;">Mint POOP</button>
+  </div>
+  <p id="mintStatus" style="margin-top:8px;font-size:13px;color:#888;"></p>
+</div>
+
+<script>
+var ABI=[{"inputs":[],"stateMutability":"nonpayable","type":"constructor"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"owner","type":"address"},{"indexed":true,"internalType":"address","name":"spender","type":"address"},{"indexed":false,"internalType":"uint256","name":"value","type":"uint256"}],"name":"Approval","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"account","type":"address"},{"indexed":false,"internalType":"bool","name":"status","type":"bool"}],"name":"MinterSet","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"prev","type":"address"},{"indexed":true,"internalType":"address","name":"next","type":"address"}],"name":"OwnershipTransferred","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"from","type":"address"},{"indexed":true,"internalType":"address","name":"to","type":"address"},{"indexed":false,"internalType":"uint256","name":"value","type":"uint256"}],"name":"Transfer","type":"event"},{"inputs":[{"internalType":"address","name":"","type":"address"},{"internalType":"address","name":"","type":"address"}],"name":"allowance","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"spender","type":"address"},{"internalType":"uint256","name":"amount","type":"uint256"}],"name":"approve","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"","type":"address"}],"name":"balanceOf","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"decimals","outputs":[{"internalType":"uint8","name":"","type":"uint8"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"","type":"address"}],"name":"isMinter","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"to","type":"address"},{"internalType":"uint256","name":"amount","type":"uint256"}],"name":"mint","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"name","outputs":[{"internalType":"string","name":"","type":"string"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"owner","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"account","type":"address"},{"internalType":"bool","name":"status","type":"bool"}],"name":"setMinter","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"symbol","outputs":[{"internalType":"string","name":"","type":"string"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"totalSupply","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"to","type":"address"},{"internalType":"uint256","name":"amount","type":"uint256"}],"name":"transfer","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"from","type":"address"},{"internalType":"address","name":"to","type":"address"},{"internalType":"uint256","name":"amount","type":"uint256"}],"name":"transferFrom","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"newOwner","type":"address"}],"name":"transferOwnership","outputs":[],"stateMutability":"nonpayable","type":"function"}];
+var BYTECODE="0x6080604052348015600e575f5ffd5b50600180546001600160a01b031916339081179091556040515f907f8be0079c531659141344cd1fd0a4f28419497f9722a3daafe3b4186f6b6457e0908290a36109cc8061005b5f395ff3fe608060405234801561000f575f5ffd5b50600436106100e5575f3560e01c80638da5cb5b11610088578063aa271e1a11610063578063aa271e1a14610226578063cf456ae714610248578063dd62ed3e1461025b578063f2fde38b14610285575f5ffd5b80638da5cb5b146101c557806395d89b41146101f0578063a9059cbb14610213575f5ffd5b806323b872dd116100c357806323b872dd14610164578063313ce5671461017757806340c10f191461019157806370a08231146101a6575f5ffd5b806306fdde03146100e9578063095ea7b31461012b57806318160ddd1461014e575b5f5ffd5b6101156040518060400160405280600d81526020016c0426173656c696e6720506f6f7609c1b81525081565b6040516101229190610820565b60405180910390f35b61013e610139366004610870565b610298565b6040519015158152602001610122565b6101565f5481565b604051908152602001610122565b61013e610172366004610898565b610304565b61017f601281565b60405160ff9091168152602001610122565b6101a461019f366004610870565b6104a8565b005b6101566101b43660046108d2565b60026020525f908152604090205481565b6001546101d8906001600160a01b031681565b6040516001600160a01b039091168152602001610122565b610115604051806040016040528060048152602001630504f4f560e41b81525081565b61013e610221366004610870565b6105bd565b61013e6102343660046108d2565b60046020525f908152604090205460ff1681565b6101a46102563660046108f2565b610696565b61015661026936600461092b565b600360209081525f928352604080842090915290825290205481565b6101a46102933660046108d2565b61073a565b335f8181526003602090815260408083206001600160a01b038716808552925280832085905551919290917f8c5be1e5ebec7d5bd14f71427d1e84f3dd0314c0f7b2291e5b200ac8c7c3b925906102f29086815260200190565b60405180910390a35060015b92915050565b6001600160a01b0383165f9081526002602052604081205482111561035f5760405162461bcd60e51b815260206004820152600c60248201526b1a5b9cdd59999a58da595b9d60a21b60448201526064015b60405180910390fd5b6001600160a01b0384165f9081526003602090815260408083203384529091529020548211156103c05760405162461bcd60e51b815260206004820152600c60248201526b1b9bdd08185c1c1c9bdd995960a21b6044820152606401610356565b6001600160a01b0384165f908152600360209081526040808320338452909152812080548492906103f2908490610970565b90915550506001600160a01b0384165f908152600260205260408120805484929061041e908490610970565b90915550506001600160a01b0383165f908152600260205260408120805484929061044a908490610983565b92505081905550826001600160a01b0316846001600160a01b03167fddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef8460405161049691815260200190565b60405180910390a35060019392505050565b335f9081526004602052604090205460ff166104f35760405162461bcd60e51b815260206004820152600a6024820152693737ba1036b4b73a32b960b11b6044820152606401610356565b6001600160a01b0382166105385760405162461bcd60e51b815260206004820152600c60248201526b7a65726f206164647265737360a01b6044820152606401610356565b805f5f8282546105489190610983565b90915550506001600160a01b0382165f9081526002602052604081208054839290610574908490610983565b90915550506040518181526001600160a01b038316905f907fddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef9060200160405180910390a35050565b335f9081526002602052604081205482111561060a5760405162461bcd60e51b815260206004820152600c60248201526b1a5b9cdd59999a58da595b9d60a21b6044820152606401610356565b335f9081526002602052604081208054849290610628908490610970565b90915550506001600160a01b0383165f9081526002602052604081208054849290610654908490610983565b90915550506040518281526001600160a01b0384169033907fddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef906020016102f2565b6001546001600160a01b031633146106dc5760405162461bcd60e51b81526020600482015260096024820152683737ba1037bbb732b960b91b6044820152606401610356565b6001600160a01b0382165f81815260046020908152604091829020805460ff191685151590811790915591519182527f583b0aa0e528532caf4b907c11d7a8158a122fe2a6fb80cd9b09776ebea8d92d910160405180910390a25050565b6001546001600160a01b031633146107805760405162461bcd60e51b81526020600482015260096024820152683737ba1037bbb732b960b91b6044820152606401610356565b6001600160a01b0381166107c55760405162461bcd60e51b815260206004820152600c60248201526b7a65726f206164647265737360a01b6044820152606401610356565b6001546040516001600160a01b038084169216907f8be0079c531659141344cd1fd0a4f28419497f9722a3daafe3b4186f6b6457e0905f90a3600180546001600160a01b0319166001600160a01b0392909216919091179055565b602081525f82518060208401528060208501604085015e5f604082850101526040601f19601f83011684010191505092915050565b80356001600160a01b038116811461086b575f5ffd5b919050565b5f5f60408385031215610881575f5ffd5b61088a83610855565b946020939093013593505050565b5f5f5f606084860312156108aa575f5ffd5b6108b384610855565b92506108c160208501610855565b929592945050506040919091013590565b5f602082840312156108e2575f5ffd5b6108eb82610855565b9392505050565b5f5f60408385031215610903575f5ffd5b61090c83610855565b915060208301358015158114610920575f5ffd5b809150509250929050565b5f5f6040838503121561093c575f5ffd5b61094583610855565b915061095360208401610855565b90509250929050565b634e487b7160e01b5f52601160045260245ffd5b818103818111156102fe576102fe61095c565b808201808211156102fe576102fe61095c56fea2646970667358221220f2f8521d12e73b2193dff04f8ff09f4fdbb9cde19ece7a60d017c3cf4d49814164736f6c63430008220033";
+
+var provider, signer, contract;
+var BASE_CHAIN_ID = "0x2105";
+
+async function connect() {
+  if (!window.ethereum) { alert("Install MetaMask"); return; }
+  await window.ethereum.request({ method: "eth_requestAccounts" });
+  await window.ethereum.request({ method: "wallet_switchEthereumChain", params: [{ chainId: BASE_CHAIN_ID }] });
+  provider = new ethers.BrowserProvider(window.ethereum);
+  signer = await provider.getSigner();
+  var addr = await signer.getAddress();
+  document.getElementById("walletStatus").textContent = "Connected: " + addr;
+  document.getElementById("deployBtn").disabled = false;
+  document.getElementById("deployBtn").style.opacity = "1";
+}
+
+async function deploy() {
+  document.getElementById("deployStatus").textContent = "Deploying...";
+  try {
+    var factory = new ethers.ContractFactory(ABI, BYTECODE, signer);
+    var c = await factory.deploy();
+    await c.waitForDeployment();
+    var addr = await c.getAddress();
+    contract = c;
+    document.getElementById("tokenAddr").textContent = addr;
+    document.getElementById("deployStatus").textContent = "Deployed! " + addr;
+    document.getElementById("deployStatus").style.color = "#4ade80";
+    refreshInfo();
+  } catch(e) {
+    document.getElementById("deployStatus").textContent = "Error: " + e.message;
+    document.getElementById("deployStatus").style.color = "#ef4444";
+  }
+}
+
+async function loadExisting() {
+  var addr = document.getElementById("existingAddr").value.trim();
+  if (!addr) return;
+  contract = new ethers.Contract(addr, ABI, signer);
+  document.getElementById("tokenAddr").textContent = addr;
+  refreshInfo();
+}
+
+async function refreshInfo() {
+  if (!contract) return;
+  try {
+    var [name, symbol, supply, owner] = await Promise.all([
+      contract.name(), contract.symbol(), contract.totalSupply(), contract.owner()
+    ]);
+    document.getElementById("infoName").textContent = name;
+    document.getElementById("infoSymbol").textContent = symbol;
+    document.getElementById("infoSupply").textContent = ethers.formatEther(supply) + " POOP";
+    document.getElementById("infoOwner").textContent = owner;
+  } catch(e) {
+    console.error(e);
+  }
+}
+
+async function setMinter(status) {
+  if (!contract) { alert("Deploy or load first"); return; }
+  var addr = document.getElementById("minterAddr").value.trim();
+  if (!addr) { alert("Enter minter address"); return; }
+  document.getElementById("minterStatus").textContent = (status ? "Granting" : "Revoking") + "...";
+  try {
+    var tx = await contract.setMinter(addr, status);
+    await tx.wait();
+    document.getElementById("minterStatus").textContent = (status ? "Granted" : "Revoked") + " minter: " + addr;
+    document.getElementById("minterStatus").style.color = status ? "#4ade80" : "#ef4444";
+  } catch(e) {
+    document.getElementById("minterStatus").textContent = "Error: " + e.message;
+    document.getElementById("minterStatus").style.color = "#ef4444";
+  }
+}
+
+async function checkMinter() {
+  if (!contract) return;
+  var addr = document.getElementById("checkAddr").value.trim();
+  if (!addr) return;
+  var is = await contract.isMinter(addr);
+  document.getElementById("checkResult").textContent = addr.slice(0,10) + "... is " + (is ? "MINTER" : "NOT minter");
+  document.getElementById("checkResult").style.color = is ? "#4ade80" : "#ef4444";
+}
+
+async function testMint() {
+  if (!contract) { alert("Deploy or load first"); return; }
+  var amt = document.getElementById("mintAmt").value;
+  var addr = await signer.getAddress();
+  document.getElementById("mintStatus").textContent = "Minting...";
+  try {
+    var tx = await contract.mint(addr, ethers.parseEther(amt));
+    await tx.wait();
+    document.getElementById("mintStatus").textContent = "Minted " + amt + " POOP!";
+    document.getElementById("mintStatus").style.color = "#4ade80";
+    refreshInfo();
+  } catch(e) {
+    document.getElementById("mintStatus").textContent = "Error: " + e.message;
+    document.getElementById("mintStatus").style.color = "#ef4444";
+  }
+}
+</script>
+</body>
+</html>

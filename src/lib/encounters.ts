@@ -818,14 +818,46 @@ const CLASS_LEVELS: ClassLevel[] = [
   { label: "Druid 1",     hpBonus: 6, acBonus: 0, atkBonus: 0, dmgBonus: 0, reqWis: 3 },
 ];
 
-/** Pick a class the monster qualifies for based on its stats */
+/** Pick a class the monster qualifies for, weighted toward its highest stat */
 function pickClassForMonster(m: Monster): ClassLevel {
   const eligible = CLASS_LEVELS.filter(c =>
     (!c.reqInt || m.int >= c.reqInt) &&
     (!c.reqWis || m.wis >= c.reqWis) &&
     (!c.reqCha || m.cha >= c.reqCha)
   );
-  return eligible[Math.floor(Math.random() * eligible.length)];
+
+  // Stat-to-class affinity: classes that match the monster's strongest stat
+  const statClasses: Record<string, string[]> = {
+    str: ["Fighter", "Barbarian"],
+    dex: ["Rogue", "Ranger"],
+    int: ["Wizard"],
+    wis: ["Cleric", "Druid"],
+    cha: ["Sorcerer"],
+  };
+
+  // Find the monster's highest stat(s) among str/dex/int/wis/cha
+  const statVals = { str: m.str, dex: m.dex, int: m.int, wis: m.wis, cha: m.cha };
+  const peak = Math.max(...Object.values(statVals));
+  const topStats = (Object.keys(statVals) as (keyof typeof statVals)[]).filter(k => statVals[k] === peak);
+
+  // Build set of favored class names from top stats
+  const favored = new Set<string>();
+  for (const s of topStats) {
+    for (const cls of statClasses[s] ?? []) favored.add(cls);
+  }
+
+  // Weight: 3x for favored classes, 1x for everything else
+  const weights = eligible.map(c => {
+    const className = c.label.replace(/\s*\d+$/, "");
+    return favored.has(className) ? 3 : 1;
+  });
+  const total = weights.reduce((a, b) => a + b, 0);
+  let roll = Math.random() * total;
+  for (let i = 0; i < eligible.length; i++) {
+    roll -= weights[i];
+    if (roll <= 0) return eligible[i];
+  }
+  return eligible[eligible.length - 1]; // fallback
 }
 
 /** Apply class levels to a monster — returns a boosted copy */

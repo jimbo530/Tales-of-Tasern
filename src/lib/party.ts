@@ -680,8 +680,8 @@ export function swapActiveParty(
     food: np.food ?? 0,
     inventory: np.inventory ?? [],
     equipment: np.equipment ?? {},
-    current_hp: np.current_hp ?? 12,
-    max_hp: np.max_hp ?? 12,
+    current_hp: np.current_hp ?? np.max_hp ?? np.heroes?.[0]?.progression?.max_hp ?? (np.heroes?.[0]?.progression?.total_level ?? 1) * 6,
+    max_hp: np.max_hp ?? np.heroes?.[0]?.progression?.max_hp ?? (np.heroes?.[0]?.progression?.total_level ?? 1) * 6,
   };
 }
 
@@ -699,8 +699,8 @@ export function migratePartySupplies(
     food: i === activeIndex ? current.food : 0,
     inventory: i === activeIndex ? current.inventory : [],
     equipment: i === activeIndex ? current.equipment : {},
-    current_hp: i === activeIndex ? current.current_hp : 12,
-    max_hp: i === activeIndex ? current.max_hp : 12,
+    current_hp: i === activeIndex ? current.current_hp : p.heroes?.[0]?.progression?.max_hp ?? (p.heroes?.[0]?.progression?.total_level ?? 1) * 6,
+    max_hp: i === activeIndex ? current.max_hp : p.heroes?.[0]?.progression?.max_hp ?? (p.heroes?.[0]?.progression?.total_level ?? 1) * 6,
   }));
 }
 

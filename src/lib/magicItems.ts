@@ -1194,3 +1194,70 @@ export const MAGIC_WONDROUS = [
     "A small iron bottle that can imprison extraplanar beings.",
     "Trap one outsider (Will DC 19). Release later — serves you for 1 hour (or attacks)", 75),
 ];
+
+// ══════════════════════════════════════════════════════════════
+//  ARTIFACT QUEST ITEMS  (key items found during artifact quest legs)
+//  Not equippable — carried in inventory. Category "gear", weight 0.5 lb, 0 gp.
+// ══════════════════════════════════════════════════════════════
+
+export const ARTIFACT_QUEST_ITEMS = [
+  // --- Sword of Kas quest chain ---
+  mi("kas_map_fragment", "Catacomb Map Fragment", "gear", 0, 0.5,
+    "A stone rubbing showing passages beneath the Iron Maw. The ink smells of grave dust."),
+  mi("kas_journal", "Journal of the Entombed", "gear", 0, 0.5,
+    "A cracked leather journal describing a vault where shadow bleeds into stone. The later entries are written in a hand that isn't the author's."),
+  mi("kas_scabbard", "Scabbard of Kas", "gear", 0, 1,
+    "A jet-black scabbard inscribed with shifting runes. It hums faintly, searching for its blade."),
+
+  // --- Orb of Dragonkind quest chain ---
+  mi("kobold_hide_map", "Kobold Hide Map", "gear", 0, 0.5,
+    "A crude map scratched onto dragon hide, showing a mountain pass marked with a skull icon and the kobold word for holy."),
+  mi("draconic_inscription_rubbing", "Draconic Inscription Rubbing", "gear", 0, 0.5,
+    "A charcoal rubbing of Draconic script carved into an ancient dragon skull. It describes a sanctum accessible through the Wyrm's Throat."),
+  mi("wyrm_priest_key", "Wyrm Priest's Orb Shard", "gear", 0, 0.5,
+    "A shard of volcanic glass taken from the wyrm priest's sanctum. It radiates faint warmth and smells of sulfur."),
+
+  // --- Book of Infinite Spells quest chain ---
+  mi("aldermach_workshop_journal", "Aldermach's Workshop Journal", "gear", 0, 0.5,
+    "A wizard's journal with meticulous early entries that devolve into three different handwritings, none of them the author's."),
+  mi("aldermach_sanctum_key", "Sanctum Key", "gear", 0, 0.5,
+    "A brass key warm to the touch, taken from a dead wizard's robes. It opens a door to a room that shouldn't exist."),
+
+  // --- Iron Flask quest chain ---
+  mi("cracked_iron_flask", "Cracked Iron Flask", "gear", 0, 1,
+    "A heavy iron bottle covered in binding sigils that glow faintly red. Cracks web the seal. Something inside is pushing outward."),
+  mi("kael_unbinding_scroll", "Kael's Unbinding Scroll", "gear", 0, 0.5,
+    "A scroll of exorcism rites penned by Sister Kael in trembling hand. The ink is mixed with holy water and the writer's blood."),
+
+  // --- Axe of the Dwarvish Lords quest chain ---
+  mi("bhalanur_stone_tablet", "Stone Tablet of Bhalanur", "gear", 0, 2,
+    "A heavy stone tablet carved with dwarven runes and a map to the lost forge-city of Bhalanur. Stained with the blood of the dwarf who carried it."),
+  mi("bhalanur_forge_directions", "Forge of First Fire Directions", "gear", 0, 0.5,
+    "Dwarven script copied from the deep halls of Bhalanur, pointing the way to the Forge of First Fire where the Lords' weapon was shaped."),
+  mi("bhalanur_inner_key", "Inner Sanctum Key", "gear", 0, 1,
+    "A key of solid mithral, released when the forge guardians fell. It thrums with residual heat from Bhalanur's molten heart."),
+];
+
+// ══════════════════════════════════════════════════════════════
+//  ARTIFACT ITEMS  (final rewards from artifact quest chains)
+//  Legendary items — the most powerful equipment in the game.
+//  Value 100000 gp is a placeholder (priceless, but the system needs a number).
+// ══════════════════════════════════════════════════════════════
+
+export const ARTIFACT_ITEMS = [
+  mi("sword_of_kas", "Sword of Kas", "weapon", 100000, 4,
+    "A black-bladed longsword that severed the Hand of Vecna in a forgotten age. It whispers to its wielder in dreams, hungry and patient, remembering the taste of a god's flesh.",
+    "+5 ATK, +3d6 necrotic damage, once per battle: instant kill on critical hit"),
+  mi("orb_of_dragonkind", "Orb of Dragonkind", "gear", 100000, 3,
+    "A sphere of smoky crystal pulsing with inner fire. Dragons for miles around feel its pull like a hook in the jaw. Those who gaze into it see the shadow of wings.",
+    "Once per battle: dominate dragon (Will DC 25). Passive: immunity to dragon breath, +4 CHA"),
+  mi("book_of_infinite_spells", "Book of Infinite Spells", "gear", 100000, 3,
+    "A leather-bound tome that writes itself endlessly. Each page holds a different spell, and the pages never end. The first page always reads: Hello, new reader.",
+    "Once per rest: cast any spell up to 6th level without using a slot"),
+  mi("iron_flask", "Iron Flask", "gear", 100000, 1,
+    "A sealed iron vessel etched with sigils of binding. It can capture and contain extraplanar beings, compressing their essence into cold iron silence.",
+    "Once per battle: capture a defeated enemy (stores 1 creature). Release to fight for you."),
+  mi("axe_of_dwarvish_lords", "Axe of the Dwarvish Lords", "weapon", 100000, 8,
+    "A mithral-edged greataxe forged in the heart of Bhalanur. The founding runes of the dwarven kingdoms glow along its haft, and the mountain itself seemed to roar when its last guardian fell.",
+    "+5 ATK, +2d6 damage, once per battle: Sundering Strike (destroy enemy shield/armor). +4 CON"),
+];

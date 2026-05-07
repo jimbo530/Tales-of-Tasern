@@ -28,18 +28,21 @@ export type LevelUpEntry = {
   toLevel: number;
 };
 
+export type SyncStatus = "saved" | "saving" | "error" | "offline";
+
 export function useCharacterSave() {
   const { address, isConnected } = useAccount();
   const [save, setSave] = useState<CharacterSave | null>(null);
   const [loading, setLoading] = useState(false);
   const [hasCharacter, setHasCharacter] = useState(false);
   const [online, setOnline] = useState(typeof navigator !== "undefined" ? navigator.onLine : true);
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>("saved");
   const dirtyRef = useRef(false);
 
-  // Track online/offline status
+  // Track online/offline status and reflect in syncStatus
   useEffect(() => {
-    const goOnline = () => setOnline(true);
-    const goOffline = () => setOnline(false);
+    const goOnline = () => { setOnline(true); setSyncStatus("saved"); };
+    const goOffline = () => { setOnline(false); setSyncStatus("offline"); };
     window.addEventListener("online", goOnline);
     window.addEventListener("offline", goOffline);
     return () => {
@@ -71,22 +74,38 @@ export function useCharacterSave() {
     });
   }, [address, isConnected]);
 
-  // Auto-save locally every 30s if dirty, cloud every 60s
+  // Auto-save every 30s if dirty: local write is instant, cloud write is awaited
   useEffect(() => {
     if (!save) return;
-    const interval = setInterval(() => {
+    const interval = setInterval(async () => {
       if (dirtyRef.current && save) {
         // Local save is instant and always works
         setLocalSave(save);
-        // Cloud backup is best-effort
-        saveCharacter(save);
-        dirtyRef.current = false;
+
+        if (!navigator.onLine) {
+          setSyncStatus("offline");
+          // dirtyRef stays true — will retry when back online / next interval
+          return;
+        }
+
+        setSyncStatus("saving");
+        const ok = await saveCharacter(save);
+        if (ok) {
+          dirtyRef.current = false;
+          setSyncStatus("saved");
+        } else {
+          setSyncStatus("error");
+          // dirtyRef stays true — will retry on the next interval
+        }
       }
     }, 30000);
     return () => clearInterval(interval);
   }, [save]);
 
-  // Save locally on tab close (synchronous, always works)
+  // Save locally on tab close — synchronous localStorage only.
+  // beforeunload handlers cannot await async work (the browser won't wait),
+  // so cloud sync is intentionally skipped here. The next session will pick up
+  // the local save and sync it to cloud on load via syncToCloud().
   useEffect(() => {
     function handleUnload() {
       if (save && dirtyRef.current) {
@@ -325,6 +344,7 @@ export function useCharacterSave() {
     loading,
     hasCharacter,
     online,
+    syncStatus,
     createCharacter,
     updateSave,
     forceSave,

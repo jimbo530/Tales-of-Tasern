@@ -1,3 +1,15 @@
+## HARD STOPS — NEVER VIOLATE THESE
+
+1. **NEVER execute on-chain transactions without explicit user approval.** This includes deploying contracts, minting positions, transferring tokens/NFTs, calling contract functions, or any action that spends gas or moves assets. Write the code, explain what it does, and WAIT for "yes."
+2. **NEVER batch irreversible actions.** One transaction at a time. Confirm result. Ask before the next one.
+3. **Token flow confirmation is MANDATORY.** Before ANY on-chain action, present a numbered list: 1> this happens, 2> then this, 3> then this. Wait for explicit "yes" or "go." The word "get started" means start EXPLAINING, not start EXECUTING.
+4. **"Get started" means begin the first step and check in.** It does NOT mean run the entire pipeline autonomously.
+5. **If in doubt, STOP and ASK.** The cost of asking is zero. The cost of a wrong transaction is permanent.
+
+Previous violation: On 2026-04-27, Claude executed 12 irreversible on-chain transactions (4 V3 position mints, 4 NFT transfers to a no-withdraw contract, 4 addPool calls) without user approval, locking ~964K DDD (~$500+) permanently. This happened despite explicit memory rules requiring token flow confirmation. NEVER repeat this.
+
+---
+
 # Tales of Tasern D20 Hex RPG
 
 This is the **d20-stats hex exploration RPG**. It is NOT the simpler card-battle game.

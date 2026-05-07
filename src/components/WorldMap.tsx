@@ -4,7 +4,8 @@ import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import { type CharacterSave, type Coins, type Equipment, travel, HOURS_PER_ACTION, formatCoins, totalCp, canAfford, cpToCoins, coinWeight, exchangeUp, isQuestOnCooldown, isQuestOnDayCooldown, dayCooldownRemaining, xpToNextLevel, getExhaustionPoints, exhaustedStat, lowestExhaustedStat } from "@/lib/saveSystem";
 import type { NftCharacter } from "@/hooks/useNftStats";
 import { getZone, getLevelRange, generateFightEncounter, generateLootDrop, rollGoodEncounter, KARDOV_GOOD_D20, KARDOV_NOTHING, KARDOV_SOCIAL, WIZARD_GIFTS, type EncounterData, type LootDrop } from "@/lib/encounters";
-import { getShopsForLocation, getAvailableItems, type Shop, type ShopItem } from "@/lib/shops";
+import { getShopsForLocation, type Shop, type ShopItem } from "@/lib/shops";
+import { ShopPanel } from "@/components/ShopPanel";
 import { SKILLS, abilityMod as calcAbilityMod } from "@/lib/skills";
 import { hireFollower, FACTION_TEMPLATES, maxFollowers, giveGift, type Follower } from "@/lib/party";
 import { rollFieldTreasure, rollTreasure, d, nd } from "@/lib/treasure";
@@ -17,6 +18,7 @@ import { DEFAULT_BOON_FIELDS } from "@/lib/computeD20Stats";
 import { getItemInfo, getItemWeight } from "@/lib/itemRegistry";
 import { ALL_SHIPS, shipsForSale, getShip, purchaseShip, effectiveShipSpeed, hoursPerWaterHex, repairCostGp, type OwnedShip, type Ship as ShipData } from "@/lib/ships";
 import { rollFarmDrop, rollWildernessFoodDrop, rollHuntedFood, type FoodItem, type FreshFoodItem } from "@/lib/foodItems";
+import { ARTIFACT_QUESTS, GONE_ARTIFACT_RUMORS, type ArtifactQuestLeg, type ArtifactEnemyDef } from "@/lib/artifactQuests";
 import type { QuestEncounter } from "@/components/HexBattle";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -2193,6 +2195,7 @@ type Props = {
   onDisembark?: () => void;
   onBack: () => void;
   onPowerUp?: () => void;
+  onEscapeFight?: () => void;  // clear pending fight when escape succeeds
 };
 
 // ── Travel speed by terrain ─────────────────────────────────────────────
@@ -2229,7 +2232,14 @@ function getEquipSlot(itemId: string, info: { category: string; name: string } |
   return null;
 }
 
-export function WorldMap({ save, character, characters, onTravel, onAction, onBuyItem, onBattle, onQuestBattle, onExhaustionCollapse, onInventory, onEquip, onUnequip, onSwitchParty, onCreateParty, onAddHero, onRemoveHero, onExchange, onSetAutoAction, onCollectMail, onGiveGift, onBuyShip, onBoardShip, onDisembark, onBack, onPowerUp }: Props) {
+/** Proxy external image URLs through /api/images to avoid CORS in SVG <image> */
+function proxyImg(url: string | undefined): string | undefined {
+  if (!url) return undefined;
+  if (url.startsWith("/")) return url;  // local path — no proxy needed
+  return `/api/images?url=${encodeURIComponent(url)}`;
+}
+
+export function WorldMap({ save, character, characters, onTravel, onAction, onBuyItem, onBattle, onQuestBattle, onExhaustionCollapse, onInventory, onEquip, onUnequip, onSwitchParty, onCreateParty, onAddHero, onRemoveHero, onExchange, onSetAutoAction, onCollectMail, onGiveGift, onBuyShip, onBoardShip, onDisembark, onBack, onPowerUp, onEscapeFight }: Props) {
   const [selectedHex, setSelectedHex] = useState<MapHex | null>(null);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -2418,6 +2428,93 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
       if (hobgoblin) enemies.push(createMonsterSpec(hobgoblin, "\u2694\uFE0F")); // leader
       setPendingQuest({ questId: "rumor_lost_caravan", questName: "Lost Caravan", enemies, difficulty: "medium" });
       return;
+    }
+
+    // ── Artifact quest legs ──
+    if (lastAction.outcome === "find_quest") {
+      const desc = lastAction.description.toLowerCase();
+      for (const quest of ARTIFACT_QUESTS) {
+        for (const leg of quest.legs) {
+          if (desc.includes(leg.questKeyword)) {
+            // Build enemy array from ArtifactEnemyDef
+            const enemies: EnemySpec[] = [];
+            for (const eDef of leg.enemies) {
+              if (eDef.type === "monster") {
+                const m = MONSTERS.find(mm => mm.id === eDef.monsterId);
+                if (!m) continue;
+                const count = eDef.count === "scale"
+                  ? Math.floor(Math.random() * 3) + 2 + Math.floor(save.level / 2)
+                  : eDef.count;
+                for (let i = 0; i < count; i++) {
+                  const spec = createMonsterSpec(m, eDef.emoji);
+                  if (eDef.nameOverride) spec.name = eDef.nameOverride;
+                  if (eDef.hpBoost) spec.hpOverride = (spec.hpOverride ?? m.hp) + eDef.hpBoost;
+                  enemies.push(spec);
+                }
+              } else {
+                // Custom enemy
+                enemies.push({
+                  name: eDef.name,
+                  imageEmoji: eDef.emoji,
+                  stats: eDef.stats as any,
+                  subtypes: eDef.subtypes,
+                  hpOverride: eDef.hpOverride,
+                });
+              }
+            }
+            if (enemies.length > 0) {
+              setPendingQuest({
+                questId: leg.legId,
+                questName: `${quest.name}: ${leg.legName}`,
+                enemies,
+                difficulty: leg.difficulty,
+              });
+              return;
+            }
+          }
+        }
+      }
+    }
+
+    // ── Standalone "gone" artifact quests ──
+    if (lastAction.outcome === "find_quest") {
+      for (const gq of GONE_ARTIFACT_RUMORS) {
+        if (lastAction.description === gq.desc) {
+          const enemies: EnemySpec[] = [];
+          for (const eDef of gq.enemies) {
+            if (eDef.type === "monster") {
+              const m = MONSTERS.find(mm => mm.id === eDef.monsterId);
+              if (!m) continue;
+              const count = eDef.count === "scale"
+                ? Math.floor(Math.random() * 3) + 2 + Math.floor(save.level / 2)
+                : eDef.count;
+              for (let i = 0; i < count; i++) {
+                const spec = createMonsterSpec(m, eDef.emoji);
+                if (eDef.nameOverride) spec.name = eDef.nameOverride;
+                if (eDef.hpBoost) spec.hpOverride = (spec.hpOverride ?? m.hp) + eDef.hpBoost;
+                enemies.push(spec);
+              }
+            } else {
+              enemies.push({
+                name: eDef.name,
+                imageEmoji: eDef.emoji,
+                stats: eDef.stats as any,
+                subtypes: eDef.subtypes,
+                hpOverride: eDef.hpOverride,
+              });
+            }
+          }
+          if (enemies.length > 0) {
+            setPendingQuest({
+              questId: gq.id,
+              questName: gq.id.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()),
+              enemies,
+              difficulty: gq.difficulty,
+            });
+            return;
+          }
+        }
+      }
     }
 
     // Thug fight — use the pre-rolled count from calculateWorldLuck
@@ -2612,7 +2709,13 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
     }
   }, [centerOnPlayer, getMinZoom]);
 
-  // Mouse wheel → zoom (centered on cursor)
+  // Keep refs in sync so the wheel handler always reads fresh values
+  const zoomRef = useRef(zoom);
+  const panRef = useRef(pan);
+  zoomRef.current = zoom;
+  panRef.current = pan;
+
+  // Mouse wheel → zoom (centered on cursor) — stable handler via refs
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -2622,7 +2725,8 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
       const mx = e.clientX - rect.left;
       const my = e.clientY - rect.top;
 
-      const oldZoom = zoom;
+      const oldZoom = zoomRef.current;
+      const curPan = panRef.current;
       const delta = e.deltaY > 0 ? -0.2 : 0.2;
       const newZoom = Math.min(MAX_ZOOM, Math.max(getMinZoom(), +(oldZoom + delta).toFixed(1)));
       if (newZoom === oldZoom) return;
@@ -2630,7 +2734,7 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
       // Zoom toward cursor: adjust pan so the point under cursor stays fixed
       const scale = newZoom / oldZoom;
       const newMapSize = VB * newZoom;
-      const newP = { x: mx - scale * (mx - pan.x), y: my - scale * (my - pan.y) };
+      const newP = { x: mx - scale * (mx - curPan.x), y: my - scale * (my - curPan.y) };
       // Clamp inline since mapSize changes with new zoom
       newP.x = Math.min(0, Math.max(rect.width - newMapSize, newP.x));
       newP.y = Math.min(0, Math.max(rect.height - newMapSize, newP.y));
@@ -2639,7 +2743,7 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
     }
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
-  }, [zoom, pan, getMinZoom]);
+  }, [getMinZoom]);  // stable — no zoom/pan deps needed
 
   // Click+drag to pan (suppress hex click if dragged > 5px)
   const wasDrag = useRef(false);
@@ -2732,16 +2836,17 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
     if (!el) return;
     const rect = el.getBoundingClientRect();
     const cx = rect.width / 2, cy = rect.height / 2;
-    const oldZoom = zoom;
-    const newZoom = Math.min(MAX_ZOOM, Math.max(getMinZoom(), +(oldZoom + delta).toFixed(1)));
-    const scale = newZoom / oldZoom;
-    const newMapSize = VB * newZoom;
-    setPan(p => {
-      const nx = cx - scale * (cx - p.x);
-      const ny = cy - scale * (cy - p.y);
-      return { x: Math.min(0, Math.max(rect.width - newMapSize, nx)), y: Math.min(0, Math.max(rect.height - newMapSize, ny)) };
+    setZoom(prev => {
+      const newZoom = Math.min(MAX_ZOOM, Math.max(getMinZoom(), +(prev + delta).toFixed(1)));
+      const scale = newZoom / prev;
+      const newMapSize = VB * newZoom;
+      setPan(p => {
+        const nx = cx - scale * (cx - p.x);
+        const ny = cy - scale * (cy - p.y);
+        return { x: Math.min(0, Math.max(rect.width - newMapSize, nx)), y: Math.min(0, Math.max(rect.height - newMapSize, ny)) };
+      });
+      return newZoom;
     });
-    setZoom(newZoom);
   }
 
   const mapSize = VB * zoom;
@@ -3483,7 +3588,7 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
                               </clipPath>
                             </defs>
                             <image
-                              href={character.imageUrl}
+                              href={proxyImg(character.imageUrl)}
                               x={x - HEX_SIZE * 0.7} y={y - HEX_SIZE * 0.7}
                               width={HEX_SIZE * 1.4} height={HEX_SIZE * 1.4}
                               clipPath="url(#hex-avatar)"
@@ -3515,7 +3620,7 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
                             {partyNft?.imageUrl ? (
                               <>
                                 <defs><clipPath id={`clip-${p.id}`}><circle cx={x} cy={y} r={HEX_SIZE * 0.55} /></clipPath></defs>
-                                <image href={partyNft.imageUrl} x={x - HEX_SIZE * 0.55} y={y - HEX_SIZE * 0.55}
+                                <image href={proxyImg(partyNft.imageUrl)} x={x - HEX_SIZE * 0.55} y={y - HEX_SIZE * 0.55}
                                   width={HEX_SIZE * 1.1} height={HEX_SIZE * 1.1}
                                   clipPath={`url(#clip-${p.id})`} preserveAspectRatio="xMidYMid slice" />
                                 <circle cx={x} cy={y} r={HEX_SIZE * 0.55}
@@ -3779,99 +3884,19 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
 
               // ── Market District ──
               if (cityDistrict === "market") {
-                if (!cityShop) {
-                  return (
-                    <div className="mt-2 flex flex-col gap-1">
-                      <button onClick={() => setCityDistrict(null)} className="self-start px-2 py-0.5 rounded text-xs"
-                        style={{ color: "rgba(201,168,76,0.5)", border: "1px solid rgba(201,168,76,0.1)", fontSize: "0.4rem" }}>
-                        ← Back to Districts
-                      </button>
-                      <div style={{ fontSize: "0.45rem", color: "rgba(201,168,76,0.5)", letterSpacing: "0.1em" }} className="font-bold uppercase">
-                        {"\u{1F6D2}"} Market District
-                      </div>
-                      <div className="flex flex-col gap-0.5">
-                        {shops.map(shop => (
-                          <button key={shop.id} onClick={() => setCityShop(shop.id)}
-                            className="w-full text-left px-2 py-1.5 rounded transition-all hover:bg-white/5"
-                            style={{ background: "rgba(0,0,0,0.15)", border: "1px solid rgba(201,168,76,0.08)" }}>
-                            <span style={{ fontSize: "0.55rem" }}>{shop.emoji}</span>
-                            <span className="ml-1 text-xs font-bold" style={{ color: "rgba(232,213,176,0.8)", fontSize: "0.5rem" }}>{shop.name}</span>
-                            <span className="ml-1" style={{ fontSize: "0.4rem", color: "rgba(232,213,176,0.35)" }}>— {shop.description}</span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                }
-                // ── Inside a shop ──
-                const shop = shops.find(s => s.id === cityShop);
-                if (!shop) { setCityShop(null); return null; }
-                const items = getAvailableItems(shop, save.day, isKardov);
                 return (
-                  <div className="mt-2 flex flex-col gap-1">
-                    <div className="flex gap-1">
-                      <button onClick={() => setCityShop(null)} className="px-2 py-0.5 rounded text-xs"
-                        style={{ color: "rgba(201,168,76,0.5)", border: "1px solid rgba(201,168,76,0.1)", fontSize: "0.4rem" }}>
-                        ← Shops
-                      </button>
-                      <button onClick={() => { setCityDistrict(null); setCityShop(null); }} className="px-2 py-0.5 rounded text-xs"
-                        style={{ color: "rgba(201,168,76,0.3)", border: "1px solid rgba(201,168,76,0.06)", fontSize: "0.4rem" }}>
-                        ← Districts
-                      </button>
-                    </div>
-                    <div style={{ fontSize: "0.5rem", color: "rgba(232,213,176,0.8)" }} className="font-bold">
-                      {shop.emoji} {shop.name}
-                    </div>
-                    <div className="flex flex-col gap-0.5 max-h-48 overflow-y-auto pr-1">
-                      {items.map(item => {
-                        const canBuy = totalCp(save.coins) >= item.buyPrice;
-                        return (
-                          <div key={item.id} className="flex items-center gap-1 px-2 py-1 rounded"
-                            style={{ background: "rgba(0,0,0,0.15)", border: "1px solid rgba(201,168,76,0.06)" }}>
-                            <div className="flex-1 min-w-0">
-                              <div className="text-xs font-bold truncate" style={{ color: "rgba(232,213,176,0.8)", fontSize: "0.5rem" }}>{item.name}</div>
-                              <div style={{ fontSize: "0.35rem", color: "rgba(232,213,176,0.35)" }}>{item.description}</div>
-                              {item.effect && <div style={{ fontSize: "0.35rem", color: "rgba(96,165,250,0.5)" }}>{item.effect}</div>}
-                            </div>
-                            <button onClick={() => { if (canBuy) onBuyItem(item); }}
-                              disabled={!canBuy}
-                              className="px-2 py-0.5 rounded whitespace-nowrap"
-                              style={{
-                                background: canBuy ? "rgba(74,222,128,0.1)" : "rgba(255,255,255,0.02)",
-                                color: canBuy ? "rgba(74,222,128,0.8)" : "rgba(232,213,176,0.2)",
-                                border: `1px solid ${canBuy ? "rgba(74,222,128,0.2)" : "rgba(201,168,76,0.05)"}`,
-                                fontSize: "0.45rem",
-                              }}>
-                              {formatCoins(cpToCoins(item.buyPrice))}
-                            </button>
-                          </div>
-                        );
-                      })}
-                    </div>
-                    {/* Money Changer — merchants take 5% */}
-                    <button onClick={() => {
-                        const total = totalCp(save.coins);
-                        if (total <= 0) return;
-                        const newCoins = exchangeUp(save.coins, 0.05);
-                        const fee = total - totalCp(newCoins);
-                        const result: WorldLuckResult = {
-                          worldRoll: 0, skillRoll: 0, skillDC: 0,
-                          interaction: "rest", outcome: "nothing",
-                          description: `The jeweler exchanges your coin. ${formatCoins(save.coins)} → ${formatCoins(newCoins)} (5% fee).`,
-                          hpChange: 0, goldChange: -fee, foodChange: 0, xpChange: 0,
-                        };
-                        setLastAction(result); onAction(result);
-                      }}
-                      disabled={save.coins.sp + save.coins.cp <= 0}
-                      className="px-2 py-1.5 rounded text-xs font-bold mt-1"
-                      style={{
-                        background: "rgba(251,191,36,0.08)", color: "rgba(251,191,36,0.7)",
-                        border: "1px solid rgba(251,191,36,0.2)", fontSize: "0.5rem",
-                        opacity: save.coins.sp + save.coins.cp <= 0 ? 0.4 : 1,
-                      }}>
-                      {"\u{1F48E}"} Jeweler&apos;s Exchange (5% fee — consolidate coin)
-                    </button>
-                  </div>
+                  <ShopPanel
+                    shops={shops}
+                    activeShopId={cityShop}
+                    onSelectShop={setCityShop}
+                    coins={save.coins}
+                    gameDay={save.day}
+                    isKardov={isKardov}
+                    onBuyItem={onBuyItem}
+                    onMoneyChange={(result) => { setLastAction(result); onAction(result); }}
+                    onBackToShops={() => setCityShop(null)}
+                    onBackToDistricts={() => { setCityDistrict(null); setCityShop(null); }}
+                  />
                 );
               }
 
@@ -4238,21 +4263,74 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
                         const availRumors = rumorQuests.filter(q =>
                           combined >= q.minCombined && !qFlags[q.flag]);
 
+                        // ── Artifact quest legs ──
+                        // Find the next available leg across all artifact quest chains
+                        const availArtifactLegs: { quest: typeof ARTIFACT_QUESTS[0]; leg: ArtifactQuestLeg }[] = [];
+                        for (const quest of ARTIFACT_QUESTS) {
+                          // First check if the rumor has been heard (first leg prereq includes rumorFlag)
+                          // For the initial rumor discovery, add to rumor pool if not yet heard
+                          if (!qFlags[quest.rumorFlag] && combined >= quest.minCombined) {
+                            // Not yet discovered — will be offered as a rumor below
+                            continue;
+                          }
+                          // Find next incomplete leg
+                          for (const leg of quest.legs) {
+                            if (qFlags[leg.completionFlag]) continue; // already done
+                            if (leg.prereqFlags.every(f => qFlags[f]) && save.level >= leg.minLevel) {
+                              availArtifactLegs.push({ quest, leg });
+                              break; // only offer one leg per quest chain
+                            }
+                            break; // if this leg isn't available, don't check further legs
+                          }
+                        }
+
+                        // Add initial artifact rumors to the rumor pool
+                        const artifactRumors: RumorQuest[] = ARTIFACT_QUESTS
+                          .filter(q => !qFlags[q.rumorFlag] && combined >= q.minCombined)
+                          .map(q => ({
+                            id: `artifact_rumor_${q.id}`,
+                            flag: q.rumorFlag,
+                            minCombined: q.minCombined,
+                            desc: q.legs[0].description,
+                          }));
+
+                        // Standalone "gone" artifact rumors — one-time quests where the artifact is always already taken
+                        const goneRumors: RumorQuest[] = GONE_ARTIFACT_RUMORS
+                          .filter(q => !qFlags[q.flag] && combined >= q.minCombined && save.level >= q.minLevel)
+                          .map(q => ({
+                            id: q.id,
+                            flag: q.flag,
+                            minCombined: q.minCombined,
+                            desc: q.desc,
+                          }));
+
+                        const allRumors = [...availRumors, ...artifactRumors, ...goneRumors];
+
                         // Roll for what you hear: quests first (30% chance if available), then bard gig, then normal work
                         const questRoll = Math.random();
-                        const offerRumor = availRumors.length > 0 && questRoll < 0.15;
-                        const offerRepeatable = !offerRumor && availRepeatable.length > 0 && questRoll < 0.35;
+                        const offerRumor = allRumors.length > 0 && questRoll < 0.15;
+                        const offerArtifactLeg = !offerRumor && availArtifactLegs.length > 0 && questRoll < 0.25;
+                        const offerRepeatable = !offerRumor && !offerArtifactLeg && availRepeatable.length > 0 && questRoll < 0.35;
 
                         let result: WorldLuckResult;
 
                         if (offerRumor) {
-                          // One-time rumor — mysterious lead
-                          const rumor = availRumors[Math.floor(Math.random() * availRumors.length)];
+                          // One-time rumor — mysterious lead (includes artifact quest rumors)
+                          const rumor = allRumors[Math.floor(Math.random() * allRumors.length)];
                           result = {
                             worldRoll: wRoll, skillRoll: sRoll, skillUsed: "Diplomacy", skillDC: rumor.minCombined,
                             interaction: "skill", outcome: "find_quest",
                             description: rumor.desc,
                             hpChange: 0, goldChange: 0, foodChange: 0, xpChange: 5,
+                          };
+                        } else if (offerArtifactLeg) {
+                          // Artifact quest leg — multi-part chain
+                          const pick = availArtifactLegs[Math.floor(Math.random() * availArtifactLegs.length)];
+                          result = {
+                            worldRoll: wRoll, skillRoll: sRoll, skillUsed: "Diplomacy", skillDC: pick.quest.minCombined,
+                            interaction: "skill", outcome: "find_quest",
+                            description: pick.leg.description,
+                            hpChange: 0, goldChange: 0, foodChange: 0, xpChange: 10,
                           };
                         } else if (offerRepeatable) {
                           // Repeatable job posting
@@ -5125,6 +5203,7 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
                               if (total >= dc) {
                                 setEscapeResult({ roll: total, dc, success: true });
                                 setPendingQuest(null);
+                                onEscapeFight?.();  // clear pending fight from save
                                 setGameLog(prev => [{ ...prev[0], outcome: "avoided_danger" as const, description: `${es.label} succeeds! (${total} vs DC ${dc}) You avoid the encounter.` }, ...prev.slice(1)]);
                               } else {
                                 setEscapeResult({ roll: total, dc, success: false });

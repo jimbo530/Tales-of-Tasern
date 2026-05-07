@@ -1,0 +1,272 @@
+{
+  "updated": "2026-05-07T12:02:38.311Z",
+  "block": 45682941,
+  "burnAddress": "0xfd780B0aE569e15e514B819ecFDF46f804953a4B",
+  "ethBalance": "0.0",
+  "mftTotalSupply": "100000000000.0",
+  "totalBurnedUSD": 4.361588077470974,
+  "tokens": [
+    {
+      "sym": "MfT",
+      "addr": "0x8FB87d13B40B1A67B22ED1a17e2835fe7e3a9bA3",
+      "dec": 18,
+      "tag": "core",
+      "bal": "7360342706480771760049236",
+      "formatted": 7360342.706480771,
+      "usdValue": 2.3348231607049224
+    },
+    {
+      "sym": "EARTH",
+      "addr": "0x5CfBecf0209F7ada1EdF1fC0D2Fce3a809C0aE08",
+      "dec": 18,
+      "tag": "core",
+      "bal": "0",
+      "formatted": 0,
+      "usdValue": 0
+    },
+    {
+      "sym": "POOP",
+      "addr": "0x126555aecBAC290b25644e4b7f29c016aE95f4dc",
+      "dec": 18,
+      "tag": "core",
+      "bal": "0",
+      "formatted": 0,
+      "usdValue": 0
+    },
+    {
+      "sym": "WETH",
+      "addr": "0x4200000000000000000000000000000000000006",
+      "dec": 18,
+      "tag": "bc",
+      "bal": "0",
+      "formatted": 0,
+      "usdValue": 0
+    },
+    {
+      "sym": "USDC",
+      "addr": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      "dec": 6,
+      "tag": "bc",
+      "bal": "0",
+      "formatted": 0,
+      "usdValue": 0
+    },
+    {
+      "sym": "cbBTC",
+      "addr": "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf",
+      "dec": 8,
+      "tag": "bc",
+      "bal": "0",
+      "formatted": 0,
+      "usdValue": 0
+    },
+    {
+      "sym": "CHAR",
+      "addr": "0x20b048fa035d5763685d695e66adf62c5d9f5055",
+      "dec": 18,
+      "tag": "impact",
+      "bal": "1718524011058988",
+      "formatted": 0.001718524011058988,
+      "usdValue": 0.354432194170456
+    },
+    {
+      "sym": "BURGERS",
+      "addr": "0x06A05043eb2C1691b19c2C13219dB9212269dDc5",
+      "dec": 18,
+      "tag": "impact",
+      "bal": "765477521255197800186711",
+      "formatted": 765477.5212551978,
+      "usdValue": 0.7526587565288636
+    },
+    {
+      "sym": "TGN",
+      "addr": "0xD75dfa972C6136f1c594Fec1945302f885E1ab29",
+      "dec": 18,
+      "tag": "cm",
+      "bal": "4502606446542434518",
+      "formatted": 4.502606446542434,
+      "usdValue": 0
+    },
+    {
+      "sym": "AZUSD",
+      "addr": "0x3595ca37596D5895B70EFAB592ac315D5B9809B2",
+      "dec": 18,
+      "tag": "impact",
+      "bal": "889932008671470045",
+      "formatted": 0.88993200867147,
+      "usdValue": 0.88993200867147
+    },
+    {
+      "sym": "EGP",
+      "addr": "0xc1ba76771bbf0dd841347630e57c793f9d5accee",
+      "dec": 18,
+      "tag": "cm",
+      "bal": "115589455935201162209",
+      "formatted": 115.58945593520116,
+      "usdValue": 0.029741957395262225
+    },
+    {
+      "sym": "BRETT",
+      "addr": "0x532f27101965dd16442E59d40670FaF5eBB142E4",
+      "dec": 18,
+      "tag": "cm",
+      "bal": "0",
+      "formatted": 0,
+      "usdValue": 0
+    },
+    {
+      "sym": "BUSTER",
+      "addr": "0xBFC5cD421bBC91A2Ca976C4AB1754748634b7D41",
+      "dec": 18,
+      "tag": "cm",
+      "bal": "0",
+      "formatted": 0,
+      "usdValue": 0
+    },
+    {
+      "sym": "FUN",
+      "addr": "0x16EE7ecAc70d1028E7712751E2Ee6BA808a7dd92",
+      "dec": 18,
+      "tag": "cm",
+      "bal": "0",
+      "formatted": 0,
+      "usdValue": 0
+    },
+    {
+      "sym": "meme",
+      "addr": "0x60b355a26c83BA26987E38E9764CD4A9Aac47Ee1",
+      "dec": 18,
+      "tag": "launched",
+      "bal": "0",
+      "formatted": 0,
+      "usdValue": 0
+    },
+    {
+      "sym": "SC",
+      "addr": "0x640AEB7263EDBAd0A840F2F8C751949Fc1d48B18",
+      "dec": 18,
+      "tag": "launched",
+      "bal": "0",
+      "formatted": 0,
+      "usdValue": 0
+    },
+    {
+      "sym": "MTEST",
+      "addr": "0x4600fcAe4b190591Fc0859765a94Dc46036e8491",
+      "dec": 18,
+      "tag": "launched",
+      "bal": "0",
+      "formatted": 0,
+      "usdValue": 0
+    },
+    {
+      "sym": "NMB",
+      "addr": "0x64908eF36C85feEA39625d2F653f3bCDDAea5e9b",
+      "dec": 18,
+      "tag": "launched",
+      "bal": "0",
+      "formatted": 0,
+      "usdValue": 0
+    },
+    {
+      "sym": "MR",
+      "addr": "0x9265BfDD02B61D864923371C63f68DDbF7e17656",
+      "dec": 18,
+      "tag": "launched",
+      "bal": "37656082082991882558201",
+      "formatted": 37656.08208299188,
+      "usdValue": 0
+    },
+    {
+      "sym": "NFS",
+      "addr": "0xb9630280DC93c503aEE06d1Eca8E125fc19AB3c5",
+      "dec": 18,
+      "tag": "launched",
+      "bal": "766833344707043416616925095",
+      "formatted": 766833344.7070434,
+      "usdValue": 0
+    },
+    {
+      "sym": "BP",
+      "addr": "0x33c5e3362A9ddfD453FF655D7DdbC8C2Eff4A062",
+      "dec": 18,
+      "tag": "launched",
+      "bal": "0",
+      "formatted": 0,
+      "usdValue": 0
+    },
+    {
+      "sym": "RT",
+      "addr": "0x5d565fE46D285ab3e1e8d7fB6d0B2ecF4ba3B90B",
+      "dec": 18,
+      "tag": "launched",
+      "bal": "0",
+      "formatted": 0,
+      "usdValue": 0
+    },
+    {
+      "sym": "Turtle",
+      "addr": "0x2999f1Bfa1Bd65Aa908bef41A8BF4d8CB7C370FB",
+      "dec": 18,
+      "tag": "launched",
+      "bal": "0",
+      "formatted": 0,
+      "usdValue": 0
+    },
+    {
+      "sym": "bAGI",
+      "addr": "0x7311a6975a173Ee637D199F8123a409EC82b1992",
+      "dec": 18,
+      "tag": "launched",
+      "bal": "3476969645013025285859599",
+      "formatted": 3476969.6450130255,
+      "usdValue": 0
+    },
+    {
+      "sym": "Flwr",
+      "addr": "0x5bF510BFc635598D77b6Ac5fDE45CDa888A0C4c1",
+      "dec": 18,
+      "tag": "launched",
+      "bal": "5044",
+      "formatted": 5.044e-15,
+      "usdValue": 0
+    }
+  ],
+  "charLeaderboard": {
+    "total": 0.001718524011058988,
+    "totalRaw": "1718524011058988",
+    "totalUsd": 0.354432194170456,
+    "sources": [
+      {
+        "addr": "0xc2eBe90fB9bC7897f06DC00666951Fa9a49A397A",
+        "name": "CHAR reactor (core)",
+        "burned": "0.001710595582365692",
+        "burnedRaw": "1710595582365692"
+      },
+      {
+        "addr": "0x2eE4029E8d83d80B01B9CD7C0a4EE81e584b87e9",
+        "name": "NFS CHAR reactor",
+        "burned": "0.000006971738577417",
+        "burnedRaw": "6971738577417"
+      },
+      {
+        "addr": "0x15FFF1286807FA96b4CaC8B9Bc262A492494c6D8",
+        "name": "MR CHAR reactor",
+        "burned": "0.000000489416458462",
+        "burnedRaw": "489416458462"
+      },
+      {
+        "addr": "0xfb3B709882a48b185F266Fc6f37156A92771a558",
+        "name": "Flwr CHAR reactor",
+        "burned": "0.000000467273657415",
+        "burnedRaw": "467273657415"
+      },
+      {
+        "addr": "0xbB6Ec399365a8E64ab7d5f7162aE19B441cbEcba",
+        "name": "bAGI CHAR reactor",
+        "burned": "0.000000000000000002",
+        "burnedRaw": "2"
+      }
+    ]
+  }
+}

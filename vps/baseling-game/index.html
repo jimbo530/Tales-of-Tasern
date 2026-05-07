@@ -3,6 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,minimum-scale=1,user-scalable=no">
+<meta name="base:app_id" content="69e644b587970a2e83bef4d3" />
+<meta property="base:app_id" content="69e644b587970a2e83bef4d3" />
 <title>Baselings — MfT SoBs</title>
 <!-- Farcaster Mini App / Frame v2 meta tags -->
 <meta property="fc:frame" content="vNext" />
@@ -17,9 +19,12 @@
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
 *{margin:0;padding:0;box-sizing:border-box}
-body{background:#0a0a1a;overflow:hidden;font-family:'Press Start 2P',monospace;image-rendering:pixelated;touch-action:none;-ms-touch-action:none;position:fixed;width:100%;height:100%}
-canvas{display:block;cursor:pointer}
-#hud{position:fixed;top:8px;left:8px;z-index:50;color:#f0d060;font-size:8px;text-shadow:1px 1px #000,2px 2px 4px rgba(0,0,0,0.8)}
+body{background:#0a0a1a;overflow:hidden;font-family:'Press Start 2P',monospace;image-rendering:pixelated;touch-action:none;-ms-touch-action:none;position:fixed;width:100%;height:100%;display:flex;align-items:center;justify-content:center;padding:env(safe-area-inset-top,0) env(safe-area-inset-right,0) env(safe-area-inset-bottom,0) env(safe-area-inset-left,0)}
+#game-container{position:relative;width:100%;height:100%;overflow:hidden;transform:translate(0,0)}
+@media (max-aspect-ratio: 4/3){#game-container{width:96%;height:auto;aspect-ratio:4/3}}
+@media (min-aspect-ratio: 4/3){#game-container{height:96%;width:auto;aspect-ratio:4/3}}
+canvas{display:block;cursor:pointer;width:100%;height:100%}
+#hud{position:fixed;top:max(12px,env(safe-area-inset-top,12px));left:max(12px,env(safe-area-inset-left,12px));z-index:50;color:#f0d060;font-size:8px;text-shadow:1px 1px #000,2px 2px 4px rgba(0,0,0,0.8)}
 #hud span{margin-right:16px}
 #panel{position:fixed;bottom:0;left:0;right:0;z-index:10;background:rgba(10,10,30,0.94);border-top:3px solid #f0d060;padding:8px 12px;display:none}
 #panel .name{color:#f0d060;font-size:10px;margin-bottom:4px}
@@ -28,6 +33,7 @@ canvas{display:block;cursor:pointer}
 #panel .rarity-rare{color:#60a5fa}
 #panel .rarity-legendary{color:#c084fc}
 #panel .rarity-epic{color:#f0d060}
+#panel .rarity-mythic{color:#ff6ec7}
 #panel .info{color:#aaa;font-size:7px;margin-bottom:8px}
 .bars{display:flex;gap:12px;margin-bottom:8px}
 .bar{flex:1}
@@ -68,7 +74,7 @@ canvas{display:block;cursor:pointer}
 .evo-stat .fav{color:#60a5fa}
 .evo-stat .warn{color:#ef4444}
 #msg{position:fixed;top:38%;left:50%;transform:translate(-50%,-50%);color:#fbbf24;font-size:14px;text-shadow:2px 2px #000,0 0 10px rgba(240,208,96,0.5);z-index:9990;pointer-events:none;opacity:0;transition:opacity 0.3s}
-#add-btn{position:fixed;top:8px;right:8px;z-index:10;display:flex;gap:6px}
+#add-btn{position:fixed;top:max(12px,env(safe-area-inset-top,12px));right:max(12px,env(safe-area-inset-right,12px));z-index:10;display:flex;gap:6px}
 #settings-panel{position:fixed;top:0;right:0;bottom:0;width:320px;z-index:30;background:rgba(10,10,30,0.96);border-left:3px solid #f0d060;padding:12px;overflow-y:auto;display:none}
 #settings-panel .close-btn{position:absolute;top:8px;right:8px;cursor:pointer;color:#888;font-size:10px;font-family:'Press Start 2P',monospace}
 #settings-panel h2{color:#f0d060;font-size:9px;margin-bottom:8px}
@@ -112,7 +118,7 @@ canvas{display:block;cursor:pointer}
 .inc-stand.locked{opacity:0.2;cursor:pointer}
 .inc-stand.locked:hover{opacity:0.4}
 #incubator-panel{position:absolute;bottom:36px;left:50%;transform:translateX(-50%);max-width:90vw;z-index:2}
-#incubator-exit{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);font-size:28px;color:#f0d060;cursor:pointer;text-shadow:2px 2px 4px rgba(0,0,0,0.8);opacity:0.7;transition:opacity 0.2s;animation:exitBounce 1.5s ease-in-out infinite;z-index:2}
+#incubator-exit{position:absolute;bottom:30px;left:50%;transform:translateX(-50%);font-size:44px;padding:8px 20px;color:#f0d060;cursor:pointer;text-shadow:2px 2px 4px rgba(0,0,0,0.8);opacity:0.7;transition:opacity 0.2s;animation:exitBounce 1.5s ease-in-out infinite;z-index:2}
 #incubator-exit:hover{opacity:1}
 @keyframes exitBounce{0%,100%{transform:translateX(-50%) translateY(0)}50%{transform:translateX(-50%) translateY(6px)}}
 #egg-store{display:none;position:fixed;top:0;left:0;right:0;bottom:0;z-index:45;background:#000 url('sprites/egg-store.png') center center/cover no-repeat}
@@ -128,7 +134,7 @@ canvas{display:block;cursor:pointer}
 .grocery-buy{font-family:'Press Start 2P',monospace;font-size:7px;padding:8px 12px;border:2px solid #4ade80;border-radius:4px;background:#0a2e1a;color:#4ade80;cursor:pointer;transition:all 0.1s;white-space:nowrap}
 .grocery-buy:hover{transform:scale(1.05);filter:brightness(1.2)}
 .grocery-buy:active{transform:scale(0.95)}
-#grocery-exit{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);font-size:28px;color:#f0d060;cursor:pointer;text-shadow:2px 2px 4px rgba(0,0,0,0.8);opacity:0.7;transition:opacity 0.2s;animation:exitBounce 1.5s ease-in-out infinite;z-index:2}
+#grocery-exit{position:absolute;bottom:30px;left:50%;transform:translateX(-50%);font-size:44px;padding:8px 20px;color:#f0d060;cursor:pointer;text-shadow:2px 2px 4px rgba(0,0,0,0.8);opacity:0.7;transition:opacity 0.2s;animation:exitBounce 1.5s ease-in-out infinite;z-index:2}
 #grocery-exit:hover{opacity:1}
 #loading{position:fixed;top:0;left:0;right:0;bottom:0;background:#0a0a1a;display:flex;align-items:center;justify-content:center;z-index:100;color:#f0d060;font-size:10px;flex-direction:column;gap:12px}
 #load-bar{width:200px;height:8px;background:#111;border:1px solid #333;border-radius:2px;overflow:hidden}
@@ -203,14 +209,16 @@ if (window !== window.parent || window.location !== window.parent.location) {
 </script>
 </head>
 <body>
+<div id="game-container">
 <div id="tutorial-overlay"><div id="tutorial-box"></div></div>
 <div id="loading"><div>LOADING BASELINGS...</div><div id="load-bar"><div id="load-fill"></div></div></div>
-<div id="hud"><span id="poop-total">POOP: 0</span><span id="baseling-count">BASELINGS: 0</span><span id="power-plant-hud" style="color:#f59e0b">PP: 0.0000</span><span id="weth-bal-hud" style="color:#60a5fa;display:none">WETH: --</span><span id="poop-bal-hud" style="color:#a855f7;display:none">$POOP: --</span><span id="wallet-hud" onclick="connectWallet()" style="cursor:pointer;color:#60a5fa;float:right;margin-right:8px">CONNECT WALLET</span></div>
+<div id="hud"><span id="baseling-count">BASELINGS: 0</span><span id="poop-total" style="display:none">POOP: 0</span><span id="power-plant-hud" style="display:none">PP: 0</span><span id="weth-bal-hud" style="display:none">WETH: --</span><span id="poop-bal-hud" style="display:none">$POOP: --</span><span id="wallet-hud" style="display:none">GAME WALLET</span></div>
 <div id="room-tabs"></div>
 <div id="room-info"></div>
 <div id="add-btn">
 <button class="btn" onclick="openNeighborhood()" style="font-size:8px;padding:6px 10px;border-color:#f0d060;color:#f0d060;background:#2d1f0f" id="outside-btn">GO OUTSIDE</button>
 <button class="btn btn-deselect" onclick="toggleSettings()" style="font-size:8px;padding:6px 10px" id="settings-btn">STATS</button>
+<div id="whistle-btn" onclick="toggleWhistleMode()" style="display:inline-block;cursor:pointer;border:2px solid #4ade80;border-radius:6px;padding:2px 4px;vertical-align:middle;margin-left:4px" title="Whistle — tap floor to call baselings"><img src="sprites/garden/whistle.png" style="width:20px;height:20px;image-rendering:pixelated"></div>
 </div>
 <div id="race-modal">
 <span class="close-btn" onclick="toggleRaceModal()" style="position:absolute;top:6px;right:10px;cursor:pointer;color:#888;font-size:10px;font-family:'Press Start 2P',monospace">X</span>
@@ -233,7 +241,7 @@ if (window !== window.parent || window.location !== window.parent.location) {
 <div id="egg-store-header" style="position:absolute;top:8px;left:50%;transform:translateX(-50%);color:#f0d060;font-size:10px;font-family:'Press Start 2P',monospace;text-shadow:2px 2px 4px rgba(0,0,0,0.9);z-index:2">EGG STORE</div>
 <div id="egg-store-floor"></div>
 <div id="egg-store-panel" onclick="event.stopPropagation()" style="position:absolute;top:0;left:0;right:0;bottom:0;pointer-events:none;z-index:10"></div>
-<div onclick="closeEggStoreToHood()" style="position:absolute;bottom:8px;left:50%;transform:translateX(-50%);font-size:28px;color:#f0d060;cursor:pointer;text-shadow:2px 2px 4px rgba(0,0,0,0.8);opacity:0.7;transition:opacity 0.2s;animation:exitBounce 1.5s ease-in-out infinite;z-index:2">&#9660;</div>
+<div onclick="closeEggStoreToHood()" style="position:absolute;bottom:30px;left:50%;transform:translateX(-50%);font-size:44px;padding:8px 20px;color:#f0d060;cursor:pointer;text-shadow:2px 2px 4px rgba(0,0,0,0.8);opacity:0.7;transition:opacity 0.2s;animation:exitBounce 1.5s ease-in-out infinite;z-index:2">&#9660;</div>
 </div>
 <div id="grocery-store">
 <div id="grocery-header" style="position:absolute;top:8px;left:50%;transform:translateX(-50%);color:#f0d060;font-size:10px;font-family:'Press Start 2P',monospace;text-shadow:2px 2px 4px rgba(0,0,0,0.9);z-index:2">GROCERY STORE</div>
@@ -245,40 +253,45 @@ if (window !== window.parent || window.location !== window.parent.location) {
 <div style="position:absolute;top:8px;left:50%;transform:translateX(-50%);color:#f59e0b;font-size:10px;font-family:'Press Start 2P',monospace;text-shadow:2px 2px 4px rgba(0,0,0,0.9);z-index:2">POWER PLANT</div>
 <div id="pp-floor" style="position:absolute;top:0;left:0;right:0;bottom:0"></div>
 <div id="pp-panel" style="position:absolute;bottom:40px;left:50%;transform:translateX(-50%);min-width:320px;max-width:95vw;z-index:2"></div>
-<div style="position:absolute;bottom:8px;left:50%;transform:translateX(-50%);font-size:28px;color:#f59e0b;cursor:pointer;text-shadow:2px 2px 4px rgba(0,0,0,0.8);opacity:0.7;transition:opacity 0.2s;animation:exitBounce 1.5s ease-in-out infinite;z-index:2" onclick="closePowerPlantToHood()">&#9660;</div>
+<div style="position:absolute;bottom:30px;left:50%;transform:translateX(-50%);font-size:44px;padding:8px 20px;color:#f59e0b;cursor:pointer;text-shadow:2px 2px 4px rgba(0,0,0,0.8);opacity:0.7;transition:opacity 0.2s;animation:exitBounce 1.5s ease-in-out infinite;z-index:2" onclick="closePowerPlantToHood()">&#9660;</div>
 </div>
 <div id="garden-room">
 <div style="position:absolute;top:8px;left:50%;transform:translateX(-50%);color:#4ade80;font-size:10px;font-family:'Press Start 2P',monospace;text-shadow:2px 2px 4px rgba(0,0,0,0.9);z-index:2">COMMUNITY GARDEN</div>
-<div id="garden-floor"></div>
+<div id="garden-floor" onmousemove="doGardenDrag(event)" onmouseup="endGardenDrag()" ontouchmove="doGardenDrag(event)" ontouchend="endGardenDrag()" onclick="gardenTreeSelected=false;gardenBtcSelected=false;gardenEthSelected=false;updateGardenPanel()"></div>
 <div id="garden-panel" style="position:absolute;bottom:40px;left:50%;transform:translateX(-50%);min-width:320px;max-width:95vw;z-index:2"></div>
-<div id="garden-exit" onclick="closeGardenToHood()" style="position:absolute;bottom:8px;left:50%;transform:translateX(-50%);font-size:28px;color:#4ade80;cursor:pointer;text-shadow:2px 2px 4px rgba(0,0,0,0.8);opacity:0.7;transition:opacity 0.2s;animation:exitBounce 1.5s ease-in-out infinite;z-index:2">&#9660;</div>
+<div id="garden-exit" onclick="closeGardenToHood()" style="position:absolute;bottom:30px;left:50%;transform:translateX(-50%);font-size:44px;padding:8px 20px;color:#4ade80;cursor:pointer;text-shadow:2px 2px 4px rgba(0,0,0,0.8);opacity:0.7;transition:opacity 0.2s;animation:exitBounce 1.5s ease-in-out infinite;z-index:2">&#9660;</div>
 </div>
 <div id="cryo-room">
 <div style="position:absolute;top:8px;left:50%;transform:translateX(-50%);color:#60a5fa;font-size:10px;font-family:'Press Start 2P',monospace;text-shadow:2px 2px 4px rgba(0,0,0,0.9);z-index:2">CRYO LAB</div>
 <div id="cryo-floor" onclick="cryoFloorClick(event)"></div>
-<div id="cryo-exit" onclick="closeCryoToHood()" style="position:absolute;bottom:8px;left:50%;transform:translateX(-50%);font-size:28px;color:#60a5fa;cursor:pointer;text-shadow:2px 2px 4px rgba(0,0,0,0.8);opacity:0.7;transition:opacity 0.2s;animation:exitBounce 1.5s ease-in-out infinite;z-index:2">&#9660;</div>
+<div id="cryo-exit" onclick="closeCryoToHood()" style="position:absolute;bottom:30px;left:50%;transform:translateX(-50%);font-size:44px;padding:8px 20px;color:#60a5fa;cursor:pointer;text-shadow:2px 2px 4px rgba(0,0,0,0.8);opacity:0.7;transition:opacity 0.2s;animation:exitBounce 1.5s ease-in-out infinite;z-index:2">&#9660;</div>
 </div>
 <div id="graveyard-room">
 <div style="position:absolute;top:8px;left:50%;transform:translateX(-50%);color:#a855f7;font-size:10px;font-family:'Press Start 2P',monospace;text-shadow:2px 2px 4px rgba(0,0,0,0.9);z-index:2">GRAVEYARD</div>
 <div id="graveyard-floor"></div>
 <div id="graveyard-panel" style="position:absolute;bottom:40px;left:50%;transform:translateX(-50%);min-width:320px;max-width:95vw;z-index:1000"></div>
-<div id="graveyard-exit" onclick="closeGraveyardToHood()" style="position:absolute;bottom:8px;left:50%;transform:translateX(-50%);font-size:28px;color:#a855f7;cursor:pointer;text-shadow:2px 2px 4px rgba(0,0,0,0.8);opacity:0.7;transition:opacity 0.2s;animation:exitBounce 1.5s ease-in-out infinite;z-index:2">&#9660;</div>
+<div id="graveyard-exit" onclick="closeGraveyardToHood()" style="position:absolute;bottom:30px;left:50%;transform:translateX(-50%);font-size:44px;padding:8px 20px;color:#a855f7;cursor:pointer;text-shadow:2px 2px 4px rgba(0,0,0,0.8);opacity:0.7;transition:opacity 0.2s;animation:exitBounce 1.5s ease-in-out infinite;z-index:2">&#9660;</div>
 </div>
 <div id="clinic-room">
 <div style="position:absolute;top:8px;left:50%;transform:translateX(-50%);color:#60a5fa;font-size:10px;font-family:'Press Start 2P',monospace;text-shadow:2px 2px 4px rgba(0,0,0,0.9);z-index:2">NURSE'S OFFICE</div>
 <div id="clinic-floor" style="position:absolute;top:30px;left:0;right:0;bottom:40px;overflow-y:auto;display:flex;flex-wrap:wrap;justify-content:center;align-content:flex-start;padding:8px"></div>
-<div onclick="closeClinicToHood()" style="position:absolute;bottom:8px;left:50%;transform:translateX(-50%);font-size:28px;color:#60a5fa;cursor:pointer;text-shadow:2px 2px 4px rgba(0,0,0,0.8);opacity:0.7;transition:opacity 0.2s;animation:exitBounce 1.5s ease-in-out infinite;z-index:2">&#9660;</div>
+<div onclick="closeClinicToHood()" style="position:absolute;bottom:30px;left:50%;transform:translateX(-50%);font-size:44px;padding:8px 20px;color:#60a5fa;cursor:pointer;text-shadow:2px 2px 4px rgba(0,0,0,0.8);opacity:0.7;transition:opacity 0.2s;animation:exitBounce 1.5s ease-in-out infinite;z-index:2">&#9660;</div>
 </div>
 <div id="market-room">
 <div style="position:absolute;top:8px;left:50%;transform:translateX(-50%);color:#f0d060;font-size:10px;font-family:'Press Start 2P',monospace;text-shadow:2px 2px 4px rgba(0,0,0,0.9);z-index:2">BASELING MARKET</div>
 <div id="market-floor"></div>
 <div id="market-panel" style="position:absolute;bottom:40px;left:50%;transform:translateX(-50%);min-width:320px;max-width:95vw;z-index:2"></div>
-<div onclick="closeMarketToHood()" style="position:absolute;bottom:8px;left:50%;transform:translateX(-50%);font-size:28px;color:#f0d060;cursor:pointer;text-shadow:2px 2px 4px rgba(0,0,0,0.8);opacity:0.7;transition:opacity 0.2s;animation:exitBounce 1.5s ease-in-out infinite;z-index:2">&#9660;</div>
+<div onclick="closeMarketToHood()" style="position:absolute;bottom:30px;left:50%;transform:translateX(-50%);font-size:44px;padding:8px 20px;color:#f0d060;cursor:pointer;text-shadow:2px 2px 4px rgba(0,0,0,0.8);opacity:0.7;transition:opacity 0.2s;animation:exitBounce 1.5s ease-in-out infinite;z-index:2">&#9660;</div>
+</div>
+<div id="atm-room" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;z-index:45;background:#0a0a2a">
+<div style="position:absolute;top:8px;left:50%;transform:translateX(-50%);color:#60a5fa;font-size:10px;font-family:'Press Start 2P',monospace;text-shadow:2px 2px 4px rgba(0,0,0,0.9);z-index:2">ATM</div>
+<div id="atm-panel" style="position:absolute;top:40px;left:50%;transform:translateX(-50%);width:90%;max-width:360px;z-index:2"></div>
+<div onclick="closeATMToHood()" style="position:absolute;bottom:30px;left:50%;transform:translateX(-50%);font-size:44px;padding:8px 20px;color:#60a5fa;cursor:pointer;text-shadow:2px 2px 4px rgba(0,0,0,0.8);opacity:0.7;transition:opacity 0.2s;animation:exitBounce 1.5s ease-in-out infinite;z-index:2">&#9660;</div>
 </div>
 <div id="neighborhood-map">
 <div style="position:absolute;top:6px;left:50%;transform:translateX(-50%);color:#f0d060;font-size:10px;font-family:'Press Start 2P',monospace;text-shadow:2px 2px 4px rgba(0,0,0,0.9);z-index:2">BASEville</div>
 <div id="neighborhood-floor"></div>
-<div style="position:absolute;bottom:8px;left:50%;transform:translateX(-50%);font-size:28px;color:#f0d060;cursor:pointer;text-shadow:2px 2px 4px rgba(0,0,0,0.8);opacity:0.7;transition:opacity 0.2s;animation:exitBounce 1.5s ease-in-out infinite;z-index:2" onclick="closeNeighborhood()">&#9660;</div>
+<div style="position:absolute;bottom:30px;left:50%;transform:translateX(-50%);font-size:44px;padding:8px 20px;color:#f0d060;cursor:pointer;text-shadow:2px 2px 4px rgba(0,0,0,0.8);opacity:0.7;transition:opacity 0.2s;animation:exitBounce 1.5s ease-in-out infinite;z-index:2" onclick="closeNeighborhood()">&#9660;</div>
 </div>
 <div id="food-tray-wrap" style="position:fixed;bottom:0;left:0;right:0;z-index:9">
 <div id="food-tray-toggle" onclick="toggleFoodTray()" style="position:absolute;top:-18px;left:50%;transform:translateX(-50%);cursor:pointer;background:rgba(10,10,30,0.8);border:1px solid #333;border-bottom:none;border-radius:6px 6px 0 0;padding:1px 12px;font-size:10px;color:#f0d060;font-family:'Press Start 2P',monospace;z-index:10;pointer-events:auto">&#9660;</div>
@@ -329,9 +342,35 @@ var walletAddr = null;
 var walletProvider = null;
 var walletSigner = null;
 
+// --- GAME WALLET (session wallet — no popups during gameplay) ---
+var gameWallet = null;
+var gameWalletAddr = null;
+var mainWalletSigner = null;
+var mainWalletAddr = localStorage.getItem('baseling-main-wallet') || null;
+var mainWalletProvider = null;
+var BASE_RPC = 'https://mainnet.base.org';
+
+function initGameWallet() {
+  var key = localStorage.getItem('baseling-game-key');
+  if (!key) {
+    var w = ethers.Wallet.createRandom();
+    key = w.privateKey;
+    localStorage.setItem('baseling-game-key', key);
+  }
+  var rpc = new ethers.JsonRpcProvider(BASE_RPC);
+  gameWallet = new ethers.Wallet(key, rpc);
+  gameWalletAddr = gameWallet.address;
+  // Game wallet becomes the default signer — zero popups
+  walletSigner = gameWallet;
+  walletAddr = gameWalletAddr;
+  walletProvider = rpc;
+  localStorage.setItem('baseling-wallet', gameWalletAddr);
+}
+initGameWallet();
+
 // Minimal ABIs for game interactions
 var WETH_ABI = ['function approve(address,uint256) returns (bool)','function balanceOf(address) view returns (uint256)','function allowance(address,address) view returns (uint256)','function transfer(address,uint256) returns (bool)','function deposit() payable'];
-var POOP_ABI = ['function balanceOf(address) view returns (uint256)','function totalSupply() view returns (uint256)','function mint(address,uint256)','function isMinter(address) view returns (bool)'];
+var POOP_ABI = ['function balanceOf(address) view returns (uint256)','function totalSupply() view returns (uint256)','function mint(address,uint256)','function isMinter(address) view returns (bool)','function approve(address,uint256) returns (bool)','function allowance(address,address) view returns (uint256)'];
 var BASELING_ABI = [
   'function mintRandom() returns (uint256)','function mintSorted(uint8) returns (uint256)','function mintGiant() returns (uint256)',
   'function hatch(uint256)','function freeze(uint256)','function unfreeze(uint256)','function resurrect(uint256)',
@@ -368,42 +407,48 @@ var FOOD_LP_ADDR = {
   tgn:     '0xbd0cc3b0aaf91b80c862dbcaf39faa4705ee2d7a',
   burgers: '0xa2A61fD7816951A0bCf8C67eA8f153C1AB5De288',
   azusd:   '0xecc664757da0c71ba32dfed527580a26783b6697',
+  weth:    '', // WETH/MfT V2 LP — create on Aerodrome then fill
+  btc:     '', // cbBTC/MfT V2 LP — create on Aerodrome then fill
 };
 
+// connectWallet() — auto-connects the game wallet (no popup)
 async function connectWallet() {
+  if (!gameWallet) initGameWallet();
+  walletSigner = gameWallet;
+  walletAddr = gameWalletAddr;
+  walletProvider = gameWallet.provider;
+  updateHUD();
+  pollOnchainBalances();
+  if (typeof startPollInterval === 'function') startPollInterval();
+}
+
+// Connect external wallet (MetaMask/Coinbase) — only used at ATM for deposits
+async function connectMainWallet() {
   try {
-    // Use injected wallet (Rabby, MetaMask, etc.) — Farcaster SDK only inside frames
     var ethProviderObj = window.ethereum;
     if (!ethProviderObj && window.farcasterSDK) {
-      try {
-        ethProviderObj = await window.farcasterSDK.wallet.getEthereumProvider();
-      } catch(fe) {}
+      try { ethProviderObj = await window.farcasterSDK.wallet.getEthereumProvider(); } catch(fe) {}
     }
+    if (!ethProviderObj) { showMsg('NO WALLET FOUND — install MetaMask or Coinbase Wallet', '#ef4444'); return false; }
 
-    if (!ethProviderObj) { showMsg('INSTALL RABBY OR METAMASK', '#ef4444'); return; }
-
-    // Ask wallet for permission (triggers Rabby/MetaMask popup)
     await ethProviderObj.request({method: 'eth_requestAccounts'});
 
     var provider = new ethers.BrowserProvider(ethProviderObj);
     var network = await provider.getNetwork();
     if (Number(network.chainId) !== CHAIN_ID) {
       try { await ethProviderObj.request({method:'wallet_switchEthereumChain',params:[{chainId:CHAIN_HEX}]}); }
-      catch(e) { showMsg('SWITCH TO BASE CHAIN', '#ef4444'); return; }
+      catch(e) { showMsg('SWITCH TO BASE CHAIN', '#ef4444'); return false; }
       provider = new ethers.BrowserProvider(ethProviderObj);
     }
     var signer = await provider.getSigner();
-    walletAddr = await signer.getAddress();
-    walletProvider = provider;
-    walletSigner = signer;
-    updateHUD();
-    showMsg('CONNECTED: ' + walletAddr.slice(0,6) + '...' + walletAddr.slice(-4), '#4ade80');
-    // Save address for auto-reconnect
-    localStorage.setItem('baseling-wallet', walletAddr);
-    // Fetch onchain balances immediately and restart poll interval
-    pollOnchainBalances();
-    if (typeof startPollInterval === 'function') startPollInterval();
-  } catch(e) { showMsg('CONNECT FAILED: ' + e.message, '#ef4444'); }
+    mainWalletAddr = await signer.getAddress();
+    mainWalletSigner = signer;
+    mainWalletProvider = provider;
+    localStorage.setItem('baseling-main-wallet', mainWalletAddr);
+    showMsg('WALLET LINKED: ' + mainWalletAddr.slice(0,6) + '...' + mainWalletAddr.slice(-4), '#60a5fa');
+    syncFromChain(); // Auto-sync NFTs from linked wallet
+    return true;
+  } catch(e) { showMsg('CONNECT FAILED: ' + e.message, '#ef4444'); return false; }
 }
 
 function getContract(addr, abi) {
@@ -482,29 +527,35 @@ async function claimAllPoop() {
   }
 }
 
-// Auto-reconnect on page load
+// Auto-reconnect on page load — game wallet is always ready
 function autoReconnect() {
-  var saved = localStorage.getItem('baseling-wallet');
-  if (saved && window.ethereum) {
-    connectWallet().then(function() { syncFromChain(); });
-  }
+  if (!gameWallet) initGameWallet();
+  walletSigner = gameWallet;
+  walletAddr = gameWalletAddr;
+  walletProvider = gameWallet.provider;
+  updateHUD();
+  syncFromChain();
 }
 
 // --- SYNC ON-CHAIN NFTS INTO LOCAL GAME ---
 // Single syncFromChain — deduplicates, removes fakes, uses seeded PRNG for deterministic characters
+// Checks MAIN wallet (where NFTs live), not game wallet
 async function syncFromChain() {
-  if (!walletAddr || !walletProvider || !BASELING_ADDR) return;
+  // Use main wallet address if linked, otherwise fall back to game wallet
+  var syncAddr = mainWalletAddr || walletAddr;
+  var syncProvider = mainWalletProvider || walletProvider;
+  if (!syncAddr || !syncProvider || !BASELING_ADDR) return;
   try {
-    showMsg('SYNCING FROM CHAIN...', '#f0d060');
+    showMsg('SYNCING FROM ' + syncAddr.slice(0,6) + '...', '#f0d060');
     var FAMILY_SORTED = {0:'TGN', 1:'BURGERS', 2:'AZUSD'};
-    var nft = new ethers.Contract(BASELING_ADDR, BASELING_ABI, walletProvider);
+    var nft = new ethers.Contract(BASELING_ADDR, BASELING_ABI, syncProvider);
     var total = Number(await nft.totalMinted());
     var found = 0;
     var ownedIds = [];
     for (var tid = 1; tid <= total; tid++) {
       try {
         var owner = await nft.ownerOf(tid);
-        if (owner.toLowerCase() !== walletAddr.toLowerCase()) continue;
+        if (owner.toLowerCase() !== syncAddr.toLowerCase()) continue;
       } catch(e) { continue; }
       ownedIds.push(tid);
       // Skip if we already have this tokenId locally
@@ -586,15 +637,23 @@ async function syncFromChain() {
 
 // --- ONCHAIN EGG MINTING ---
 // type: 'random' | 'sorted' | 'giant' | 'giantSorted'
+// Mints to MAIN wallet (real wallet) so NFTs show on marketplaces
 async function mintEggOnchain(type, family) {
-  if (!walletSigner || !BASELING_ADDR) {
-    showMsg('CONNECT WALLET FIRST', '#ef4444');
+  if (!BASELING_ADDR) { showMsg('CONTRACT NOT SET', '#ef4444'); return false; }
+
+  // Require main wallet for minting — NFTs go to real wallet
+  if (!mainWalletSigner) {
+    showMsg('LINK YOUR WALLET FIRST! (ATM → LINK WALLET)', '#ef4444');
     return false;
   }
+
   try {
-    var nft = getContract(BASELING_ADDR, BASELING_ABI);
-    var weth = getContract(WETH_ADDR, WETH_ABI);
-    var wethRead = new ethers.Contract(WETH_ADDR, WETH_ABI, walletProvider);
+    var mintSigner = mainWalletSigner;
+    var mintAddr = mainWalletAddr;
+    var mintProvider = mainWalletProvider;
+    var nft = new ethers.Contract(BASELING_ADDR, BASELING_ABI, mintSigner);
+    var weth = new ethers.Contract(WETH_ADDR, WETH_ABI, mintSigner);
+    var wethRead = new ethers.Contract(WETH_ADDR, WETH_ABI, mintProvider);
 
     // Giant sorted = mintSorted($1) + $9 premium to PowerPlant
     var isGiantSorted = (type === 'giantSorted');
@@ -614,32 +673,30 @@ async function mintEggOnchain(type, family) {
       premium = giantPrice - sortedPrice;
     }
 
-    // Balance check for ALL mint types — auto-wrap ETH→WETH if needed
+    // Balance check on MAIN wallet
     var totalNeeded = price + premium;
-    var bal = await wethRead.balanceOf(walletAddr);
+    var bal = await wethRead.balanceOf(mintAddr);
     if (bal < totalNeeded) {
       var shortfall = totalNeeded - bal;
-      // Check if user has enough ETH to wrap
-      var ethBal = await walletProvider.getBalance(walletAddr);
+      var ethBal = await mintProvider.getBalance(mintAddr);
       if (ethBal < shortfall) {
-        showMsg('NEED ' + ethers.formatEther(totalNeeded) + ' WETH (have ' + ethers.formatEther(bal).slice(0,8) + ')', '#ef4444');
+        showMsg('NOT ENOUGH WETH IN YOUR WALLET!', '#ef4444');
         return false;
       }
-      // Auto-wrap ETH → WETH
       showMsg('WRAPPING ETH → WETH...', '#f0d060');
       var wrapTx = await weth.deposit({ value: shortfall });
       await wrapTx.wait();
     }
 
-    // Approve WETH for NFT contract (covers mint price)
-    var allowed = await wethRead.allowance(walletAddr, BASELING_ADDR);
+    // Approve WETH for NFT contract
+    var allowed = await wethRead.allowance(mintAddr, BASELING_ADDR);
     if (allowed < price) {
       showMsg('APPROVING WETH...', '#f0d060');
       var approveTx = await weth.approve(BASELING_ADDR, ethers.MaxUint256);
       await approveTx.wait();
     }
 
-    // Mint
+    // Mint — goes to main wallet
     showMsg('MINTING EGG...', '#f0d060');
     var tx;
     if (mintType === 'giant') tx = await nft.mintGiant();
@@ -692,9 +749,22 @@ var GARDEN_V2_ABI = [
   'function gardenReward() view returns (uint256)',
   'function name() view returns (string)',
 ];
+var GARDEN_MULTI_ABI = [
+  'function deposit(address,uint256)',
+  'function claim(address)', 'function claimAll()',
+  'function pending(address,address) view returns (uint256)',
+  'function balanceOf(address) view returns (uint256)',
+  'function totalSupply() view returns (uint256)',
+  'function totalPOOPDeposited() view returns (uint256)',
+  'function rewardTokenCount() view returns (uint256)',
+  'function rewardTokens(uint256) view returns (address)',
+  'function name() view returns (string)',
+];
 // Garden addresses — fill after deploying CommunityGardenV2 contracts
-var GARDEN_BURGERS = ''; // gBURGER garden
+var GARDEN_BURGERS = '0xF69e6a5F7d3be0701928bCd1b460566095b5F12d'; // gBURGER garden
+var GARDEN_MULTI = '0xD2b6230922A0E6E200Bbf3a67670E0e6B66DA80d'; // CommunityGardenMulti — all positions
 var GARDEN_MFT = '';     // gMfT garden
+var TREE_API = 'https://tasern.quest/api/baseling/tree';
 var POWERPLANT_ABI = ['function wethBalance() view returns (uint256)', 'function poopBurned() view returns (uint256)', 'function positionCount() view returns (uint256)', 'function totalWETHReceived() view returns (uint256)'];
 
 // GENERATIVE SNES-STYLE SPRITE ENGINE (32x32)
@@ -757,7 +827,7 @@ function sclip(s,cx,cy,rx,ry,fn){s.save();s.beginPath();s.ellipse(cx,cy,rx,ry,0,
 var spriteImages={};
 // Universal baby sprite — all stage 1 baselings look like this. Character sprites appear at stage 2+.
 var SPRITE_MAP={
-  'floof-cat':'sprites/wimmple-baby.webp',
+  'floof-cat':'sprites/baby-floof-cat.png',
   'bunny':'sprites/baby-bunny-white.png',
   'cat':'sprites/baby-cat-white.png',
   'groundhog':'sprites/baby-groundhog.png',
@@ -769,8 +839,75 @@ var SPRITE_MAP={
   'oak':'sprites/baby-oak.png',
   'bull':'sprites/baby-bull.png',
   'monkey':'sprites/baby-monkey.png',
-  'leaf':'sprites/baby-leaf.png'
+  'leaf':'sprites/baby-leaf.png',
+  'rabbit':'sprites/baby-rabbit.png',
+  'hamster':'sprites/baby-hamster.png',
+  'cow':'sprites/baby-cow.png',
+  'highland':'sprites/baby-highland.png',
+  'brown-bunny':'sprites/baby-brown-bunny.png',
+  'apple-tree':'sprites/baby-apple-tree.png',
+  'pear-tree':'sprites/baby-pear-tree.png',
+  'orange-tree':'sprites/baby-orange-tree.png',
+  'plum-tree':'sprites/baby-plum-tree.png',
+  'longhorn':'sprites/baby-longhorn.png',
+  'longhorn-b':'sprites/baby-longhorn-b.png'
 };
+
+// ===== COLOR VARIANT SYSTEM =====
+// Each non-fruit-tree character can roll a color variant at hatch.
+// Variant applies a permanent tint via getTintedSprite (stronger than egg tint).
+var FRUIT_TREES = ['apple-tree','pear-tree','orange-tree','plum-tree'];
+var COLOR_VARIANTS = [
+  {id:'normal',  name:'Normal',   tint:null},
+  {id:'rose',    name:'Rose',     tint:'rgba(255,100,140,0.22)'},
+  {id:'ice',     name:'Ice',      tint:'rgba(100,180,255,0.22)'},
+  {id:'gold',    name:'Golden',   tint:'rgba(255,210,60,0.25)'},
+  {id:'shadow',  name:'Shadow',   tint:'rgba(60,40,80,0.20)'},
+  {id:'mint',    name:'Mint',     tint:'rgba(80,230,180,0.22)'},
+  {id:'ember',   name:'Ember',    tint:'rgba(255,80,30,0.20)'},
+  {id:'lavender',name:'Lavender', tint:'rgba(180,120,255,0.22)'},
+];
+// Weights: normal=60%, each color=~5.7%
+var VARIANT_WEIGHTS = [60, 6, 6, 5, 5, 6, 6, 6];
+
+// Egg color → which variant gets boosted odds
+var EGG_VARIANT_BOOST = {
+  green: 'mint',
+  brown: 'ember',
+  white: 'ice',
+  red:   'ember',
+  blue:  'ice',
+  gold:  'gold',
+};
+
+function rollColorVariant(charId, eggColor) {
+  if (FRUIT_TREES.indexOf(charId) >= 0) return null; // no variants on trees
+  var boosted = eggColor ? (EGG_VARIANT_BOOST[eggColor] || null) : null;
+  var weights = VARIANT_WEIGHTS.slice(); // copy
+  // Boost matching variant by 3x
+  if (boosted) {
+    for (var b = 0; b < COLOR_VARIANTS.length; b++) {
+      if (COLOR_VARIANTS[b].id === boosted) { weights[b] *= 3; break; }
+    }
+  }
+  var total = 0;
+  for (var i = 0; i < weights.length; i++) total += weights[i];
+  var roll = Math.random() * total, acc = 0;
+  for (var j = 0; j < weights.length; j++) {
+    acc += weights[j];
+    if (roll < acc) return COLOR_VARIANTS[j].id === 'normal' ? null : COLOR_VARIANTS[j];
+  }
+  return null;
+}
+
+function getVariantTint(variantId) {
+  if (!variantId) return null;
+  for (var i = 0; i < COLOR_VARIANTS.length; i++) {
+    if (COLOR_VARIANTS[i].id === variantId) return COLOR_VARIANTS[i].tint;
+  }
+  return null;
+}
+
 // Remove background (auto-detects color from corners), find bounds, center in SPRxSPR
 function processSprite(img){
   var tc=document.createElement('canvas');tc.width=img.width;tc.height=img.height;
@@ -878,9 +1015,9 @@ function loadSpriteImages(callback){
   });
 }
 
-var RARITY_COLORS={common:'#aaa',uncommon:'#4ade80',rare:'#60a5fa',legendary:'#c084fc',epic:'#f0d060'};
-var RARITY_LABELS={common:'COMMON',uncommon:'UNCOMMON',rare:'RARE',legendary:'LEGENDARY',epic:'EPIC'};
-var RARITY_ORDER=['common','uncommon','rare','legendary','epic'];
+var RARITY_COLORS={common:'#aaa',uncommon:'#4ade80',rare:'#60a5fa',legendary:'#c084fc',epic:'#f0d060',mythic:'#ff6ec7'};
+var RARITY_LABELS={common:'COMMON',uncommon:'UNCOMMON',rare:'RARE',legendary:'LEGENDARY',epic:'EPIC',mythic:'MYTHIC'};
+var RARITY_ORDER=['common','uncommon','rare','legendary','epic','mythic'];
 var TOKEN_COLOR_BIAS={tgn:'green',burgers:'orange',weth:'blue',btc:'gold',mft:'green',degen:'purple',usdc:null,azusd:null};
 
 // ===== CHARACTERS (640x640 native hires — chibi proportions, kawaii eyes) =====
@@ -889,12 +1026,12 @@ var TOKEN_COLOR_BIAS={tgn:'green',burgers:'orange',weth:'blue',btc:'gold',mft:'g
 // Palette: 8+ tones per color (specular, highlight, mid-hi, base, mid-shadow, shadow, deep, ultra-deep)
 var CHARACTERS=[
   // --- FLOOF CAT (most common) ---
-  {id:'floof-cat',name:'Floof Cat',rarity:'uncommon',hires:true,
+  {id:'floof-cat',name:'Floof Cat',rarity:'common',hires:true,
    anchors:{head:[320,120],face:[320,280],hand:[480,400],neck:[320,340],feet:[320,520]},
    palette:{outline:'#d4c0a0'},
    draw:function(s,fr,st){}},
   // --- BUNNY (640x640 hires) ---
-  {id:'bunny',name:'Puppy',rarity:'uncommon',hires:true,
+  {id:'bunny',name:'Puppy',rarity:'common',hires:true,
    anchors:{head:[320,120],face:[320,270],hand:[500,420],neck:[320,350],feet:[320,530]},
    palette:{outline:'#2a1a3e'},
    draw:function(s,fr,st){
@@ -1021,7 +1158,7 @@ var CHARACTERS=[
      sfuzz(s, 466,424, 28,24, [f1,f2,f3], 30, 303);
    }},
   // --- CAT (640x640 hires) ---
-  {id:'cat',name:'Cat',rarity:'uncommon',hires:true,
+  {id:'cat',name:'Cat',rarity:'common',hires:true,
    anchors:{head:[320,120],face:[320,270],hand:[500,420],neck:[320,350],feet:[320,530]},
    palette:{outline:'#1a1a3e'},
    draw:function(s,fr,st){
@@ -2703,8 +2840,53 @@ var CHARACTERS=[
   anchors:{head:[320,130],face:[320,250],hand:[490,400],neck:[320,320],feet:[320,520]},
   palette:{outline:'#2a1a0a'},
   draw:function(s,fr,st){}},
+ // --- RABBIT (PNG sprite) ---
+ {id:'rabbit',name:'Rabbit',rarity:'common',hires:true,
+  anchors:{head:[320,120],face:[320,260],hand:[480,380],neck:[320,330],feet:[320,520]},
+  palette:{outline:'#c0b8b0'},
+  draw:function(s,fr,st){}},
+ // --- BROWN BUNNY (PNG sprite) ---
+ {id:'brown-bunny',name:'Brown Bunny',rarity:'uncommon',hires:true,
+  anchors:{head:[320,120],face:[320,260],hand:[480,380],neck:[320,330],feet:[320,520]},
+  palette:{outline:'#5a3a2a'},
+  draw:function(s,fr,st){}},
+ // --- HAMSTER (PNG sprite) ---
+ {id:'hamster',name:'Hamster',rarity:'uncommon',hires:true,
+  anchors:{head:[320,120],face:[320,260],hand:[470,390],neck:[320,330],feet:[320,520]},
+  palette:{outline:'#8a6a4a'},
+  draw:function(s,fr,st){}},
+ // --- LONGHORN (PNG sprite, AZUSD gate) ---
+ {id:'longhorn',name:'Longhorn',rarity:'rare',gate:'AZUSD',hires:true,
+  anchors:{head:[320,120],face:[320,260],hand:[480,390],neck:[320,330],feet:[320,520]},
+  palette:{outline:'#4a3020'},
+  draw:function(s,fr,st){}},
+ // --- LONGHORN B (PNG sprite, AZUSD gate) ---
+ {id:'longhorn-b',name:'Texas Long',rarity:'legendary',gate:'AZUSD',hires:true,
+  anchors:{head:[320,120],face:[320,260],hand:[480,390],neck:[320,330],feet:[320,520]},
+  palette:{outline:'#1a1a2a'},
+  draw:function(s,fr,st){}},
+ // --- APPLE TREE (PNG sprite, TGN gate) ---
+ {id:'apple-tree',name:'Apple Tree',rarity:'uncommon',gate:'TGN',hires:true,
+  anchors:{head:[320,100],face:[320,240],hand:[480,340],neck:[320,300],feet:[320,460]},
+  palette:{outline:'#2a4a1a'},
+  draw:function(s,fr,st){}},
+ // --- PEAR TREE (PNG sprite, TGN gate) ---
+ {id:'pear-tree',name:'Pear Tree',rarity:'uncommon',gate:'TGN',hires:true,
+  anchors:{head:[320,100],face:[320,240],hand:[480,340],neck:[320,300],feet:[320,460]},
+  palette:{outline:'#3a5a1a'},
+  draw:function(s,fr,st){}},
+ // --- ORANGE TREE (PNG sprite, TGN gate) ---
+ {id:'orange-tree',name:'Orange Tree',rarity:'rare',gate:'TGN',hires:true,
+  anchors:{head:[320,100],face:[320,240],hand:[480,340],neck:[320,300],feet:[320,460]},
+  palette:{outline:'#5a3a0a'},
+  draw:function(s,fr,st){}},
+ // --- PLUM TREE (PNG sprite, TGN gate) ---
+ {id:'plum-tree',name:'Plum Tree',rarity:'rare',gate:'TGN',hires:true,
+  anchors:{head:[320,100],face:[320,240],hand:[480,340],neck:[320,300],feet:[320,460]},
+  palette:{outline:'#4a1a4a'},
+  draw:function(s,fr,st){}},
  // --- LEAFY (PNG sprite) ---
- {id:'leaf',name:'Leafy',rarity:'common',hires:true,
+ {id:'leaf',name:'Leafy',rarity:'mythic',hires:true,
   anchors:{head:[320,100],face:[320,240],hand:[480,340],neck:[320,300],feet:[320,460]},
   palette:{outline:'#1a4a1a'},
   draw:function(s,fr,st){}},
@@ -3137,52 +3319,24 @@ function rollEgg(){
 }
 // Egg rarity level (0-4) drives trait odds automatically
 function eggRarityLevel(r){return Math.max(0,RARITY_ORDER.indexOf(r));}
-// sortedToken: null for random egg, 'TGN'/'BURGERS'/'AZUSD' for sorted egg
-// careBonus: 0-4 from taps, patienceBonus: 0-4 from time — drive gated odds
+// careBonus: 0-4 from taps, patienceBonus: 0-4 from time
 function rollCharacter(eggRarity, sortedToken, careBonus, patienceBonus, eggColor){
   careBonus = careBonus || 0;
   patienceBonus = patienceBonus || 0;
 
-  // Only roll characters that have actual PNG sprites
-  var allSprite = CHARACTERS.filter(function(c){ return SPRITE_MAP[c.id]; });
-  var ungated = allSprite.filter(function(c){ return !c.gate; });
-  var gated = allSprite.filter(function(c){ return !!c.gate; });
+  // All characters with sprites are available (no gating)
+  var available = CHARACTERS.filter(function(c){ return SPRITE_MAP[c.id]; });
 
-  // Gated character chance — always possible, scales with care + patience
-  // Base: 0.5% per gated char, +1% per care tier, +1% per patience tier
-  // Max at OBSESSED+PERFECT: 0.5 + 4 + 4 = 8.5%, capped at 10%
-  var gateChance = 0.5 + (careBonus * 1) + (patienceBonus * 1);
-  if (gateChance > 10) gateChance = 10;
-
-  var available;
-  if (sortedToken) {
-    // Sorted egg ($1): GUARANTEED family chars in pool + ungated
-    var familyGated = gated.filter(function(c){ return c.gate === sortedToken; });
-    available = ungated.concat(familyGated);
-  } else {
-    // Random egg: each gated char has individual chance to enter pool
-    var luckyGated = [];
-    for (var gi2 = 0; gi2 < gated.length; gi2++) {
-      if (seededRandom() * 100 < gateChance) luckyGated.push(gated[gi2]);
-    }
-    available = ungated.concat(luckyGated);
-  }
-
-  // Rarity chart — sorted eggs get much better odds
+  // Rarity chart — care + patience improve odds
   var lv = eggRarityLevel(eggRarity);
-  var ch;
-  if (sortedToken) {
-    ch = {common:15, uncommon:25, rare:40, legendary:15, epic:5};
-  } else {
-    var epicChance2 = Math.pow(Math.max(0,lv-2),2)*2.5;
-    var legChance = Math.pow(Math.max(0,lv-0.5),2)*1;
-    var rareChance = 2+lv*lv*2;
-    var uncomChance = 15+lv*3;
-    var comChance = 100-epicChance2-legChance-rareChance-uncomChance;
-    if(comChance<5){comChance=5;uncomChance=100-epicChance2-legChance-rareChance-5;}
-    if(uncomChance<5)uncomChance=5;
-    ch = {common:comChance,uncommon:uncomChance,rare:rareChance,legendary:legChance,epic:epicChance2};
-  }
+  var epicChance2 = Math.pow(Math.max(0,lv-2),2)*2.5;
+  var legChance = Math.pow(Math.max(0,lv-0.5),2)*1;
+  var rareChance = 2+lv*lv*2;
+  var uncomChance = 15+lv*3;
+  var comChance = 100-epicChance2-legChance-rareChance-uncomChance;
+  if(comChance<5){comChance=5;uncomChance=100-epicChance2-legChance-rareChance-5;}
+  if(uncomChance<5)uncomChance=5;
+  var ch = {mythic:0.0001,common:comChance,uncommon:uncomChance,rare:rareChance,legendary:legChance,epic:epicChance2};
 
   var roll=seededRandom()*100, acc=0, pk='common';
   for(var r in ch){acc+=ch[r];if(roll<acc){pk=r;break;}}
@@ -3236,6 +3390,7 @@ function toggleIncubator() {
 }
 function getIncDesignItems() {
   var items = [];
+  for (var j = 0; j < STAND_POS.length; j++) items.push({src:'STAND', idx:j, x:STAND_POS[j].x, y:STAND_POS[j].y, scale:STAND_POS[j].scale});
   for (var j = 0; j < INC_FURNITURE.length; j++) items.push({src:'INC_FURNITURE', idx:j, x:INC_FURNITURE[j].x, y:INC_FURNITURE[j].y, scale:INC_FURNITURE[j].scale});
   for (var k = 0; k < EGG_TAP_BTNS.length; k++) items.push({src:'EGG_TAP_BTN', idx:k, x:EGG_TAP_BTNS[k].x, y:EGG_TAP_BTNS[k].y, scale:EGG_TAP_BTNS[k].scale});
   return items;
@@ -3243,6 +3398,7 @@ function getIncDesignItems() {
 function syncDesignBack(items) {
   for (var i = 0; i < items.length; i++) {
     var it = items[i];
+    if (it.src === 'STAND') { STAND_POS[it.idx].x = it.x; STAND_POS[it.idx].y = it.y; STAND_POS[it.idx].scale = it.scale; }
     if (it.src === 'INC_FURNITURE') { INC_FURNITURE[it.idx].x = it.x; INC_FURNITURE[it.idx].y = it.y; INC_FURNITURE[it.idx].scale = it.scale; }
     if (it.src === 'EGG_TAP_BTN') { EGG_TAP_BTNS[it.idx].x = it.x; EGG_TAP_BTNS[it.idx].y = it.y; EGG_TAP_BTNS[it.idx].scale = it.scale; }
   }
@@ -3290,7 +3446,7 @@ var EGG_TAP_BTNS = [
 
 // All furniture in the incubator room — each has sprite, position, label
 var INC_FURNITURE = [
-  {id:'freezer', sprite:'sprites/food/freezer.png', label:'FREEZER', x:27.2, y:42.8, scale:25.05},
+  {id:'freezer', sprite:'sprites/food/freezer.png', label:'FREEZER', x:20.6, y:35.6, scale:25.05},
 ];
 
 // --- DESIGN MODE: universal drag & scale for any sprite placement ---
@@ -3419,10 +3575,12 @@ function initDesignMode() {
 
   document.addEventListener('keydown', function(e) {
     if (e.key === 'd' || e.key === 'D') {
-      if (!isAdmin()) return;
+      if (!isAdmin()) { showMsg('ADMIN ONLY (host: ' + window.location.hostname + ')', '#ef4444'); return; }
       designMode = !designMode;
+      showMsg(designMode ? 'DESIGN MODE ON' : 'DESIGN MODE OFF', designMode ? '#4ade80' : '#ef4444');
       updatePanelDesignOutlines();
       if (designContext && designContext.onUpdate) designContext.onUpdate();
+      if (gardenOpen) updateGardenFloor();
     }
     if (e.key === 'a' || e.key === 'A') {
       if (!isAdmin()) return;
@@ -3601,13 +3759,22 @@ function updateIncubatorSlots() {
       var isDesign = designMode && designContext;
       var btnBg = isDesign ? 'background:rgba(10,10,30,0.85);border:2px solid #f0d060;' : 'background:rgba(10,10,30,0.7);border:1px solid rgba(240,208,96,0.3);border-radius:6px;';
       var btnDesign = (isDesign && (i + INC_FURNITURE.length) === designSelected) ? 'outline:2px solid #4ade80;' : '';
+      // Hatch button — above the egg
+      if (ready) {
+        var hatchX = pos.x + pos.scale * 0.15;
+        var hatchY = pos.y - 10;
+        html += '<div onclick="event.stopPropagation();window._doHatchEgg(' + egg.id + ')" ' +
+          'style="position:absolute;left:' + hatchX + '%;top:' + hatchY + '%;z-index:999;cursor:pointer;text-align:center;pointer-events:auto">' +
+          '<button class="btn btn-hatch" style="font-size:8px;padding:6px 14px;animation:pulse-hatch 1s infinite alternate;font-family:\'Press Start 2P\',monospace">HATCH!</button>' +
+        '</div>';
+      }
+      // Tap button — below egg
       html += '<div data-design-idx="' + (i + INC_FURNITURE.length) + '" onclick="selectIncEgg(' + egg.id + ')" ' +
         'style="position:absolute;left:' + btn.x + '%;top:' + btn.y + '%;width:' + btnW + ';' +
         'z-index:900;cursor:pointer;text-align:center;' + btnBg +
         'border-radius:4px;padding:3px;pointer-events:auto;overflow:visible;' +
         'display:flex;flex-direction:column;align-items:center;justify-content:center;' +
         'font-family:\'Press Start 2P\',monospace;' + btnDesign + '">' +
-        (ready ? '<button class="btn btn-hatch" onclick="event.stopPropagation();window._doHatchEgg(' + egg.id + ')" style="font-size:8px;padding:6px 12px;margin-bottom:4px;width:120%;animation:pulse-hatch 1s infinite alternate;position:relative;z-index:999">HATCH!</button>' : '') +
         '<div style="display:flex;align-items:center;gap:3px;justify-content:center">' +
         '<div style="width:6px;height:6px;border-radius:50%;background:' + lc + ';box-shadow:' + ls + '"></div>' +
         '<span style="color:#000;font-size:6px">' + taps + '</span></div>' +
@@ -3700,13 +3867,46 @@ function getFloorBounds(yFrac) {
   };
 }
 
+// BG bounds — where the background image is actually drawn on canvas
+var BG = { dx: 0, dy: 0, dw: 0, dh: 0 };
 function resize() {
-  W = C.width = window.innerWidth;
-  H = C.height = window.innerHeight;
+  var gc = document.getElementById('game-container');
+  W = C.width = gc ? gc.clientWidth : window.innerWidth;
+  H = C.height = gc ? gc.clientHeight : window.innerHeight;
   SCALE = Math.min(W / 900, H / 680);
+  // Recalculate background image bounds (mirrors render() logic)
+  var bgZoom = 0.82;
+  var imgRatio = 1; // 1024x1024 square bg
+  var canvasRatio = W / H;
+  if (canvasRatio > imgRatio) {
+    BG.dw = W * bgZoom; BG.dh = BG.dw / imgRatio;
+  } else {
+    BG.dh = H * bgZoom; BG.dw = BG.dh * imgRatio;
+  }
+  BG.dx = (W - BG.dw) / 2;
+  BG.dy = (H - BG.dh) / 2;
 }
 resize();
-window.addEventListener('resize', resize);
+window.addEventListener('resize', function() {
+  var oldBG = { dx: BG.dx, dy: BG.dy, dw: BG.dw, dh: BG.dh };
+  resize();
+  // Remap all baseling positions from old BG coords to new BG coords
+  if (oldBG.dw > 0 && typeof baselings !== 'undefined') {
+    for (var i = 0; i < baselings.length; i++) {
+      var b = baselings[i];
+      var xf = (b.x - oldBG.dx) / oldBG.dw;
+      var yf = (b.y - oldBG.dy) / oldBG.dh;
+      b.x = BG.dx + xf * BG.dw;
+      b.y = BG.dy + yf * BG.dh;
+      b.targetX = BG.dx + ((b.targetX - oldBG.dx) / oldBG.dw) * BG.dw;
+      b.targetY = BG.dy + ((b.targetY - oldBG.dy) / oldBG.dh) * BG.dh;
+    }
+  }
+});
+
+// Convert floor zone fractions to actual pixel positions relative to bg image
+function bgX(frac) { return BG.dx + frac * BG.dw; }
+function bgY(frac) { return BG.dy + frac * BG.dh; }
 
 // --- ROOM SYSTEM --- // MfT SoBs
 var ROOM_NAMES = ['Nursery','Den','Burrow','Lodge','Palace','Penthouse','Treehouse','Cavern'];
@@ -3769,12 +3969,12 @@ function burnPoopAtPlant(amount) {
 var powerPlantOpen = false;
 // Gauge button positions on the power plant floor (design mode)
 var PP_GAUGES = [
-  {x:20, y:72, scale:7.35, h:14.5, key:'btc',        label:'BTC',         color:'#f7931a', icon:'&#8383;'},
-  {x:29, y:73.7, scale:6.5, h:12, key:'eth',         label:'ETH',         color:'#60a5fa', icon:'&#9670;'},
-  {x:37.7, y:72.9, scale:6.55, h:13, key:'stable',   label:'USDC',        color:'#2775ca', icon:'&#36;'},
-  {x:47.3, y:76.2, scale:6.5, h:13, key:'poopburn',  label:'BURNED',      color:'#ef4444', icon:'&#128293;'},
-  {x:59.1, y:73.1, scale:6.5, h:13, key:'poop',       label:'POOP',        color:'#a855f7', icon:'&#128169;'},
-  {x:10.6, y:73.1, scale:6.5, h:13, key:'mft',       label:'MfT',         color:'#4ade80', icon:'&#127795;'},
+  {x:17.4, y:63.2, scale:7.35, h:14.5, key:'btc',        label:'BTC',         color:'#f7931a', icon:'&#8383;'},
+  {x:26.6, y:64.1, scale:6.5, h:12, key:'eth',         label:'ETH',         color:'#60a5fa', icon:'&#9670;'},
+  {x:36.9, y:63.9, scale:6.55, h:13, key:'stable',   label:'USDC',        color:'#2775ca', icon:'&#36;'},
+  {x:46.5, y:66.1, scale:8.8, h:13, key:'poopburn',  label:'BURNED',      color:'#ef4444', icon:'&#128293;'},
+  {x:60.5, y:63.8, scale:6.5, h:13, key:'poop',       label:'POOP',        color:'#a855f7', icon:'&#128169;'},
+  {x:6.2, y:64.1, scale:6.5, h:13, key:'mft',       label:'MfT',         color:'#4ade80', icon:'&#127795;'},
 ];
 
 function openPowerPlant() {
@@ -3915,24 +4115,24 @@ function showPPDetail(type) {
     overlay.id = 'pp-detail-overlay';
     document.getElementById('power-plant-room').appendChild(overlay);
   }
-  overlay.style.cssText = 'position:absolute;top:4%;left:15%;right:15%;bottom:30%;z-index:10;' +
-    'background:rgba(5,5,15,0.95);border:3px solid ' + c.color + ';border-radius:12px;padding:14px;' +
+  overlay.style.cssText = 'position:absolute;top:10%;left:20%;right:20%;bottom:40%;z-index:10;' +
+    'background:rgba(5,5,15,0.95);border:2px solid ' + c.color + ';border-radius:10px;padding:10px;' +
     'font-family:"Press Start 2P",monospace;text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:center';
   overlay.onclick = function(e) { e.stopPropagation(); closePPDetail(); };
-  var html = '<span onclick="event.stopPropagation();closePPDetail()" style="position:absolute;top:8px;right:12px;cursor:pointer;color:#888;font-size:18px">X</span>';
-  html += '<div style="font-size:54px;margin-bottom:3px">' + c.icon + '</div>';
-  html += '<div style="color:' + c.color + ';font-size:20px;margin-bottom:4px">' + c.label + '</div>';
-  html += '<div style="color:#fff;font-size:clamp(18px,4.5vw,36px);margin-bottom:8px">' + c.val.toFixed(6) + '</div>';
-  // Gauge bar — plant assets use % of total, poop/mft just show value bar
+  var html = '<span onclick="event.stopPropagation();closePPDetail()" style="position:absolute;top:6px;right:10px;cursor:pointer;color:#888;font-size:14px">X</span>';
+  html += '<div style="font-size:32px;margin-bottom:2px">' + c.icon + '</div>';
+  html += '<div style="color:' + c.color + ';font-size:12px;margin-bottom:3px">' + c.label + '</div>';
+  html += '<div style="color:#fff;font-size:clamp(12px,3.5vw,22px);margin-bottom:6px">' + c.val.toFixed(6) + '</div>';
+  // Gauge bar
   var barPct = 0;
   if (c.group === 'plant' && total > 0) {
     barPct = Math.round(c.val / Math.max(total,1) * 100);
   } else if (c.group !== 'plant') {
-    barPct = Math.min(100, Math.round(c.val * 10)); // scale for display
+    barPct = Math.min(100, Math.round(c.val * 10));
   }
-  html += '<div style="width:90%;max-width:450px;background:#222;border-radius:5px;height:18px;margin-bottom:8px;overflow:hidden">' +
-    '<div style="height:100%;width:' + barPct + '%;background:' + c.color + ';border-radius:5px;transition:width 0.3s"></div></div>';
-  html += '<div style="display:flex;flex-direction:column;gap:6px;font-size:clamp(10px,2.5vw,16px);width:90%;max-width:450px">';
+  html += '<div style="width:85%;max-width:350px;background:#222;border-radius:4px;height:12px;margin-bottom:6px;overflow:hidden">' +
+    '<div style="height:100%;width:' + barPct + '%;background:' + c.color + ';border-radius:4px;transition:width 0.3s"></div></div>';
+  html += '<div style="display:flex;flex-direction:column;gap:4px;font-size:clamp(7px,2vw,11px);width:85%;max-width:350px">';
   if (c.group === 'plant') {
     var pct = total > 0 ? (c.val / total * 100).toFixed(1) : '0.0';
     html += '<div style="display:flex;justify-content:space-between"><span style="color:#888">% OF PLANT</span><span style="color:' + c.color + '">' + pct + '%</span></div>';
@@ -3941,7 +4141,7 @@ function showPPDetail(type) {
     html += '<div style="display:flex;justify-content:space-between"><span style="color:#888">TOTAL BURNED</span><span style="color:#ef4444">' + (pp.poopBurned || 0).toFixed(4) + '</span></div>';
     html += '<div style="display:flex;justify-content:space-between"><span style="color:#888">BURN STATUS</span><span style="color:#c084fc">' + (pp.poopBurned > 0 ? 'ACTIVE' : 'NONE') + '</span></div>';
   } else if (type === 'poop') {
-    html += '<div style="display:flex;justify-content:space-between"><span style="color:#888">TOTAL IN ALL POOLS</span><span style="color:#a855f7">' + (pp.poopInPools || 0).toFixed(2) + '</span></div>';
+    html += '<div style="display:flex;justify-content:space-between"><span style="color:#888">IN ALL POOLS</span><span style="color:#a855f7">' + (pp.poopInPools || 0).toFixed(2) + '</span></div>';
   } else if (type === 'mft') {
     html += '<div style="display:flex;justify-content:space-between"><span style="color:#888">MfT IN PLANT</span><span style="color:#4ade80">' + (pp.mftBalance || 0).toFixed(4) + '</span></div>';
     html += '<div style="display:flex;justify-content:space-between"><span style="color:#888">LOCKED LP</span><span style="color:#22c55e">FOREVER</span></div>';
@@ -3962,29 +4162,42 @@ function closePPDetail() {
 var gardenOpen = false;
 var gardenDepositQty = 1;
 var gardenTreeSelected = false;
+var gardenBtcSelected = false;
+var gardenEthSelected = false;
 
 // Community tree state (saved)
 var gardenPools = [
   {poopDeposited:0, yieldAccum:0, lastCheck:0, pair:'burgers'},
+  {poopDeposited:0, yieldAccum:0, lastCheck:0, pair:'cbbtc'},
+  {poopDeposited:0, yieldAccum:0, lastCheck:0, pair:'weth'},
 ];
 
-// Decorative garden items — flowers on the farm plot rows
+// Pool deposit buttons — position & size (%, vw/vh)
+var gardenPoolButtons = [
+  {label:'BURGER', x:39.2, y:27.3, w:14, h:24.5, color:'#f97316'},
+  {label:'BTC', x:34.6, y:52.9, w:8.2, h:17, color:'#f7931a'},
+  {label:'ETH', x:52.5, y:52.9, w:8.2, h:17, color:'#60a5fa'},
+];
+var gardenEditMode = false;
+var gardenEditIdx = 0; // which pool button we're editing
+
+// Garden flowers — BTC patch (1-3) clickable for deposits, ETH patch (4-6) decorative for now
 var GARDEN_FLOWERS = [
-  {sprite:'sprites/garden/flower-btc.png', x:12, y:52, scale:8},
-  {sprite:'sprites/garden/flower-btc.png', x:22, y:58, scale:7},
-  {sprite:'sprites/garden/flower-btc.png', x:8,  y:64, scale:6},
-  {sprite:'sprites/garden/flower-eth.png', x:72, y:52, scale:8},
-  {sprite:'sprites/garden/flower-eth.png', x:82, y:58, scale:7},
-  {sprite:'sprites/garden/flower-eth.png', x:76, y:64, scale:6},
+  {sprite:'sprites/garden/flower-btc.png', x:36.7, y:57.9, scale:8, type:'btc'},
+  {sprite:'sprites/garden/flower-btc.png', x:35.9, y:61.2, scale:7, type:'btc'},
+  {sprite:'sprites/garden/flower-btc.png', x:34.2, y:59.8, scale:6, type:'btc'},
+  {sprite:'sprites/garden/flower-eth.png', x:54.7, y:58.5, scale:8, type:'eth'},
+  {sprite:'sprites/garden/flower-eth.png', x:52.9, y:58, scale:7, type:'eth'},
+  {sprite:'sprites/garden/flower-eth.png', x:54.1, y:63.5, scale:6, type:'eth'},
 ];
 
 // Burger Tree position
-var BURGER_TREE = {x:35, y:18, scale:30};
+var BURGER_TREE = {x:25.4, y:24.2, scale:30};
 
-// Jimi McSeed — garden NPC
-var GARDEN_FARMER = {x:10.1, y:81.4, scale:10};
-var GARDEN_FARMER_PATH = {ax:10.1, ay:81.4, bx:73.9, by:4.1};
-var gardenFarmerPos = {x:10.1, y:81.4, dir:1, t:0};
+// Jimi McSeed — garden NPC (walks between two points)
+var GARDEN_FARMER = {x:41.5, y:65.5, scale:10};
+var GARDEN_FARMER_PATH = {ax:41.5, ay:65.5, bx:35, by:65.5};
+var gardenFarmerPos = {x:41.5, y:65.5, dir:1, t:0};
 
 function tickGardenFarmer() {
   if (!gardenOpen || designMode) return;
@@ -4014,36 +4227,218 @@ function calcTreeYield() {
 async function depositPoopToTree(amount) {
   if (amount <= 0) return;
   if (totalPoop < amount) { showMsg('NOT ENOUGH POOP!', '#ef4444'); return; }
+
   var pool = gardenPools[0];
-  pool.yieldAccum += calcTreeYield();
   pool.poopDeposited += amount;
   pool.lastCheck = Date.now();
   totalPoop -= amount;
-  showMsg('+' + amount + ' POOP fed to Burger Tree!', '#f97316');
-  updateHUD();
-  updateGardenFloor();
-  updateGardenPanel();
-  saveGame();
+  showMsg('+' + amount + ' POOP → BURGER GARDEN!', '#f97316');
+  updateHUD(); updateGardenFloor(); updateGardenPanel(); saveGame();
+
+  // Record deposit via API → keeper processes on-chain
+  if (currentAccount && TREE_API) {
+    try {
+      var msg = 'Deposit ' + amount + ' POOP to garden:burgers at ' + Date.now();
+      var sig = await window.signer.signMessage(msg);
+      await fetch(TREE_API + '/deposit', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({wallet:currentAccount, amount:amount, signature:sig, message:msg, pool:'burgers'})
+      });
+    } catch(e) { console.warn('Deposit API:', e.message); }
+  }
 }
 
-function harvestTree() {
-  var pool = gardenPools[0];
-  var pending = calcTreeYield();
-  var total = pool.yieldAccum + pending;
-  if (total < 1.0) { showMsg('NOT READY YET!', '#ef4444'); return; }
-  pool.yieldAccum = 0;
-  pool.lastCheck = Date.now();
-  showMsg('HARVESTED $' + total.toFixed(2) + ' in BURGERS + MfT!', '#f97316');
+// --- BTC Patch (cbBTC garden) ---
+function calcBtcYield() {
+  var pool = gardenPools[1];
+  if (!pool.poopDeposited || pool.poopDeposited <= 0 || !pool.lastCheck) return 0;
+  var elapsed = (Date.now() - pool.lastCheck) / 3600000;
+  return pool.poopDeposited * 0.0001 * elapsed;
+}
+
+function selectBtcPatch() {
+  gardenBtcSelected = true;
+  gardenTreeSelected = false;
+  gardenEthSelected = false;
+  gardenDepositQty = 1;
   updateGardenFloor();
   updateGardenPanel();
-  saveGame();
+}
+function selectEthPatch() {
+  gardenEthSelected = true;
+  gardenTreeSelected = false;
+  gardenBtcSelected = false;
+  gardenDepositQty = 1;
+  updateGardenFloor();
+  updateGardenPanel();
+}
+
+async function depositPoopToBtc(amount) {
+  if (amount <= 0) return;
+  if (totalPoop < amount) { showMsg('NOT ENOUGH POOP!', '#ef4444'); return; }
+
+  var pool = gardenPools[1];
+  pool.poopDeposited += amount;
+  pool.lastCheck = Date.now();
+  totalPoop -= amount;
+  showMsg('+' + amount + ' POOP → BTC GARDEN!', '#f7931a');
+  updateHUD(); updateGardenFloor(); updateGardenPanel(); saveGame();
+
+  // Record deposit via API → keeper processes on-chain
+  if (currentAccount && TREE_API) {
+    try {
+      var msg = 'Deposit ' + amount + ' POOP to garden:cbbtc at ' + Date.now();
+      var sig = await window.signer.signMessage(msg);
+      await fetch(TREE_API + '/deposit', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({wallet:currentAccount, amount:amount, signature:sig, message:msg, pool:'cbbtc'})
+      });
+    } catch(e) { console.warn('Deposit API:', e.message); }
+  }
+}
+
+async function harvestBtcPatch() {
+  if (!currentAccount || !window.signer) { showMsg('CONNECT WALLET FIRST!', '#ef4444'); return; }
+  if (!GARDEN_MULTI) { showMsg('GARDEN NOT DEPLOYED!', '#ef4444'); return; }
+
+  try {
+    showMsg('CLAIMING REWARDS...', '#f7931a');
+    var garden = new ethers.Contract(GARDEN_MULTI, GARDEN_MULTI_ABI, window.signer);
+    var tx = await garden.claimAll();
+    await tx.wait();
+
+    var pool = gardenPools[1];
+    pool.yieldAccum = 0;
+    pool.lastCheck = Date.now();
+    showMsg('REWARDS CLAIMED!', '#4ade80');
+    updateGardenFloor();
+    updateGardenPanel();
+    saveGame();
+  } catch(e) {
+    console.error('BTC harvest:', e);
+    showMsg('CLAIM FAILED: ' + (e.reason || e.message || 'unknown'), '#ef4444');
+  }
+}
+
+async function harvestTree() {
+  if (!currentAccount || !window.signer) { showMsg('CONNECT WALLET FIRST!', '#ef4444'); return; }
+  if (!GARDEN_MULTI) { showMsg('GARDEN NOT DEPLOYED!', '#ef4444'); return; }
+
+  try {
+    showMsg('CLAIMING REWARDS...', '#f97316');
+    var garden = new ethers.Contract(GARDEN_MULTI, GARDEN_MULTI_ABI, window.signer);
+    var tx = await garden.claimAll();
+    await tx.wait();
+
+    var pool = gardenPools[0];
+    pool.yieldAccum = 0;
+    pool.lastCheck = Date.now();
+    showMsg('REWARDS CLAIMED!', '#4ade80');
+    updateGardenFloor();
+    updateGardenPanel();
+    saveGame();
+  } catch(e) {
+    console.error('Burger harvest:', e);
+    showMsg('CLAIM FAILED: ' + (e.reason || e.message || 'unknown'), '#ef4444');
+  }
+}
+
+// --- ETH Patch (POOP/WETH garden) ---
+async function depositPoopToEth(amount) {
+  if (amount <= 0) return;
+  if (totalPoop < amount) { showMsg('NOT ENOUGH POOP!', '#ef4444'); return; }
+
+  var pool = gardenPools[2];
+  pool.poopDeposited += amount;
+  pool.lastCheck = Date.now();
+  totalPoop -= amount;
+  showMsg('+' + amount + ' POOP → ETH GARDEN!', '#60a5fa');
+  updateHUD(); updateGardenFloor(); updateGardenPanel(); saveGame();
+
+  // Record deposit via API → keeper processes on-chain
+  if (currentAccount && TREE_API) {
+    try {
+      var msg = 'Deposit ' + amount + ' POOP to garden:weth at ' + Date.now();
+      var sig = await window.signer.signMessage(msg);
+      await fetch(TREE_API + '/deposit', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({wallet:currentAccount, amount:amount, signature:sig, message:msg, pool:'weth'})
+      });
+    } catch(e) { console.warn('Deposit API:', e.message); }
+  }
+}
+
+async function harvestEthPatch() {
+  if (!currentAccount || !window.signer) { showMsg('CONNECT WALLET FIRST!', '#ef4444'); return; }
+  if (!GARDEN_MULTI) { showMsg('GARDEN NOT DEPLOYED!', '#ef4444'); return; }
+
+  try {
+    showMsg('CLAIMING REWARDS...', '#60a5fa');
+    var garden = new ethers.Contract(GARDEN_MULTI, GARDEN_MULTI_ABI, window.signer);
+    var tx = await garden.claimAll();
+    await tx.wait();
+
+    var pool = gardenPools[2];
+    pool.yieldAccum = 0;
+    pool.lastCheck = Date.now();
+    showMsg('REWARDS CLAIMED!', '#4ade80');
+    updateGardenFloor();
+    updateGardenPanel();
+    saveGame();
+  } catch(e) {
+    console.error('ETH harvest:', e);
+    showMsg('CLAIM FAILED: ' + (e.reason || e.message || 'unknown'), '#ef4444');
+  }
+}
+
+function getGardenDesignItems() {
+  var items = [];
+  // 0 = burger tree
+  items.push({src:'BURGER_TREE', idx:0, label:'BURGER TREE', x:BURGER_TREE.x, y:BURGER_TREE.y, scale:BURGER_TREE.scale});
+  // 1-6 = flowers
+  for (var i = 0; i < GARDEN_FLOWERS.length; i++) {
+    var f = GARDEN_FLOWERS[i];
+    items.push({src:'FLOWER', idx:i, label:'FLOWER '+(i+1), sprite:f.sprite, x:f.x, y:f.y, scale:f.scale});
+  }
+  // 7 = farmer
+  items.push({src:'FARMER', idx:0, label:'FARMER', x:GARDEN_FARMER.x, y:GARDEN_FARMER.y, scale:GARDEN_FARMER.scale});
+  // 8+ = pool buttons (draggable + resizable like hood buildings)
+  for (var pi = 0; pi < gardenPoolButtons.length; pi++) {
+    var pb = gardenPoolButtons[pi];
+    items.push({src:'POOL_BTN', idx:pi, label:pb.label+' BTN', x:pb.x, y:pb.y, scale:pb.w, h:pb.h});
+  }
+  return items;
+}
+
+function syncGardenDesignBack(items) {
+  for (var i = 0; i < items.length; i++) {
+    var it = items[i];
+    if (it.src === 'BURGER_TREE') {
+      BURGER_TREE.x = it.x; BURGER_TREE.y = it.y; BURGER_TREE.scale = it.scale;
+    } else if (it.src === 'FLOWER' && GARDEN_FLOWERS[it.idx]) {
+      GARDEN_FLOWERS[it.idx].x = it.x; GARDEN_FLOWERS[it.idx].y = it.y; GARDEN_FLOWERS[it.idx].scale = it.scale;
+    } else if (it.src === 'FARMER') {
+      GARDEN_FARMER.x = it.x; GARDEN_FARMER.y = it.y; GARDEN_FARMER.scale = it.scale;
+    } else if (it.src === 'POOL_BTN' && gardenPoolButtons[it.idx]) {
+      gardenPoolButtons[it.idx].x = it.x; gardenPoolButtons[it.idx].y = it.y;
+      gardenPoolButtons[it.idx].w = it.scale;
+      if (it.h !== undefined) gardenPoolButtons[it.idx].h = it.h;
+    }
+  }
 }
 
 function openGarden() {
   gardenOpen = true;
   gardenTreeSelected = false;
+  gardenBtcSelected = false;
+  gardenEthSelected = false;
   gardenDepositQty = 1;
   document.getElementById('garden-room').style.display = 'block';
+  var items = getGardenDesignItems();
+  startDesign(document.getElementById('garden-floor'), items, 'GARDEN', function() {
+    syncGardenDesignBack(items);
+    updateGardenFloor();
+  });
   updateGardenFloor();
   updateGardenPanel();
 }
@@ -4056,8 +4451,23 @@ function toggleGarden() {
   else openGarden();
 }
 
+var FARMER_LINES = [
+  'Put POOP into the gardens to grow your crypto yields!',
+  'Each garden earns different tokens — BURGERS, BTC, or ETH!',
+  'The more POOP you stake, the bigger your harvest!',
+  'Your baselings can help tend the garden if they have INT 3+!',
+  'Tap the tree or flower patches to deposit POOP!',
+];
+function clickFarmer() {
+  if (designMode) return;
+  var line = FARMER_LINES[Math.floor(Math.random() * FARMER_LINES.length)];
+  showMsg('JIMI: ' + line, '#4ade80');
+}
+
 function selectBurgerTree() {
   gardenTreeSelected = true;
+  gardenBtcSelected = false;
+  gardenEthSelected = false;
   gardenDepositQty = 1;
   updateGardenFloor();
   updateGardenPanel();
@@ -4068,108 +4478,345 @@ function updateGardenFloor() {
   if (!floor) return;
   var html = '';
   var swayClasses = ['garden-sway1','garden-sway2','garden-sway3'];
+  var isDesign = designMode && designContext;
 
-  // Decorative flowers
-  for (var fi = 0; fi < GARDEN_FLOWERS.length; fi++) {
-    var f = GARDEN_FLOWERS[fi];
-    var sway = swayClasses[fi % 3];
-    html += '<div class="garden-deco" style="position:absolute;left:' + f.x + '%;top:' + f.y + '%;width:' + f.scale + 'vw;pointer-events:none">' +
-      '<img class="' + sway + '" src="' + f.sprite + '" style="width:100%">' +
-    '</div>';
-  }
-
-  // Burger Tree (clickable)
-  var treeGlow = gardenTreeSelected ? 'filter:brightness(1.3) drop-shadow(0 0 12px rgba(249,115,22,0.6));' : '';
-  html += '<div class="garden-plot' + (gardenTreeSelected ? ' selected-plot' : '') + '" onclick="selectBurgerTree()" style="position:absolute;left:' + BURGER_TREE.x + '%;top:' + BURGER_TREE.y + '%;width:' + BURGER_TREE.scale + 'vw;z-index:1;cursor:pointer;' + treeGlow + '">' +
+  // Burger Tree (design idx 0)
+  var treeGlow = gardenTreeSelected && !isDesign ? 'filter:brightness(1.3) drop-shadow(0 0 12px rgba(249,115,22,0.6));' : '';
+  var treeBorder = (isDesign && designSelected === 0) ? 'outline:2px solid #4ade80;' : '';
+  html += '<div class="garden-plot' + (gardenTreeSelected && !isDesign ? ' selected-plot' : '') + '" data-design-idx="0" onclick="selectBurgerTree()" style="position:absolute;left:' + BURGER_TREE.x + '%;top:' + BURGER_TREE.y + '%;width:' + BURGER_TREE.scale + 'vw;z-index:1;cursor:pointer;' + treeGlow + treeBorder + '">' +
     '<img src="sprites/garden/burger-tree.png" style="width:100%;image-rendering:pixelated">' +
     '<div style="text-align:center;font-family:\'Press Start 2P\',monospace;font-size:6px;color:#f97316;text-shadow:1px 1px 3px #000;margin-top:-4px">BURGER TREE</div>' +
   '</div>';
 
-  // Jimi McSeed NPC
-  var farmerX = gardenFarmerPos.x;
-  var farmerY = gardenFarmerPos.y;
-  var farmerFlip = gardenFarmerPos.dir < 0 ? 'transform:scaleX(-1);' : '';
-  html += '<div id="garden-farmer-sprite" style="position:absolute;left:' + farmerX + '%;top:' + farmerY + '%;width:' + GARDEN_FARMER.scale + 'vw;z-index:4;' + farmerFlip + '">' +
+  // Flowers (design idx 1-6) — BTC clickable, ETH clickable
+  for (var fi = 0; fi < GARDEN_FLOWERS.length; fi++) {
+    var f = GARDEN_FLOWERS[fi];
+    var sway = isDesign ? '' : swayClasses[fi % 3];
+    var fBorder = (isDesign && designSelected === (fi + 1)) ? 'outline:2px solid #4ade80;' : '';
+    var isBtc = f.type === 'btc';
+    var isEth = f.type === 'eth';
+    var flowerGlow = '';
+    if (isBtc && gardenBtcSelected && !isDesign) flowerGlow = 'filter:brightness(1.3) drop-shadow(0 0 10px rgba(247,147,26,0.6));';
+    if (isEth && gardenEthSelected && !isDesign) flowerGlow = 'filter:brightness(1.3) drop-shadow(0 0 10px rgba(96,165,250,0.6));';
+    var fPointer = isDesign ? 'cursor:pointer;' : ((isBtc || isEth) ? 'cursor:pointer;' : 'pointer-events:none;');
+    var fClick = '';
+    if (!isDesign) { if (isBtc) fClick = 'onclick="selectBtcPatch()"'; else if (isEth) fClick = 'onclick="selectEthPatch()"'; }
+    html += '<div class="garden-deco" data-design-idx="' + (fi + 1) + '" ' + fClick + ' style="position:absolute;left:' + f.x + '%;top:' + f.y + '%;width:' + f.scale + 'vw;z-index:2;' + fPointer + fBorder + flowerGlow + '">' +
+      '<img class="' + sway + '" src="' + f.sprite + '" style="width:100%">' +
+      (isBtc && fi === 0 && !isDesign ? '<div style="text-align:center;font-family:\'Press Start 2P\',monospace;font-size:5px;color:#f7931a;text-shadow:1px 1px 3px #000;margin-top:-2px">BTC PATCH</div>' : '') +
+      (isEth && fi === 3 && !isDesign ? '<div style="text-align:center;font-family:\'Press Start 2P\',monospace;font-size:5px;color:#60a5fa;text-shadow:1px 1px 3px #000;margin-top:-2px">ETH PATCH</div>' : '') +
+    '</div>';
+  }
+
+  // Jimi McSeed NPC (design idx 7)
+  var farmerIdx = GARDEN_FLOWERS.length + 1;
+  var farmerX = isDesign ? GARDEN_FARMER.x : gardenFarmerPos.x;
+  var farmerY = isDesign ? GARDEN_FARMER.y : gardenFarmerPos.y;
+  var farmerFlip = isDesign ? '' : (gardenFarmerPos.dir < 0 ? 'transform:scaleX(-1);' : '');
+  var farmerBorder = (isDesign && designSelected === farmerIdx) ? 'outline:2px solid #4ade80;' : '';
+  html += '<div id="garden-farmer-sprite" data-design-idx="' + farmerIdx + '" onclick="event.stopPropagation();clickFarmer()" style="position:absolute;left:' + farmerX + '%;top:' + farmerY + '%;width:' + GARDEN_FARMER.scale + 'vw;z-index:4;cursor:pointer;' + farmerFlip + farmerBorder + '">' +
     '<img src="sprites/garden/farmer.png" alt="Jimi McSeed" style="width:100%;image-rendering:pixelated;animation:sciWalk 1.4s ease-in-out infinite">' +
   '</div>';
 
+  // Assigned baseling sprites — draggable
+  var gAssigned = getGardenAssigned();
+  for (var gi = 0; gi < gAssigned.length; gi++) {
+    var gb = gAssigned[gi];
+    var gp = getGardenPos(gb);
+    var gSprite = getBaselingGardenSprite(gb);
+    html += '<div id="garden-pet-' + gb.id + '" onmousedown="startGardenDrag(event,' + gb.id + ')" ontouchstart="startGardenDrag(event,' + gb.id + ')" ' +
+      'style="position:absolute;left:' + gp.x + '%;top:' + gp.y + '%;width:6vw;z-index:8;cursor:grab;touch-action:none;transition:none">' +
+      '<img src="' + gSprite + '" style="width:100%;image-rendering:pixelated;animation:sciWalk 1.4s ease-in-out infinite">' +
+      '<div style="text-align:center;font-family:\'Press Start 2P\',monospace;font-size:4px;color:#4ade80;text-shadow:1px 1px 2px #000;white-space:nowrap">' + (gb.charName || 'Pet') + '</div>' +
+    '</div>';
+  }
+
+  // Whistle moved to home room
+
+  // Pool deposit buttons on the floor (invisible hotspots, visible only in design mode)
+  var poolDesignStart = GARDEN_FLOWERS.length + 2; // design idx offset (tree=0, flowers=1-6, farmer=7, pools=8+)
+  for (var pb = 0; pb < gardenPoolButtons.length; pb++) {
+    var btn = gardenPoolButtons[pb];
+    var clickFn = isDesign ? '' : (pb === 0 ? 'selectBurgerTree()' : pb === 1 ? 'selectBtcPatch()' : 'selectEthPatch()');
+    var poolVis = isDesign ? 'background:rgba(0,0,0,0.4);border:2px solid ' + (designSelected === (poolDesignStart + pb) ? '#4ade80' : btn.color) + ';' : 'background:transparent;border:none;';
+    html += '<div data-design-idx="' + (poolDesignStart + pb) + '" onclick="' + clickFn + '" style="position:absolute;left:' + btn.x + '%;top:' + btn.y + '%;width:' + btn.w + 'vw;height:' + btn.h + 'vh;' +
+      poolVis + 'border-radius:6px;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:5;">' +
+      (isDesign ? '<span style="font-family:\'Press Start 2P\',monospace;font-size:7px;color:' + btn.color + ';text-shadow:1px 1px 2px #000">' + btn.label + '</span>' : '') +
+    '</div>';
+  }
+
+  // Draw path button — design mode only
+  if (isDesign) {
+    var gPathActive = npcPathMode === 'garden';
+    html += '<div onclick="event.stopPropagation();toggleNpcPath(\'garden\')" style="position:absolute;right:8px;top:40px;cursor:pointer;' +
+      'background:rgba(10,30,10,0.9);border:2px solid ' + (gPathActive ? '#f0d060' : '#4ade80') + ';border-radius:4px;padding:6px 10px;font-family:\'Press Start 2P\',monospace;z-index:6">' +
+      '<div style="font-size:7px;color:' + (gPathActive ? '#f0d060' : '#4ade80') + '">' + (gPathActive ? 'CANCEL' : 'DRAW PATH') + '</div>' +
+    '</div>';
+  }
+
+  // Pool buttons now use design mode (D key) — no separate edit toggle needed
+
+  html += renderDesignOverlay();
   floor.innerHTML = html;
+  if (isDesign) updateDesignReadout();
+}
+
+function nudgePoolBtn(prop, delta) {
+  gardenPoolButtons[gardenEditIdx][prop] += delta;
+  updateGardenFloor();
+  updateGardenPanel();
+}
+function copyPoolBtnPositions() {
+  var out = 'gardenPoolButtons = [\n';
+  for (var i = 0; i < gardenPoolButtons.length; i++) {
+    var b = gardenPoolButtons[i];
+    out += '  {label:\'' + b.label + '\', x:' + b.x + ', y:' + b.y + ', w:' + b.w + ', h:' + b.h + ', color:\'' + b.color + '\'},\n';
+  }
+  out += '];';
+  navigator.clipboard.writeText(out);
+  showMsg('COPIED!', '#4ade80');
 }
 
 function updateGardenPanel() {
   var panel = document.getElementById('garden-panel');
   if (!panel) return;
 
-  if (!gardenTreeSelected) {
+  // Pool buttons now use design mode (D key) — drag to move, scroll to resize, shift+scroll for height
+
+  if (!gardenTreeSelected && !gardenBtcSelected && !gardenEthSelected) {
     panel.innerHTML = '<div style="padding:12px;background:rgba(10,10,20,0.88);border:2px solid #4ade80;border-radius:8px;font-family:\'Press Start 2P\',monospace;text-align:center">' +
-      '<div style="color:#4ade80;font-size:8px;margin-bottom:6px">TAP THE BURGER TREE</div>' +
-      '<div style="color:#888;font-size:6px">Feed POOP to grow the community tree</div>' +
-      '<div style="color:#888;font-size:6px;margin-top:4px">Earns BURGERS + MfT tokens</div>' +
+      '<div style="color:#4ade80;font-size:8px;margin-bottom:6px">TAP A GARDEN</div>' +
+      '<div style="color:#f97316;font-size:6px">BURGER TREE — Earns BURGERS</div>' +
+      '<div style="color:#f7931a;font-size:6px;margin-top:4px">BTC PATCH — Earns cbBTC</div>' +
+      '<div style="color:#60a5fa;font-size:6px;margin-top:4px">ETH PATCH — Earns WETH</div>' +
       '<div style="color:#a855f7;font-size:6px;margin-top:6px">POOP AVAILABLE: ' + totalPoop + '</div>' +
     '</div>';
     return;
   }
 
-  var pool = gardenPools[0];
+  // Determine which pool is active
+  var poolIdx = gardenEthSelected ? 2 : (gardenBtcSelected ? 1 : 0);
+  var pool = gardenPools[poolIdx];
   var deposited = pool.poopDeposited || 0;
-  var pending = calcTreeYield();
-  var totalYield = pool.yieldAccum + pending;
-  var harvestReady = totalYield >= 1.0;
+  var accentColor = gardenEthSelected ? '#60a5fa' : (gardenBtcSelected ? '#f7931a' : '#f97316');
+  var gardenName = gardenEthSelected ? 'ETH PATCH' : (gardenBtcSelected ? 'BTC PATCH' : 'BURGER TREE');
+  var earnLabel = gardenEthSelected ? 'Earns WETH + MfT from V3 position' : (gardenBtcSelected ? 'Earns cbBTC + MfT from V3 position' : 'Earns BURGERS + MfT from V3 position');
+  var depositFn = gardenEthSelected ? 'depositPoopToEth' : (gardenBtcSelected ? 'depositPoopToBtc' : 'depositPoopToTree');
+  var harvestFn = gardenEthSelected ? 'harvestEthPatch' : (gardenBtcSelected ? 'harvestBtcPatch' : 'harvestTree');
 
-  var html = '<div style="padding:12px;background:rgba(10,10,20,0.88);border:2px solid #f97316;border-radius:8px;font-family:\'Press Start 2P\',monospace">';
+  var html = '<div style="padding:12px;background:rgba(10,10,20,0.88);border:2px solid ' + accentColor + ';border-radius:8px;font-family:\'Press Start 2P\',monospace">';
 
   // Header
   html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">' +
-    '<span style="color:#f97316;font-size:8px">BURGER TREE</span>' +
-    '<span style="color:' + (harvestReady ? '#f0d060' : '#4ade80') + ';font-size:7px">' + (deposited > 0 ? (harvestReady ? 'HARVEST!' : 'GROWING') : 'EMPTY') + '</span>' +
+    '<span style="color:' + accentColor + ';font-size:8px">' + gardenName + '</span>' +
+    '<span style="color:#4ade80;font-size:7px">' + (deposited > 0 ? 'STAKED' : 'EMPTY') + '</span>' +
   '</div>';
 
   // Stats
   html += '<div style="display:flex;justify-content:space-between;font-size:6px;margin-bottom:4px">' +
-    '<span style="color:#a855f7">POOP DEPOSITED</span><span style="color:#c084fc">' + deposited + '</span></div>';
-  html += '<div style="display:flex;justify-content:space-between;font-size:6px;margin-bottom:4px">' +
-    '<span style="color:#f97316">YIELD GROWING</span><span style="color:' + (harvestReady ? '#f0d060' : '#f97316') + '">$' + totalYield.toFixed(4) + '</span></div>';
-  html += '<div style="color:#666;font-size:5px;margin-bottom:6px">50% BURGERS + 50% MfT — locked as LP forever</div>';
+    '<span style="color:#a855f7">POOP STAKED</span><span style="color:#c084fc">' + deposited + '</span></div>';
+  html += '<div style="color:#666;font-size:5px;margin-bottom:6px">' + earnLabel + '</div>';
 
-  // Progress bar
-  if (!harvestReady && deposited > 0) {
-    var pct = Math.min(100, Math.round(totalYield * 100));
-    html += '<div style="margin-bottom:6px">' +
-      '<div style="display:flex;justify-content:space-between;font-size:5px;color:#666;margin-bottom:2px"><span>HARVEST AT $1.00</span><span>' + pct + '%</span></div>' +
-      '<div style="height:6px;background:#111;border:1px solid #333;border-radius:3px;overflow:hidden">' +
-        '<div style="width:' + pct + '%;height:100%;background:#f97316;border-radius:2px;transition:width 0.5s"></div>' +
-      '</div></div>';
-  }
-
-  // Harvest button
-  if (harvestReady) {
+  // Claim button (always available when staked)
+  if (deposited > 0) {
     html += '<div style="text-align:center;margin-bottom:8px">' +
-      '<button onclick="harvestTree()" style="background:#2e1a0a;border:2px solid #f0d060;color:#f0d060;font-size:8px;padding:8px 20px;border-radius:4px;cursor:pointer;font-family:\'Press Start 2P\',monospace;animation:pulse 1s infinite">HARVEST $' + totalYield.toFixed(2) + '</button></div>';
+      '<button onclick="' + harvestFn + '()" style="background:#2e1a0a;border:2px solid #f0d060;color:#f0d060;font-size:7px;padding:6px 16px;border-radius:4px;cursor:pointer;font-family:\'Press Start 2P\',monospace">CLAIM REWARDS</button></div>';
   }
 
   // Deposit controls
   html += '<div style="border-top:1px solid #333;padding-top:8px">' +
-    '<div style="color:#888;font-size:6px;margin-bottom:6px;text-align:center">FEED POOP TO TREE (available: ' + totalPoop + ')</div>' +
+    '<div style="color:#888;font-size:6px;margin-bottom:6px;text-align:center">FEED POOP TO ' + gardenName + ' (available: ' + totalPoop + ')</div>' +
     '<div style="display:flex;gap:4px;justify-content:center;align-items:center;flex-wrap:wrap">';
 
   var qtyBtns = [-100,-10,-1,'+1','+10','+100','MAX'];
   for (var qi = 0; qi < qtyBtns.length; qi++) {
     var lbl = qtyBtns[qi];
     if (lbl === 'MAX') {
-      html += '<button onclick="gardenDepositQty=totalPoop;updateGardenPanel()" style="background:#2e1a0a;border:1px solid #f97316;color:#f97316;font-size:5px;padding:4px 6px;border-radius:3px;cursor:pointer;font-family:\'Press Start 2P\',monospace">MAX</button>';
+      html += '<button onclick="gardenDepositQty=totalPoop;updateGardenPanel()" style="background:#2e1a0a;border:1px solid ' + accentColor + ';color:' + accentColor + ';font-size:5px;padding:4px 6px;border-radius:3px;cursor:pointer;font-family:\'Press Start 2P\',monospace">MAX</button>';
     } else {
       var delta = parseInt(lbl);
-      html += '<button onclick="gardenDepositQty=Math.max(1,Math.min(totalPoop,gardenDepositQty+(' + delta + ')));updateGardenPanel()" style="background:#1a0f05;border:1px solid #f97316;color:#f97316;font-size:5px;padding:4px 6px;border-radius:3px;cursor:pointer;font-family:\'Press Start 2P\',monospace">' + (delta > 0 ? '+' : '') + delta + '</button>';
+      html += '<button onclick="gardenDepositQty=Math.max(1,Math.min(totalPoop,gardenDepositQty+(' + delta + ')));updateGardenPanel()" style="background:#1a0f05;border:1px solid ' + accentColor + ';color:' + accentColor + ';font-size:5px;padding:4px 6px;border-radius:3px;cursor:pointer;font-family:\'Press Start 2P\',monospace">' + (delta > 0 ? '+' : '') + delta + '</button>';
     }
   }
 
   html += '</div>';
   html += '<div style="text-align:center;margin-top:6px;font-size:8px;color:#f0d060">' + gardenDepositQty + ' POOP</div>';
   html += '<div style="text-align:center;margin-top:6px">' +
-    '<button onclick="depositPoopToTree(gardenDepositQty)" style="background:#2e1a0a;border:2px solid #f97316;color:#f97316;font-size:7px;padding:8px 20px;border-radius:4px;cursor:pointer;font-family:\'Press Start 2P\',monospace">FEED ' + gardenDepositQty + ' POOP</button></div>';
+    '<button onclick="' + depositFn + '(gardenDepositQty)" style="background:#2e1a0a;border:2px solid ' + accentColor + ';color:' + accentColor + ';font-size:7px;padding:8px 20px;border-radius:4px;cursor:pointer;font-family:\'Press Start 2P\',monospace">FEED ' + gardenDepositQty + ' POOP</button></div>';
 
-  html += '</div></div>';
+  html += '</div>';
+
+  // === BASELING ASSIGNMENT ===
+  html += '<div style="border-top:1px solid #333;padding-top:8px;margin-top:8px">';
+  html += '<div style="color:#4ade80;font-size:7px;margin-bottom:6px;text-align:center">GARDEN WORKERS</div>';
+  html += '<div style="color:#666;font-size:5px;margin-bottom:6px;text-align:center">Assigned baselings auto-deposit POOP &amp; auto-harvest</div>';
+
+  var assigned = getGardenAssigned();
+  var available = baselings.filter(function(w) { var s = ensureStats(w); return w.alive && w.stage > 0 && s.int >= 3 && !w.frozen && !w.gardenAssigned; });
+
+  if (assigned.length > 0) {
+    html += '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px;justify-content:center">';
+    for (var ai = 0; ai < assigned.length; ai++) {
+      var ab = assigned[ai];
+      html += '<div onclick="unassignFromGarden(' + ab.id + ')" style="cursor:pointer;background:#1a2e0a;border:1px solid #4ade80;border-radius:4px;padding:3px 6px;font-size:5px;color:#4ade80;display:flex;align-items:center;gap:3px" title="Click to recall">' +
+        '<span>' + (ab.charName || 'Egg') + '</span><span style="color:#888">WORKING</span><span style="color:#ef4444">X</span></div>';
+    }
+    html += '</div>';
+    html += '<div style="color:#4ade80;font-size:5px;text-align:center;margin-bottom:4px">Auto: deposit POOP + harvest when ready</div>';
+  }
+
+  if (available.length > 0) {
+    html += '<div style="display:flex;flex-wrap:wrap;gap:4px;justify-content:center">';
+    for (var vi = 0; vi < Math.min(available.length, 8); vi++) {
+      var vb = available[vi];
+      html += '<button onclick="assignToGarden(' + vb.id + ')" style="font-family:\'Press Start 2P\',monospace;font-size:5px;padding:3px 6px;border:1px solid #888;border-radius:3px;background:#111;color:#ccc;cursor:pointer">' + (vb.charName || 'Pet') + '</button>';
+    }
+    if (available.length > 8) {
+      html += '<span style="color:#666;font-size:5px;padding:3px">+' + (available.length - 8) + ' more</span>';
+    }
+    html += '</div>';
+  } else if (assigned.length === 0) {
+    html += '<div style="color:#555;font-size:5px;text-align:center">No baselings available — hatch one first!</div>';
+  }
+
+  html += '</div>';
+
+  html += '</div>';
   panel.innerHTML = html;
+}
+
+// --- GARDEN BASELING ASSIGNMENT ---
+function getGardenAssigned() {
+  return baselings.filter(function(w) { return w.gardenAssigned && w.alive && w.stage > 0; });
+}
+
+function assignToGarden(id) {
+  var b = baselings.find(function(w) { return w.id === id; });
+  if (!b) return;
+  var bStats = ensureStats(b);
+  if (b.frozen || !b.alive || b.stage === 0) { showMsg('CANNOT ASSIGN THIS BASELING', '#ef4444'); return; }
+  if (bStats.int < 3) { showMsg('NEEDS INT 3+ TO WORK! (feed more LP)', '#ef4444'); return; }
+  // Only 1 baseling at a time (stroller upgrade later)
+  var already = getGardenAssigned();
+  if (already.length >= 1) { showMsg('ONLY 1 BASELING AT A TIME!', '#f59e0b'); return; }
+  b.gardenAssigned = true;
+  showMsg(b.charName + ' ASSIGNED TO GARDEN!', '#4ade80');
+  updateGardenPanel();
+  updateGardenFloor();
+  saveGame();
+}
+
+function unassignFromGarden(id) {
+  var b = baselings.find(function(w) { return w.id === id; });
+  if (!b) return;
+  b.gardenAssigned = false;
+  showMsg(b.charName + ' RECALLED HOME', '#f0d060');
+  updateGardenPanel();
+  saveGame();
+}
+
+function getGardenBoostMultiplier() {
+  var assigned = getGardenAssigned();
+  return 1 + (assigned.length * 0.10); // +10% per baseling
+}
+
+// --- GARDEN BASELING SPRITES (drag & drop + whistle) ---
+// Each assigned baseling gets a random garden position if not set
+function getGardenPos(b) {
+  if (!b.gardenX) { b.gardenX = 20 + Math.random() * 60; b.gardenY = 40 + Math.random() * 45; }
+  return {x: b.gardenX, y: b.gardenY};
+}
+
+function getBaselingGardenSprite(b) {
+  return SPRITE_MAP[b.charId] || 'sprites/wimmple-baby.webp';
+}
+
+var gardenDragId = null;
+var gardenDragOffset = {x:0, y:0};
+var whistleTarget = null; // {x, y} where baselings walk to
+
+function startGardenDrag(e, id) {
+  e.preventDefault();
+  e.stopPropagation();
+  gardenDragId = id;
+  var floor = document.getElementById('garden-floor');
+  var rect = floor.getBoundingClientRect();
+  var touch = e.touches ? e.touches[0] : e;
+  var b = baselings.find(function(w) { return w.id === id; });
+  if (!b) return;
+  gardenDragOffset.x = touch.clientX - (rect.left + b.gardenX / 100 * rect.width);
+  gardenDragOffset.y = touch.clientY - (rect.top + b.gardenY / 100 * rect.height);
+}
+
+function doGardenDrag(e) {
+  if (gardenDragId === null) return;
+  e.preventDefault();
+  var floor = document.getElementById('garden-floor');
+  var rect = floor.getBoundingClientRect();
+  var touch = e.touches ? e.touches[0] : e;
+  var b = baselings.find(function(w) { return w.id === gardenDragId; });
+  if (!b) return;
+  var nx = ((touch.clientX - gardenDragOffset.x - rect.left) / rect.width) * 100;
+  var ny = ((touch.clientY - gardenDragOffset.y - rect.top) / rect.height) * 100;
+  b.gardenX = Math.max(2, Math.min(90, nx));
+  b.gardenY = Math.max(10, Math.min(90, ny));
+  var el = document.getElementById('garden-pet-' + b.id);
+  if (el) { el.style.left = b.gardenX + '%'; el.style.top = b.gardenY + '%'; }
+}
+
+function endGardenDrag() {
+  if (gardenDragId !== null) { gardenDragId = null; saveGame(); }
+}
+
+function whistleBaselings(e) {
+  var floor = document.getElementById('garden-floor');
+  var rect = floor.getBoundingClientRect();
+  var touch = e.touches ? e.touches[0] : e;
+  var tx = ((touch.clientX - rect.left) / rect.width) * 100;
+  var ty = ((touch.clientY - rect.top) / rect.height) * 100;
+  whistleTarget = {x: tx, y: ty};
+  showMsg('WHISTLE!', '#4ade80');
+  // Animate all assigned baselings toward target
+  var assigned = getGardenAssigned();
+  for (var i = 0; i < assigned.length; i++) {
+    var b = assigned[i];
+    getGardenPos(b);
+    animateGardenPet(b, tx + (Math.random() - 0.5) * 10, ty + (Math.random() - 0.5) * 8);
+  }
+}
+
+function animateGardenPet(b, targetX, targetY) {
+  var el = document.getElementById('garden-pet-' + b.id);
+  if (!el) return;
+  var startX = b.gardenX, startY = b.gardenY;
+  var duration = 800 + Math.random() * 400;
+  var start = performance.now();
+  function step(now) {
+    var t = Math.min(1, (now - start) / duration);
+    var ease = t < 0.5 ? 2*t*t : 1-Math.pow(-2*t+2,2)/2;
+    b.gardenX = startX + (targetX - startX) * ease;
+    b.gardenY = startY + (targetY - startY) * ease;
+    el.style.left = b.gardenX + '%';
+    el.style.top = b.gardenY + '%';
+    if (t < 1) requestAnimationFrame(step);
+    else saveGame();
+  }
+  requestAnimationFrame(step);
+}
+
+var whistleMode = false;
+
+function toggleWhistleMode() {
+  whistleMode = !whistleMode;
+  updateWhistleBtn();
+}
+
+function updateWhistleBtn() {
+  var btn = document.getElementById('whistle-btn');
+  if (btn) {
+    btn.style.borderColor = whistleMode ? '#f0d060' : '#4ade80';
+    btn.style.boxShadow = whistleMode ? '0 0 10px #f0d060' : 'none';
+  }
 }
 
 // --- NEIGHBORHOOD MAP ---
@@ -4177,20 +4824,21 @@ var neighborhoodOpen = false;
 
 // Building hotspots: x%, y%, w%, h% on the map image, label, action
 var HOOD_BUILDINGS = [
-  {x:21.4,  y:12.3, w:15.25, h:27.5, label:'POWER PLANT', action:'openPowerPlant'},
-  {x:40,    y:16.8, w:13.75, h:22, label:'CRYO LAB',     action:'openCryo'},
-  {x:51.9,  y:53.3, w:13.25, h:14, label:'GARDEN',      action:'openGarden'},
-  {x:66.4,  y:25.3, w:12.8,  h:9, label:'GRAVEYARD',   action:'openGraveyard'},
-  {x:66.9,  y:37,   w:12.4,  h:12.5, label:'GROCERY',   action:'openGrocery'},
-  {x:38.2,  y:54,   w:12.8,  h:16.5, label:'HOME',      action:'goHome'},
-  {x:67.6,  y:71.1, w:13,    h:16.5, label:'HOUSE 2', action:'openCryo', locked:true, price:0.01},
-  {x:67.4,  y:54.7, w:12.35, h:15, label:'HOUSE 3',   action:null, locked:true, price:0.05},
-  {x:19.2,  y:71.9, w:13.85, h:17, label:'HOUSE 4',     action:null, locked:true, price:0.10},
-  {x:20.3,  y:41.7, w:16.85, h:25, label:'HOUSE 5',   action:null, locked:true, price:0.20},
+  {x:12.2,  y:12.8, w:17.35, h:27.5, label:'POWER PLANT', action:'openPowerPlant'},
+  {x:37.8,  y:18.4, w:16.5,  h:22, label:'CRYO LAB',     action:'openCryo'},
+  {x:55.7,  y:53,   w:15,    h:14, label:'GARDEN',      action:'openGarden'},
+  {x:76.8,  y:25.8, w:12.8,  h:9, label:'GRAVEYARD',   action:'openGraveyard'},
+  {x:77.7,  y:36.7, w:13,    h:12.5, label:'GROCERY',   action:'openGrocery'},
+  {x:36.2,  y:51.9, w:12.8,  h:16.5, label:'HOME',      action:'goHome'},
+  {x:78.2,  y:70.3, w:13,    h:16.5, label:'HOUSE 2', action:'openCryo', locked:true, price:0.01},
+  {x:77.6,  y:52.8, w:12.35, h:15, label:'HOUSE 3',   action:null, locked:true, price:0.05},
+  {x:11.4,  y:70.6, w:14.6,  h:17, label:'HOUSE 4',     action:null, locked:true, price:0.10},
+  {x:10.5,  y:42.5, w:18.7,  h:25, label:'HOUSE 5',   action:null, locked:true, price:0.20},
   {x:36.1,  y:41.3, w:14.55, h:9, label:'PARK',        action:null, locked:true},
-  {x:55.5,  y:33.7, w:8.8,   h:16, label:'EGG STORE',   action:'openEggStore'},
-  {x:33,    y:78.6, w:4.95,  h:12, label:'TRAVEL',      action:null, locked:true},
-  {x:38.1,  y:73.6, w:10.65, h:12, label:'NURSE',       action:'openClinic'},
+  {x:58.7,  y:33.5, w:11.3,  h:16, label:'EGG STORE',   action:'openEggStore'},
+  {x:25.8,  y:77,   w:4.95,  h:12, label:'TRAVEL',      action:null, locked:true},
+  {x:35.9,  y:70.7, w:12.1,  h:14.5, label:'NURSE',       action:'openClinic'},
+  {x:59.5,  y:69.1, w:10,    h:14, label:'ATM',         action:'openATM'},
 ];
 
 function getNeighborhoodBg() {
@@ -4341,6 +4989,159 @@ function closeGraveyardToHood() { closeGraveyard(); openNeighborhood(); }
 function closeIncubatorToHood() { closeIncubator(); }
 function closeMarketToHood() { closeMarket(); openNeighborhood(); }
 function closeClinicToHood() { document.getElementById('clinic-room').style.display = 'none'; openNeighborhood(); }
+function closeATMToHood() { document.getElementById('atm-room').style.display = 'none'; openNeighborhood(); }
+
+// ═══════════════════════════════════════════════════════════════
+// ATM — Fund your game wallet, withdraw, check balance
+// ═══════════════════════════════════════════════════════════════
+var atmOpen = false;
+var atmDepositAmt = 0.005; // default WETH deposit amount
+
+function openATM() {
+  document.getElementById('atm-room').style.display = 'block';
+  atmOpen = true;
+  showTutorial('atm');
+  updateATMPanel();
+}
+
+async function updateATMPanel() {
+  var panel = document.getElementById('atm-panel');
+  if (!panel) return;
+
+  var ethBal = 0, wethBal = 0;
+  try {
+    var rpc = gameWallet.provider;
+    ethBal = Number(ethers.formatEther(await rpc.getBalance(gameWalletAddr)));
+    var wethC = new ethers.Contract(WETH_ADDR, WETH_ABI, rpc);
+    wethBal = Number(ethers.formatEther(await wethC.balanceOf(gameWalletAddr)));
+  } catch(e) {}
+
+  var mainLabel = mainWalletAddr ? mainWalletAddr.slice(0,6) + '...' + mainWalletAddr.slice(-4) : 'NOT LINKED';
+  var gasEstimate = Math.floor(ethBal / 0.000001); // ~$0.000001 per tx on Base
+
+  var html = '<div style="font-family:\'Press Start 2P\',monospace;color:#e0e0e0;font-size:7px;line-height:2.2">';
+
+  // Game Wallet Balance
+  var usdVal = (wethBal * ETH_USD_PRICE).toFixed(2);
+  html += '<div style="background:rgba(20,40,80,0.8);border:2px solid #60a5fa;border-radius:8px;padding:12px;margin-bottom:10px">';
+  html += '<div style="color:#60a5fa;font-size:8px;margin-bottom:8px">GAME WALLET</div>';
+  html += '<div style="color:#4ade80;font-size:12px;margin-bottom:4px">' + wethBal.toFixed(6) + ' WETH</div>';
+  html += '<div style="color:#4ade80;font-size:7px;margin-bottom:4px">~$' + usdVal + ' USD</div>';
+  html += '<div style="color:#888;font-size:6px">' + ethBal.toFixed(6) + ' ETH (gas)</div>';
+  html += '<div style="color:#555;font-size:5px;margin-top:4px">~' + gasEstimate + ' tx of gas remaining</div>';
+  html += '<div style="color:#444;font-size:5px;margin-top:6px;word-break:break-all">' + gameWalletAddr + '</div>';
+  html += '</div>';
+
+  // Main Wallet Link
+  html += '<div style="background:rgba(40,20,60,0.8);border:2px solid #a855f7;border-radius:8px;padding:12px;margin-bottom:10px">';
+  html += '<div style="color:#a855f7;font-size:8px;margin-bottom:6px">FUNDING WALLET</div>';
+  html += '<div style="color:#ccc;font-size:6px;margin-bottom:8px">' + mainLabel + '</div>';
+  if (!mainWalletAddr) {
+    html += '<button onclick="connectMainWalletATM()" style="font-family:\'Press Start 2P\',monospace;font-size:7px;padding:8px 16px;border:2px solid #a855f7;border-radius:4px;background:#2e1065;color:#a855f7;cursor:pointer;width:100%">LINK WALLET</button>';
+  } else {
+    // Deposit controls
+    var depUSD = (atmDepositAmt * ETH_USD_PRICE).toFixed(2);
+    html += '<div style="display:flex;gap:6px;align-items:center;margin-bottom:4px">';
+    html += '<button onclick="atmDepositAmt=Math.max(0.001,atmDepositAmt-0.001);updateATMPanel()" style="font-family:\'Press Start 2P\',monospace;font-size:8px;padding:4px 8px;border:1px solid #888;border-radius:3px;background:#222;color:#fff;cursor:pointer">-</button>';
+    html += '<span style="color:#4ade80;font-size:9px;flex:1;text-align:center">' + atmDepositAmt.toFixed(4) + ' WETH</span>';
+    html += '<button onclick="atmDepositAmt=Math.min(1,atmDepositAmt+0.001);updateATMPanel()" style="font-family:\'Press Start 2P\',monospace;font-size:8px;padding:4px 8px;border:1px solid #888;border-radius:3px;background:#222;color:#fff;cursor:pointer">+</button>';
+    html += '</div>';
+    html += '<div style="text-align:center;color:#888;font-size:6px;margin-bottom:8px">~$' + depUSD + ' USD</div>';
+    html += '<button onclick="doATMDeposit()" style="font-family:\'Press Start 2P\',monospace;font-size:8px;padding:10px 16px;border:2px solid #4ade80;border-radius:4px;background:#0a2e1a;color:#4ade80;cursor:pointer;width:100%;margin-bottom:6px">DEPOSIT ~$' + depUSD + '</button>';
+    html += '<button onclick="doATMWithdraw()" style="font-family:\'Press Start 2P\',monospace;font-size:7px;padding:8px 16px;border:2px solid #f97316;border-radius:4px;background:#2e1a0a;color:#f97316;cursor:pointer;width:100%">WITHDRAW ALL TO WALLET</button>';
+  }
+  html += '</div>';
+
+  // Info
+  html += '<div style="background:rgba(30,30,30,0.8);border:1px solid #333;border-radius:6px;padding:8px;font-size:5px;color:#666;line-height:1.8">';
+  html += 'Your game wallet is a private key stored in this browser.<br>';
+  html += 'Fund it once — then play with ZERO wallet popups.<br>';
+  html += 'Gas on Base costs fractions of a cent per transaction.<br>';
+  html += 'Withdraw anytime back to your main wallet.';
+  html += '</div>';
+
+  html += '</div>';
+  panel.innerHTML = html;
+}
+
+async function connectMainWalletATM() {
+  var ok = await connectMainWallet();
+  if (ok) updateATMPanel();
+}
+
+async function doATMDeposit() {
+  if (!mainWalletSigner) {
+    showMsg('LINK WALLET FIRST', '#ef4444');
+    return;
+  }
+  try {
+    var amount = ethers.parseEther(atmDepositAmt.toFixed(6));
+
+    // Transfer WETH from main wallet to game wallet
+    showMsg('DEPOSITING WETH...', '#fbbf24');
+    var weth = new ethers.Contract(WETH_ADDR, WETH_ABI, mainWalletSigner);
+    var tx = await weth.transfer(gameWalletAddr, amount);
+    await tx.wait();
+
+    // Also send a small amount of ETH for gas (~500 txs worth)
+    showMsg('SENDING GAS ETH...', '#fbbf24');
+    var gasAmount = ethers.parseEther('0.0005');
+    var mainBal = await mainWalletProvider.getBalance(mainWalletAddr);
+    if (mainBal > gasAmount * 3n) {
+      var tx2 = await mainWalletSigner.sendTransaction({ to: gameWalletAddr, value: gasAmount });
+      await tx2.wait();
+    }
+
+    showMsg('FUNDED! ' + atmDepositAmt.toFixed(4) + ' WETH deposited', '#4ade80');
+    updateATMPanel();
+    pollOnchainBalances();
+  } catch(e) {
+    showMsg('DEPOSIT FAILED: ' + (e.reason || e.message || 'unknown'), '#ef4444');
+  }
+}
+
+async function doATMWithdraw() {
+  if (!mainWalletAddr) {
+    var ok = await connectMainWallet();
+    if (!ok) return;
+  }
+  try {
+    // Withdraw all WETH from game wallet to main wallet (no popup!)
+    var weth = new ethers.Contract(WETH_ADDR, WETH_ABI, gameWallet);
+    var bal = await weth.balanceOf(gameWalletAddr);
+    if (bal === 0n) { showMsg('NO WETH TO WITHDRAW', '#888'); return; }
+
+    showMsg('WITHDRAWING...', '#fbbf24');
+    var tx = await weth.transfer(mainWalletAddr, bal);
+    await tx.wait();
+    showMsg('WITHDRAWN ' + Number(ethers.formatEther(bal)).toFixed(6) + ' WETH', '#4ade80');
+    updateATMPanel();
+    pollOnchainBalances();
+  } catch(e) {
+    showMsg('WITHDRAW FAILED: ' + (e.reason || e.message || 'unknown'), '#ef4444');
+  }
+}
+
+// Show funding hint when sent from egg store
+function atmShowFundingHint(neededWei) {
+  var neededETH = neededWei ? Number(ethers.formatEther(neededWei)) : 0;
+  var foodCost = 1.0 / ETH_USD_PRICE; // ~$1 worth of WETH for groceries
+  var suggested = neededETH + foodCost;
+  // Round up to nice number
+  suggested = Math.ceil(suggested * 1000) / 1000;
+  atmDepositAmt = Math.max(suggested, 0.001);
+  updateATMPanel();
+}
+
+// First-time intro: if brand new player (no eggs, no baselings), guide to egg store → ATM
+function checkFirstTimeIntro() {
+  if (baselings.length > 0) return; // already has pets
+  if (localStorage.getItem('baseling-intro-done')) return;
+  // Show welcome and direct to egg store
+  setTimeout(function() {
+    showTutorial('welcome', true);
+  }, 1500);
+}
 
 // ═══════════════════════════════════════════════════════════════
 // NURSE'S OFFICE — LP health checkup for each baseling
@@ -4731,20 +5532,20 @@ function graveyardFeedRevive(id) {
 var cryoOpen = false;
 var selectedCryoBaseling = null;
 var CRYO_FEE = 0.05; // WETH to freeze
-var CRYO_MARKET_BTN = {x:55.5, y:55.6, scale:11.35}; // draggable market button position
-var CRYO_SCIENTIST = {x:12.5, y:60.7, scale:23.65}; // Chills McGee sprite position
+var CRYO_MARKET_BTN = {x:55.9, y:56.4, scale:7.45}; // draggable market button position
+var CRYO_SCIENTIST = {x:1.9, y:46.8, scale:23.65}; // Chills McGee sprite position
 var CRYO_DECOR = [
-  {sprite:'frozen-bunny-white.png', x:60.4, y:23.8, scale:5.25, flip:false},
-  {sprite:'frozen-cat-white.png', x:12, y:18, scale:3.5, flip:true},
-  {sprite:'frozen-groundhog.png', x:90.3, y:59.3, scale:5.05, flip:true},
-  {sprite:'frozen-mouse.png', x:75.6, y:59.6, scale:5.4, flip:false},
-  {sprite:'frozen-redpanda.png', x:4.6, y:58.9, scale:5.6, flip:false},
-  {sprite:'frozen-frog-green.png', x:20.2, y:24.7, scale:5.3, flip:true},
-  {sprite:'frozen-beaver.png', x:48.2, y:58.4, scale:5.6, flip:false},
-  {sprite:'frozen-bear-brown.png', x:92, y:30, scale:4, flip:true},
-  {sprite:'frozen-oak.png', x:34.8, y:24.6, scale:5.85, flip:false},
-  {sprite:'frozen-bull.png', x:80, y:80, scale:3.5, flip:true},
-  {sprite:'frozen-redpanda.png', x:48, y:23.9, scale:6, flip:false, legendary:true},
+  {sprite:'frozen-bunny-white.png', x:60.6, y:30.4, scale:5.25, flip:false},
+  {sprite:'frozen-cat-white.png', x:16.2, y:7.9, scale:3.5, flip:true},
+  {sprite:'frozen-groundhog.png', x:77.1, y:4.8, scale:5.05, flip:true},
+  {sprite:'frozen-mouse.png', x:77, y:53.5, scale:5.4, flip:false},
+  {sprite:'frozen-redpanda.png', x:-2.8, y:53.6, scale:5.6, flip:false},
+  {sprite:'frozen-frog-green.png', x:15, y:29, scale:5.3, flip:true},
+  {sprite:'frozen-beaver.png', x:31.7, y:53.6, scale:5.6, flip:false},
+  {sprite:'frozen-bear-brown.png', x:48, y:5.5, scale:4, flip:true},
+  {sprite:'frozen-oak.png', x:31, y:28, scale:5.85, flip:false},
+  {sprite:'frozen-bull.png', x:47.7, y:31.6, scale:3.5, flip:true},
+  {sprite:'frozen-redpanda.png', x:31.4, y:3.9, scale:6, flip:false, legendary:true},
 ];
 var CRYO_SCI_PATH = {ax:9.5, ay:60.2, bx:39.6, by:60.7}; // walk path A↔B
 var cryoSciPos = {x:9.5, y:60.2, dir:1, t:0}; // runtime walk state
@@ -5424,7 +6225,7 @@ function randomFloorPos() {
   var yFrac = FLOOR_ZONE.yMin + Math.random() * (FLOOR_ZONE.yMax - FLOOR_ZONE.yMin);
   var bounds = getFloorBounds(yFrac);
   var xFrac = bounds.xMin + Math.random() * (bounds.xMax - bounds.xMin);
-  return { x: xFrac * W, y: yFrac * H };
+  return { x: bgX(xFrac), y: bgY(yFrac) };
 }
 
 // sortedToken: null=random, 'TGN'/'BURGERS'/'AZUSD'=sorted | giant: true=$5 guaranteed 2x
@@ -5451,7 +6252,7 @@ function createBaseling(sortedToken, giant) {
     charRarity: egg.rarity,
     combinedRarity: egg.rarity,
     animFrame: 0, animTimer: 0,
-    hunger: 100, hungerAtFeed: 100, happy: 100,
+    hunger: 100, hungerAtFeed: 100, happy: 100, lastHappy: Date.now(), happyAtFeed: 100,
     poopMeter: 0, poopCount: 0, feedCount: 0,
     alive: true, deathCount: 0, isGiant: !!giant,
     eggCare: 0,        // taps on egg before hatch
@@ -5473,7 +6274,7 @@ function createBaseling(sortedToken, giant) {
       neglectCount: 0,               // times hunger or happy < 10
       wasNeglected: false,           // flag to count once per neglect episode
     },
-    // --- D&D STATS (grown by feeding) ---
+    // --- STATS (grown by feeding) ---
     stats: defaultStats(),
     x: pos.x, y: pos.y,
     targetX: pos.x, targetY: pos.y,
@@ -5499,14 +6300,20 @@ var eggStoreOpen = false;
 
 // Egg items on the store floor — designable positions
 var EGG_STORE_ITEMS = [
-  {id:'random',  sprite:'sprites/eggs/black-0star.png', label:'RANDOM',  color:'#ccc',    sorted:null,      giant:false, price:'$0.10', desc:'any pet, any color',  x:43.9, y:70.7, scale:8},
-  {id:'green',   sprite:'sprites/eggs/green-0star.png', label:'GREEN',   color:'#4ade80',  sorted:'TGN',     giant:false, price:'$1', desc:'unlocks oak tree',    x:47.1, y:71.2, scale:8},
-  {id:'brown',   sprite:'sprites/eggs/brown-0star.png', label:'BROWN',   color:'#f97316',  sorted:'BURGERS', giant:false, price:'$1', desc:'unlocks bear',       x:55.5, y:71.3, scale:8},
-  {id:'white',   sprite:'sprites/eggs/white-0star.png', label:'WHITE',   color:'#93c5fd',  sorted:'AZUSD',   giant:false, price:'$1', desc:'unlocks bull',       x:61.2, y:71.5, scale:8},
-  {id:'g-random',sprite:'sprites/eggs/black-0star.png', label:'GIANT',   color:'#f0d060',  sorted:null,      giant:true,  price:'$6', desc:'2x size, any pet',   x:41.2, y:67.4, scale:10.6},
-  {id:'g-green', sprite:'sprites/eggs/green-0star.png', label:'GIANT GREEN', color:'#4ade80', sorted:'TGN',  giant:true,  price:'$10', desc:'2x size, oak tree',  x:49.8, y:65.9, scale:12},
-  {id:'g-brown', sprite:'sprites/eggs/brown-0star.png', label:'GIANT BROWN', color:'#f97316', sorted:'BURGERS', giant:true, price:'$10', desc:'2x size, bear',   x:53.2, y:66.1, scale:12},
-  {id:'g-white', sprite:'sprites/eggs/white-0star.png', label:'GIANT WHITE', color:'#93c5fd', sorted:'AZUSD', giant:true,  price:'$10', desc:'2x size, bull',    x:59.2, y:66.9, scale:12},
+  {id:'random',  sprite:'sprites/eggs/black-0star.png', label:'RANDOM',  color:'#ccc',    sorted:null,      giant:false, price:'$0.10', desc:'any pet, any color',  x:42.3, y:62.5, scale:8},
+  {id:'green',   sprite:'sprites/eggs/green-0star.png', label:'GREEN',   color:'#4ade80',  sorted:'TGN',     giant:false, price:'$1', desc:'unlocks oak tree',    x:46.1, y:63.2, scale:8},
+  {id:'brown',   sprite:'sprites/eggs/brown-0star.png', label:'BROWN',   color:'#f97316',  sorted:'BURGERS', giant:false, price:'$1', desc:'unlocks bear',       x:56.3, y:62.5, scale:8},
+  {id:'white',   sprite:'sprites/eggs/white-0star.png', label:'WHITE',   color:'#93c5fd',  sorted:'AZUSD',   giant:false, price:'$1', desc:'unlocks bull',       x:63.8, y:63.3, scale:8},
+  {id:'g-random',sprite:'sprites/eggs/black-0star.png', label:'GIANT',   color:'#f0d060',  sorted:null,      giant:true,  price:'$6', desc:'2x size, any pet',   x:38.6, y:58.6, scale:10.6},
+  {id:'g-green', sprite:'sprites/eggs/green-0star.png', label:'GIANT GREEN', color:'#4ade80', sorted:'TGN',  giant:true,  price:'$10', desc:'2x size, oak tree',  x:48.4, y:57.4, scale:12},
+  {id:'g-brown', sprite:'sprites/eggs/brown-0star.png', label:'GIANT BROWN', color:'#f97316', sorted:'BURGERS', giant:true, price:'$10', desc:'2x size, bear',   x:53, y:57.1, scale:12},
+  {id:'g-white', sprite:'sprites/eggs/white-0star.png', label:'GIANT WHITE', color:'#93c5fd', sorted:'AZUSD', giant:true,  price:'$10', desc:'2x size, bull',    x:60.2, y:57.9, scale:12},
+];
+
+// Buy buttons — positionable + sizable in design mode, visible in play
+var EGG_STORE_BTNS = [
+  {id:'random',   label:'EGG',       price:'$0.10', sorted:null, giant:false, color:'#f0d060', x:45, y:74, w:12, h:6},
+  {id:'g-random', label:'GIANT EGG', price:'$6',    sorted:null, giant:true,  color:'#c084fc', x:60, y:74, w:12, h:6},
 ];
 
 function openEggStore() {
@@ -5533,6 +6340,10 @@ function getEggStoreDesignItems() {
   for (var i = 0; i < EGG_STORE_ITEMS.length; i++) {
     items.push({src:'EGG_STORE', idx:i, x:EGG_STORE_ITEMS[i].x, y:EGG_STORE_ITEMS[i].y, scale:EGG_STORE_ITEMS[i].scale});
   }
+  for (var bi = 0; bi < EGG_STORE_BTNS.length; bi++) {
+    var eb = EGG_STORE_BTNS[bi];
+    items.push({src:'EGG_BTN', idx:bi, label:eb.label+' BTN', x:eb.x, y:eb.y, scale:eb.w, h:eb.h});
+  }
   return items;
 }
 function syncEggStoreDesignBack(items) {
@@ -5541,74 +6352,73 @@ function syncEggStoreDesignBack(items) {
       EGG_STORE_ITEMS[items[i].idx].x = items[i].x;
       EGG_STORE_ITEMS[items[i].idx].y = items[i].y;
       EGG_STORE_ITEMS[items[i].idx].scale = items[i].scale;
+    } else if (items[i].src === 'EGG_BTN') {
+      EGG_STORE_BTNS[items[i].idx].x = items[i].x;
+      EGG_STORE_BTNS[items[i].idx].y = items[i].y;
+      EGG_STORE_BTNS[items[i].idx].w = items[i].scale;
+      EGG_STORE_BTNS[items[i].idx].h = items[i].h;
     }
   }
-}
-
-var selectedEggItem = null;
-function selectEggItem(id) {
-  selectedEggItem = null;
-  for (var i = 0; i < EGG_STORE_ITEMS.length; i++) {
-    if (EGG_STORE_ITEMS[i].id === id) { selectedEggItem = EGG_STORE_ITEMS[i]; break; }
-  }
-  updateEggStoreFloor();
 }
 
 function updateEggStoreFloor() {
   var eggs = getEggs();
   var max = getIncubatorMax();
+  var full = eggs.length >= max;
+  var isDesign = designMode && designContext;
   var html = '';
 
+  // Egg sprites (decorative only, positionable in design mode)
   for (var i = 0; i < EGG_STORE_ITEMS.length; i++) {
     var ei = EGG_STORE_ITEMS[i];
     var baseW = ei.scale + 'vw';
     var imgSize = ei.giant ? '80%' : '70%';
     var zIdx = Math.round(ei.y * 10);
-    var labelSize = Math.max(5, Math.round(ei.scale * 0.7));
-    var selCls = (selectedEggItem && selectedEggItem.id === ei.id) ? ' selected-food' : '';
-    var designBorder = (designMode && designContext && i === designSelected) ? 'outline:2px solid #4ade80;' : '';
+    var designBorder = (isDesign && i === designSelected) ? 'outline:2px solid #4ade80;' : '';
 
-    html += '<div class="inc-stand' + selCls + '" data-design-idx="' + i + '" onclick="selectEggItem(\'' + ei.id + '\')" ' +
-      'style="left:' + ei.x + '%;top:' + ei.y + '%;width:' + baseW + ';z-index:' + zIdx + ';text-align:center;transform:translateX(-50%);cursor:pointer;' + designBorder + '">' +
+    html += '<div data-design-idx="' + i + '" ' +
+      'style="position:absolute;left:' + ei.x + '%;top:' + ei.y + '%;width:' + baseW + ';z-index:' + zIdx + ';text-align:center;transform:translateX(-50%);' + designBorder + '">' +
       '<img src="' + ei.sprite + '" style="width:' + imgSize + ';image-rendering:pixelated;display:block;margin:0 auto">' +
+    '</div>';
+  }
+
+  // Buy buttons (visible, positionable + sizable in design mode)
+  var btnStart = EGG_STORE_ITEMS.length;
+  for (var bi = 0; bi < EGG_STORE_BTNS.length; bi++) {
+    var eb = EGG_STORE_BTNS[bi];
+    var btnDesign = (isDesign && (btnStart + bi) === designSelected) ? 'outline:2px solid #4ade80;' : '';
+    html += '<div data-design-idx="' + (btnStart + bi) + '" onclick="buyEggDirect(' + bi + ')" ' +
+      'style="position:absolute;left:' + eb.x + '%;top:' + eb.y + '%;width:' + eb.w + 'vw;height:' + eb.h + 'vh;' +
+      'cursor:pointer;background:rgba(10,10,26,0.8);border:2px solid ' + eb.color + ';border-radius:4px;z-index:30;' +
+      'display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;' +
+      'font-family:\'Press Start 2P\',monospace;' + btnDesign + '">' +
+      '<div style="color:' + eb.color + ';font-size:5px;white-space:nowrap">' + eb.label + '</div>' +
+      '<div style="color:#f0d060;font-size:5px">' + eb.price + '</div>' +
+      (full ? '<div style="color:#ef4444;font-size:4px">FULL</div>' : '') +
     '</div>';
   }
 
   html += renderDesignOverlay();
   document.getElementById('egg-store-floor').innerHTML = html;
-  if (designMode && designContext) updateDesignReadout();
+  if (isDesign) updateDesignReadout();
 
-  // Header
   var header = document.getElementById('egg-store-header');
   if (header) header.innerHTML = 'EGG STORE <span style="font-size:7px;color:#888">(' + eggs.length + '/' + max + ' slots)</span>';
 
-  // Selection panel
+  // Clear panel — buttons handle buying directly
   var panel = document.getElementById('egg-store-panel');
-  if (!panel) return;
-  if (!selectedEggItem) {
-    panel.innerHTML = '<div style="position:absolute;top:30px;left:50%;transform:translateX(-50%);' +
-      'background:rgba(10,10,26,0.94);border:2px solid #f0d060;border-radius:8px;padding:10px 18px;' +
-      'font-family:\'Press Start 2P\',monospace;text-align:center;pointer-events:auto">' +
-      '<div style="color:#888;font-size:7px">Tap an egg to buy</div></div>';
+  if (panel) panel.innerHTML = '';
+}
+
+function buyEggDirect(btnIdx) {
+  if (designMode) return;
+  var btn = EGG_STORE_BTNS[btnIdx];
+  var eggs = getEggs();
+  if (eggs.length >= getIncubatorMax()) {
+    showMsg('INCUBATOR FULL!', '#ef4444');
     return;
   }
-  var ei = selectedEggItem;
-  var full = eggs.length >= max;
-  var sortArg = ei.sorted ? "'" + ei.sorted + "'" : 'null';
-  var ph = '<div onclick="event.stopPropagation()" style="position:absolute;top:30px;left:50%;transform:translateX(-50%);' +
-    'background:rgba(10,10,26,0.94);border:2px solid ' + ei.color + ';border-radius:8px;padding:12px 20px;' +
-    'font-family:\'Press Start 2P\',monospace;text-align:center;pointer-events:auto;min-width:220px">';
-  ph += '<div style="color:' + ei.color + ';font-size:11px;margin-bottom:4px">' + ei.label + (ei.giant ? ' EGG' : '') + '</div>';
-  ph += '<div style="color:#888;font-size:6px;margin-bottom:6px">' + ei.desc + '</div>';
-  ph += '<div style="color:#f0d060;font-size:10px;margin-bottom:8px">' + ei.price + '</div>';
-  if (full) {
-    ph += '<div style="color:#ef4444;font-size:7px">INCUBATOR FULL</div>';
-  } else {
-    window._pendingEgg = {sorted: ei.sorted || null, giant: ei.giant};
-    ph += '<button class="btn" onclick="window._doBuyEgg()" style="font-size:8px;padding:6px 14px;border-color:' + ei.color + ';color:#f0d060;pointer-events:auto;position:relative;z-index:999">BUY</button>';
-  }
-  ph += '</div>';
-  panel.innerHTML = ph;
+  addEgg(btn.sorted, btn.giant);
 }
 
 window._doBuyEgg = function() {
@@ -5855,7 +6665,7 @@ function clickPoop(mx, my) {
       // Clicked a poop — clean it (gives happiness, not tokens)
       spawnParticles(fp.x, fp.y - 10, 'star', 3);
       floorPoops.splice(i, 1);
-      if (selected && selected.alive) selected.happy = Math.min(100, selected.happy + 5);
+      if (selected && selected.alive) { selected.happy = Math.min(100, selected.happy + 5); selected.lastHappy = Date.now(); selected.happyAtFeed = selected.happy; }
       showMsg('CLEANED! +5 HAPPY', '#f472b6');
       if (selected) updatePanel();
       return true;
@@ -5886,7 +6696,7 @@ function updateBall() {
   ball.vx *= 0.98;
 
   // Bounce off floor
-  var yFloor = FLOOR_ZONE.yMax * H;
+  var yFloor = bgY(FLOOR_ZONE.yMax);
   if (ball.y > yFloor) {
     ball.y = yFloor;
     ball.vy = -ball.vy * 0.5;
@@ -5905,7 +6715,7 @@ function updateBall() {
       var dist = Math.sqrt(dx * dx + dy * dy);
       if (dist < 25) {
         // Baseling caught the ball
-        w.happy = Math.min(100, w.happy + 10);
+        w.happy = Math.min(100, w.happy + 10); w.lastHappy = Date.now(); w.happyAtFeed = w.happy;
         w.poopMeter = Math.min(100, w.poopMeter + 5);
         w.care.ballCatches++;
         w.state = 'idle';
@@ -5935,7 +6745,7 @@ function drawBall(t) {
   // Shadow
   ctx.fillStyle = 'rgba(0,0,0,0.15)';
   ctx.beginPath();
-  ctx.ellipse(bx, FLOOR_ZONE.yMax * H + 2, radius * 0.8, radius * 0.2, 0, 0, Math.PI * 2);
+  ctx.ellipse(bx, bgY(FLOOR_ZONE.yMax) + 2, radius * 0.8, radius * 0.2, 0, 0, Math.PI * 2);
   ctx.fill();
 
   // Ball body — red
@@ -6051,16 +6861,17 @@ function pickNewTarget(w) {
   var yFrac = FLOOR_ZONE.yMin + Math.random() * (FLOOR_ZONE.yMax - FLOOR_ZONE.yMin);
   var bounds = getFloorBounds(yFrac);
   var xFrac = bounds.xMin + Math.random() * (bounds.xMax - bounds.xMin);
-  w.targetX = xFrac * W;
-  w.targetY = yFrac * H;
+  w.targetX = bgX(xFrac);
+  w.targetY = bgY(yFrac);
 }
 
 function clampToFloor(w) {
-  var yFrac = w.y / H;
+  // Convert pixel position back to bg-relative fraction
+  var yFrac = (w.y - BG.dy) / BG.dh;
   yFrac = Math.max(FLOOR_ZONE.yMin, Math.min(FLOOR_ZONE.yMax, yFrac));
-  w.y = yFrac * H;
+  w.y = bgY(yFrac);
   var bounds = getFloorBounds(yFrac);
-  w.x = Math.max(bounds.xMin * W, Math.min(bounds.xMax * W, w.x));
+  w.x = Math.max(bgX(bounds.xMin), Math.min(bgX(bounds.xMax), w.x));
 }
 
 function updateBaselingAI(w) {
@@ -6188,14 +6999,14 @@ function updateBaselingAI(w) {
     }
   }
 
-  // hunger/happy decay — time-based: full 4hrs, drains to 0 by 24hrs, death at 72hrs
+  // hunger/happy decay — time-based: full 6hrs, drains to 0 by 12hrs, death at 72hrs
   // Giants drain 2x faster (need 2 feeds via recordMeal).
   if (w.alive && w.stage > 0) {
     var giantMult = w.isGiant ? 2 : 1;
     var wRoom = rooms[w.roomId || 0];
     var sinceLastFed = Date.now() - (w.lastFed || 0);
-    var graceMs = (DEV_MODE ? 2 : 4 * 3600) * 1000;     // 4hr grace period
-    var emptyMs = (DEV_MODE ? 12 : 24 * 3600) * 1000;    // food empty at 24hrs
+    var graceMs = (DEV_MODE ? 2 : 6 * 3600) * 1000;     // 6hr grace period
+    var emptyMs = (DEV_MODE ? 12 : 12 * 3600) * 1000;    // food empty at 12hrs
     var deathMs = (DEV_MODE ? 36 : 72 * 3600) * 1000;    // death at 72hrs
     var adjSince = sinceLastFed * giantMult;
     // Hunger: holds for 4hrs after feed, then drains to 0 by 24hrs
@@ -6209,9 +7020,20 @@ function updateBaselingAI(w) {
     } else {
       w.hunger = 0;
     }
-    // Happy drains steadily over 12hrs — feed to refill, nanny doesn't help
-    var happyRate = DEV_MODE ? 0.008 : 0.0000154;
-    w.happy = Math.max(0, w.happy - happyRate * giantMult);
+    // Happy drains over 12hrs total (6hr grace + 6hr linear drain to 0)
+    var sinceLastHappy = Date.now() - (w.lastHappy || w.lastFed || 0);
+    var adjHappy = sinceLastHappy * giantMult;
+    var happyGrace = (DEV_MODE ? 2 : 6 * 3600) * 1000;
+    var happyEmpty = (DEV_MODE ? 12 : 12 * 3600) * 1000;
+    var happyPeak = w.happyAtFeed || w.happy || 100;
+    if (adjHappy <= happyGrace) {
+      // Grace — no decay
+    } else if (adjHappy < happyEmpty) {
+      var hDecay = (adjHappy - happyGrace) / (happyEmpty - happyGrace);
+      w.happy = Math.max(0, happyPeak * (1 - hDecay));
+    } else {
+      w.happy = 0;
+    }
 
     // POOP distribution — 4hr keeper cycle (distributeBatch)
     // Two sources released together:
@@ -6282,7 +7104,7 @@ function updateBaselingAI(w) {
 
 // --- DEPTH SCALE ---
 function getDepthScale(w) {
-  var yFrac = w.y / H;
+  var yFrac = (w.y - BG.dy) / BG.dh;
   var t = (yFrac - FLOOR_ZONE.yMin) / (FLOOR_ZONE.yMax - FLOOR_ZONE.yMin);
   t = Math.max(0, Math.min(1, t));
   return 0.45 + t * 0.75;
@@ -6455,6 +7277,11 @@ function drawBaseling(w, t) {
     var step = Math.round(raw * 3) / 3; // 0, 0.33, 0.67, 1.0
     var qa = (tb.a * (0.5 + step * 0.5)).toFixed(3);
     tint = 'rgba(' + tb.r + ',' + tb.g + ',' + tb.b + ',' + qa + ')';
+  }
+  // Color variant tint — permanent, stronger than egg tint, overrides it
+  if (w.stage > 0 && w.colorVariant) {
+    var vTint = getVariantTint(w.colorVariant);
+    if (vTint) tint = vTint;
   }
   var isEgg = w.stage === 0;
 
@@ -6695,8 +7522,8 @@ C.addEventListener('click', function(e) {
   }
 
   // 0. Check door click — top center of room enters incubator
-  var xFrac = mx / W;
-  var yFrac0 = my / H;
+  var xFrac = (mx - BG.dx) / BG.dw;
+  var yFrac0 = (my - BG.dy) / BG.dh;
   if (xFrac >= 0.35 && xFrac <= 0.50 && yFrac0 >= 0.05 && yFrac0 <= 0.35) {
     openIncubator();
     return;
@@ -6730,9 +7557,26 @@ C.addEventListener('click', function(e) {
     return;
   }
 
-  // 3. Empty floor click — spawn/throw a ball
-  var yFrac = my / H;
+  // 3. Empty floor click — whistle mode calls baselings, otherwise spawn ball
+  var yFrac = (my - BG.dy) / BG.dh;
   if (yFrac >= FLOOR_ZONE.yMin && yFrac <= FLOOR_ZONE.yMax) {
+    if (whistleMode) {
+      // Call all baselings in this room to the click spot
+      var roomPets = roomBaselings(currentRoom);
+      for (var wi = 0; wi < roomPets.length; wi++) {
+        var wp = roomPets[wi];
+        if (wp.alive && wp.stage > 0) {
+          wp.targetX = mx;
+          wp.targetY = my;
+          wp.state = 'walking';
+          wp.stateTimer = 120;
+        }
+      }
+      showMsg('WHISTLE!', '#4ade80');
+      whistleMode = false;
+      updateWhistleBtn();
+      return;
+    }
     if (!ball) {
       spawnBall(mx, my);
       startChasingBall();
@@ -6884,7 +7728,13 @@ function updatePanel() {
     var eggColorNames = {TGN:'GREEN',BURGERS:'BROWN',AZUSD:'WHITE'};
     nameStr = w.sortedToken ? (eggColorNames[w.sortedToken]||'SORTED') + ' EGG' : 'MYSTERY EGG';
   } else {
-    nameStr = w.charName;
+    var varLabel = '';
+    if (w.colorVariant) {
+      for (var vi = 0; vi < COLOR_VARIANTS.length; vi++) {
+        if (COLOR_VARIANTS[vi].id === w.colorVariant) { varLabel = COLOR_VARIANTS[vi].name + ' '; break; }
+      }
+    }
+    nameStr = varLabel + w.charName;
   }
 
   var btnsHTML = '';
@@ -6988,20 +7838,14 @@ function updatePanel() {
       btnsHTML = '<button class="btn btn-rez" onclick="doResurrect()">RESURRECT (PAY ' + rezCost.toFixed(2) + ' WETH)</button>';
     }
   } else {
-    // Daily feed cap info
-    var dailyCap = getDailyFeedCap(w);
-    var fedToday = getFedInLastDay(w);
-    var feedLeft = Math.max(0, dailyCap - fedToday);
-    var capColor = feedLeft > dailyCap * 0.5 ? '#4ade80' : feedLeft > 0 ? '#f59e0b' : '#ef4444';
     // Drag-drop feed info + quantity dial
     var favFood = getFavoriteFood(w);
     var favItem = null;
     for (var fi2 = 0; fi2 < FOOD_ITEMS.length; fi2++) { if (FOOD_ITEMS[fi2].token === favFood) { favItem = FOOD_ITEMS[fi2]; break; } }
     var favStr = favItem ? '<span style="color:' + favItem.color + '">' + favItem.name + ' \u2605</span>' : '';
     var feedHTML = '<div style="font-size:5px;color:#888;margin-bottom:3px">' +
-      'DAILY: <span style="color:'+capColor+'">$' + feedLeft.toFixed(2) + ' / $' + dailyCap.toFixed(2) + ' left</span>' +
-      (w.isGiant ? ' <span style="color:#f0d060">(GIANT: 2 feeds to reset)</span>' : '') +
-      (favStr ? ' | FAV: ' + favStr : '') + '</div>' +
+      (w.isGiant ? '<span style="color:#f0d060">(GIANT: 2 feeds to reset)</span> ' : '') +
+      (favStr ? 'FAV: ' + favStr : '') + '</div>' +
       '<div style="font-size:5px;color:#666;margin-bottom:3px">DRAG FOOD FROM TRAY BELOW \u2193 | $' + (feedQty * 0.01).toFixed(2) + ' WETH</div>' +
       '<div style="display:flex;align-items:center;gap:4px;margin-bottom:4px">' +
         '<span style="font-size:5px;color:#888">QTY:</span>' +
@@ -7032,6 +7876,12 @@ function updatePanel() {
       var cf = getCareForm(w);
       btnsHTML += '<button class="btn btn-evolve" onclick="doEvolve()">EVOLVE [' + evoWin.label + ' ' + cf.form + ']</button>';
     }
+    // Garden assignment button
+    if (!w.gardenAssigned) {
+      btnsHTML += '<button class="btn btn-mft" onclick="assignToGarden(' + w.id + ');updatePanel()">SEND TO GARDEN</button>';
+    } else {
+      btnsHTML += '<button class="btn btn-deselect" onclick="unassignFromGarden(' + w.id + ');updatePanel()">RECALL FROM GARDEN</button>';
+    }
     btnsHTML += '</div>';
   }
   btnsHTML += '<div class="btns" style="margin-top:4px"><button class="btn btn-deselect" onclick="deselect()">CLOSE</button></div>';
@@ -7046,7 +7896,7 @@ function updatePanel() {
     (w.sparkle ? '<span style="color:#ffd700">SPARKLE</span> | ' : '') +
     (w.birthTheme ? '<span style="color:'+w.birthTheme.color+'">'+w.birthTheme.label+'</span> | ' : '') +
     'room: ' + (rooms[w.roomId||0] ? rooms[w.roomId||0].name : '?') +
-    ' | feeds: ' + w.feedCount + ' | poop: ' + w.poopCount + ' | deaths: ' + w.deathCount +
+    ' | feeds: ' + w.feedCount + ' | deaths: ' + w.deathCount +
     ' | LP: $' + (w.lp.staked + w.lp.locked).toFixed(2) + ' | fees: $' + (w.lp.totalFees || 0).toFixed(4) + '</div>' +
     '<div class="bars">' +
       '<div class="bar"><div class="bar-label">HUNGER</div><div class="bar-bg"><div class="bar-fill" style="width:'+w.hunger+'%;background:'+(w.hunger<20?'#ef4444':w.hunger<50?'#f59e0b':'#4ade80')+'"></div></div></div>' +
@@ -7078,7 +7928,7 @@ function updateSettingsPanel() {
 }
 function buildD20StatsSection(w) {
   var s = ensureStats(w);
-  var html = '<h3>D&D STATS</h3><div class="evo-stats">';
+  var html = '<h3>STATS</h3><div class="evo-stats">';
   for (var i = 0; i < STAT_NAMES.length; i++) {
     var stat = STAT_NAMES[i];
     var val = s[stat] || 0;
@@ -7131,6 +7981,8 @@ var FOOD_ITEMS = [
   {id:'salad',  name:'Salad',  sprite:'sprites/food/salad.png',  price:0.01, token:'tgn',     color:'#4ade80', lore:'Fresh greens'},
   {id:'rice',   name:'Rice',   sprite:'sprites/food/rice.png',   price:0.01, token:'azusd',   color:'#f5deb3', lore:'Warm and filling'},
   {id:'burger', name:'Burger', sprite:'sprites/food/burger.png', price:0.01, token:'burgers', color:'#f97316', lore:'The good stuff'},
+  {id:'berry',  name:'Berry',  sprite:'sprites/food/berry.png',  price:0.01, token:'weth',    color:'#60a5fa', lore:'Mystic fruit'},
+  {id:'orange', name:'Orange', sprite:'sprites/food/orange.png', price:0.01, token:'btc',     color:'#f7931a', lore:'Citrus energy'},
 ];
 var foodImages = {}; // loaded food sprite Image objects
 function loadFoodImages(callback) {
@@ -7147,7 +7999,7 @@ function loadFoodImages(callback) {
   setTimeout(function() { if (!done) { done = true; callback(); } }, 3000);
 }
 
-// --- FOOD → D&D STAT BOOSTS ---
+// --- FOOD → STAT BOOSTS ---
 // Keyed by token id (what doFeed receives). Multiplier applied to feedPower.
 // Salad (tgn) → WIS + CON + CHA
 // Rice (azusd)  → all 6 stats at 0.5x rate
@@ -7156,6 +8008,8 @@ var FOOD_STAT_BOOSTS = {
   tgn:     {wis:1.0, con:1.0, cha:1.0},                                  // salad
   azusd:   {str:0.5, dex:0.5, con:0.5, int:0.5, wis:0.5, cha:0.5},      // rice
   burgers: {con:3.0},                                                     // burger
+  weth:    {dex:1.0, int:1.0},                                            // berry
+  btc:     {str:1.5, con:1.5},                                            // orange
   mft:   {int:0.5, wis:0.5},                                              // mft snack (small brain food)
   char:  {cha:1.0},                                                        // charm = charisma
 };
@@ -7184,16 +8038,20 @@ function applyFoodStatBoosts(w, foodId, feedPower) {
   if (!w.care.saladFeeds) w.care.saladFeeds = 0;
   if (!w.care.riceFeeds) w.care.riceFeeds = 0;
   if (!w.care.burgerFeeds) w.care.burgerFeeds = 0;
+  if (!w.care.berryFeeds) w.care.berryFeeds = 0;
+  if (!w.care.orangeFeeds) w.care.orangeFeeds = 0;
   if (foodId === 'tgn') w.care.saladFeeds++;
   if (foodId === 'azusd') w.care.riceFeeds++;
   if (foodId === 'burgers') w.care.burgerFeeds++;
+  if (foodId === 'weth') w.care.berryFeeds++;
+  if (foodId === 'btc') w.care.orangeFeeds++;
   return gains.length > 0 ? gains.join(' ') : '';
 }
 
 // Legacy token feeds (still used for egg phase feeding + LP tracking)
 var FOODS = [
-  {id:'weth', name:'WETH',    color:'#60a5fa', btnCls:'btn-weth',  hungerMult:1.0, happyMult:1.0, poopMult:1.0, lore:'Mystic flow'},
-  {id:'btc',  name:'BTC',    color:'#f7931a', btnCls:'btn-btc',   hungerMult:1.0, happyMult:1.0, poopMult:1.0, lore:'Hearty meal'},
+  {id:'weth', name:'WETH',    token:'weth', color:'#60a5fa', btnCls:'btn-weth',  hungerMult:1.0, happyMult:1.0, poopMult:1.0, lore:'Mystic flow'},
+  {id:'btc',  name:'BTC',    token:'btc',  color:'#f7931a', btnCls:'btn-btc',   hungerMult:1.0, happyMult:1.0, poopMult:1.0, lore:'Hearty meal'},
   {id:'usdc', name:'USDC',   color:'#2775ca', btnCls:'btn-usdc',  hungerMult:1.0, happyMult:1.0, poopMult:1.0, lore:'Plain but filling'},
   {id:'mft',  name:'MfT',    color:'#4ade80', btnCls:'btn-mft',   hungerMult:1.0, happyMult:1.0, poopMult:1.0, lore:'Feels like home'},
   {id:'char', name:'CHAR',   color:'#a855f7', btnCls:'btn-degen', hungerMult:1.0, happyMult:1.0, poopMult:1.0, lore:'Lucky charm!'},
@@ -7233,9 +8091,11 @@ var groceryCart = {}; // {foodId: qty} — shopping cart
 
 // Food sprite positions on the grocery room floor (% of screen)
 var FOOD_POS = [
-  {x:42.8, y:63.6, scale:0.75},   // salad
-  {x:38, y:62.9, scale:0.8},      // rice
-  {x:46.6, y:61.9, scale:0.95},   // burger
+  {x:34.4, y:54.8, scale:0.75},   // salad
+  {x:43.4, y:53.9, scale:0.8},    // rice
+  {x:51.8, y:52.3, scale:0.95},   // burger
+  {x:26, y:54, scale:0.8},        // berry
+  {x:61, y:53.5, scale:0.85},     // orange
 ];
 // Panel position (fixed, not draggable)
 var GROCERY_PANEL_POS = {x:50, y:80, scale:55};
@@ -7325,52 +8185,29 @@ function updateGroceryFloor() {
 
   document.getElementById('grocery-header').innerHTML = 'GROCERY STORE';
 
-  // Shopping cart panel — itemized list with total
+  // Quick-buy panel — tap food, pick amount
   var panel = document.getElementById('grocery-panel');
-  var cartKeys = Object.keys(groceryCart).filter(function(k) { return groceryCart[k] > 0; });
-  var cartTotal = 0;
+  var ph = '<div onclick="event.stopPropagation()" onmousedown="event.stopPropagation()" style="padding:10px 14px;background:rgba(10,10,26,0.94);border:2px solid #f0d060;border-radius:8px;font-family:\'Press Start 2P\',monospace;min-width:240px;pointer-events:auto">';
 
-  var ph = '<div onclick="event.stopPropagation()" onmousedown="event.stopPropagation()" style="padding:10px 14px;background:rgba(10,10,26,0.94);border:2px solid #f0d060;border-radius:8px;font-family:\'Press Start 2P\',monospace;min-width:260px;pointer-events:auto">';
-
-  // Add-to-cart area: click food sprites, then use +/- here
   if (selectedFood) {
     var si = selectedFood;
-    var sq = groceryQty[si.id] || 1;
-    ph += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid #333">';
-    ph += '<div style="color:' + si.color + ';font-size:7px;flex:1">' + si.name.toUpperCase() + ' <span style="color:#888">$' + si.price.toFixed(2) + '</span></div>';
-    ph += '<button class="grocery-buy" onclick="adjGroceryQty(\'' + si.id + '\',-10)" style="padding:3px 5px;font-size:6px">-10</button>';
-    ph += '<button class="grocery-buy" onclick="adjGroceryQty(\'' + si.id + '\',-1)" style="padding:3px 5px;font-size:7px">-</button>';
-    ph += '<span style="color:#f0d060;font-size:9px;min-width:30px;text-align:center">' + sq + '</span>';
-    ph += '<button class="grocery-buy" onclick="adjGroceryQty(\'' + si.id + '\',1)" style="padding:3px 5px;font-size:7px">+</button>';
-    ph += '<button class="grocery-buy" onclick="adjGroceryQty(\'' + si.id + '\',10)" style="padding:3px 5px;font-size:6px">+10</button>';
-    ph += '<button class="grocery-buy" onclick="addToCart(\'' + si.id + '\')" style="padding:4px 8px;font-size:6px;background:#1a2e0a;border-color:#4ade80;color:#4ade80">ADD</button>';
-    ph += '</div>';
-  } else {
-    ph += '<div style="color:#888;font-size:6px;margin-bottom:6px;text-align:center;padding-bottom:6px;border-bottom:1px solid #333">Tap food to add to cart</div>';
-  }
-
-  // Cart items
-  if (cartKeys.length > 0) {
-    for (var ci = 0; ci < cartKeys.length; ci++) {
-      var cid = cartKeys[ci];
-      var citem = null;
-      for (var fi = 0; fi < FOOD_ITEMS.length; fi++) { if (FOOD_ITEMS[fi].id === cid) { citem = FOOD_ITEMS[fi]; break; } }
-      if (!citem) continue;
-      var cqty = groceryCart[cid];
-      var cline = citem.price * cqty;
-      cartTotal += cline;
-      ph += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:3px">';
-      ph += '<span style="color:' + citem.color + ';font-size:6px;flex:1">' + citem.name + ' x' + cqty + '</span>';
-      ph += '<span style="color:#ccc;font-size:6px">$' + cline.toFixed(2) + '</span>';
-      ph += '<span onclick="removeFromCart(\'' + cid + '\')" style="color:#ef4444;font-size:7px;cursor:pointer;padding:0 3px" title="Remove">X</span>';
-      ph += '</div>';
+    var storage = getStorageSpace(room);
+    ph += '<div style="text-align:center;margin-bottom:6px"><img src="' + si.sprite + '" style="width:32px;height:32px;image-rendering:auto"></div>';
+    ph += '<div style="color:' + si.color + ';font-size:9px;text-align:center;margin-bottom:6px">' + si.name.toUpperCase() + '</div>';
+    ph += '<div style="color:#888;font-size:6px;text-align:center;margin-bottom:8px">How much to spend?</div>';
+    var amounts = [0.10, 0.25, 0.50, 1.00];
+    ph += '<div style="display:flex;gap:6px;justify-content:center;flex-wrap:wrap">';
+    for (var ai = 0; ai < amounts.length; ai++) {
+      var amt = amounts[ai];
+      var buyQty = Math.min(Math.floor(amt / 0.01), storage);
+      var disabled = buyQty <= 0 ? 'opacity:0.3;pointer-events:none;' : '';
+      ph += '<button class="grocery-buy" onclick="quickBuyFood(\'' + si.id + '\',' + amt + ')" ' +
+        'style="padding:6px 12px;font-size:8px;border-color:' + si.color + ';color:' + si.color + ';' + disabled + '">$' + amt.toFixed(2) + '</button>';
     }
-    ph += '<div style="border-top:1px solid #f0d060;margin-top:6px;padding-top:6px;display:flex;align-items:center;justify-content:space-between">';
-    ph += '<span style="color:#f0d060;font-size:8px">TOTAL: $' + cartTotal.toFixed(2) + '</span>';
-    ph += '<button class="grocery-buy" onclick="window._doCheckout()" style="padding:6px 14px;font-size:8px;background:#2e2a0a;border-color:#f0d060;color:#f0d060;position:relative;z-index:20;pointer-events:auto">CHECKOUT</button>';
     ph += '</div>';
+    ph += '<div style="color:#666;font-size:5px;text-align:center;margin-top:6px">' + storage + ' slots free</div>';
   } else {
-    ph += '<div style="color:#555;font-size:5px;text-align:center;padding:4px 0">Cart empty</div>';
+    ph += '<div style="color:#888;font-size:6px;text-align:center">Tap food to buy</div>';
   }
 
   ph += '</div>';
@@ -7380,9 +8217,79 @@ function selectGrocFood(foodId) {
   var item = null;
   for (var i = 0; i < FOOD_ITEMS.length; i++) { if (FOOD_ITEMS[i].id === foodId) { item = FOOD_ITEMS[i]; break; } }
   selectedFood = item;
-  if (item && !groceryQty[item.id]) groceryQty[item.id] = 1;
   updateGroceryFloor();
 }
+
+async function quickBuyFood(foodId, dollarAmount) {
+  try {
+  var room = rooms[currentRoom];
+  if (!room) return;
+  if (!room.cupboardItems) room.cupboardItems = {};
+  if (!room.freezerItems) room.freezerItems = {};
+  if (!room.walkinItems) room.walkinItems = {};
+  var item = null;
+  for (var i = 0; i < FOOD_ITEMS.length; i++) { if (FOOD_ITEMS[i].id === foodId) { item = FOOD_ITEMS[i]; break; } }
+  if (!item) return;
+  var qty = Math.floor(dollarAmount / 0.01);
+  var storage = getStorageSpace(room);
+  qty = Math.min(qty, storage);
+  if (qty <= 0) { showMsg('STORAGE FULL!', '#ef4444'); return; }
+  var cost = qty * 0.01;
+
+  if (!adminMode) {
+    if (!walletAddr || !walletSigner) {
+      showMsg('CONNECTING WALLET...', '#f0d060');
+      await connectWallet();
+      if (!walletAddr || !walletSigner) { showMsg('WALLET NOT CONNECTED', '#ef4444'); return; }
+    }
+    try {
+      var wethAmount = cost / ETH_USD_PRICE;
+      var wethCost = ethers.parseEther(wethAmount.toFixed(18));
+      var weth = getContract(WETH_ADDR, WETH_ABI);
+      var wethBal = await new ethers.Contract(WETH_ADDR, WETH_ABI, walletProvider).balanceOf(walletAddr);
+      if (wethBal < wethCost) {
+        var shortfall = wethCost - wethBal;
+        var ethBal = await walletProvider.getBalance(walletAddr);
+        if (ethBal < shortfall) { showMsg('NEED $' + cost.toFixed(2) + ' (' + wethAmount.toFixed(6) + ' WETH)', '#ef4444'); return; }
+        showMsg('WRAPPING ETH...', '#f0d060');
+        var wrapTx = await weth.deposit({ value: shortfall });
+        await wrapTx.wait();
+      }
+      showMsg('BUYING ' + item.name.toUpperCase() + '...', '#f0d060');
+      var payTx = await weth.transfer(POWERPLANT_ADDR, wethCost);
+      await payTx.wait();
+      depositToPowerPlant(cost, 'eth');
+    } catch(e) {
+      console.error('quickBuy error:', e);
+      showMsg('PAYMENT FAILED — ' + (e.reason || e.shortMessage || e.message || 'error').slice(0,60), '#ef4444');
+      return;
+    }
+  }
+
+  for (var q = 0; q < qty; q++) {
+    var cupCount = countItems(room.cupboardItems);
+    var frzCount = countItems(room.freezerItems);
+    if (cupCount < (room.maxCupboard || CUPBOARD_LEVELS[0])) {
+      room.cupboardItems[foodId] = (room.cupboardItems[foodId] || 0) + 1;
+    } else if (room.freezerLevel >= 0 && frzCount < (room.maxFreezer || 0)) {
+      room.freezerItems[foodId] = (room.freezerItems[foodId] || 0) + 1;
+    } else if (room.hasWalkin) {
+      room.walkinItems[foodId] = (room.walkinItems[foodId] || 0) + 1;
+    }
+  }
+  showMsg('BOUGHT ' + qty + 'x ' + item.name + (adminMode ? ' (FREE)' : ' — $' + cost.toFixed(2)), '#4ade80');
+  selectedFood = null;
+  updateGroceryFloor();
+  updateRoomInfo();
+  buildFoodTray();
+  saveGame();
+  if (!adminMode) pollOnchainBalances();
+  } catch(e2) {
+    console.error('quickBuyFood error:', e2);
+    showMsg('ERROR: ' + (e2.message || 'unknown').slice(0,50), '#ef4444');
+  }
+}
+
 function adjGroceryQty(itemId, delta) {
   if (!groceryQty[itemId]) groceryQty[itemId] = 1;
   groceryQty[itemId] = Math.max(1, groceryQty[itemId] + delta);
@@ -7786,9 +8693,10 @@ var BRANCH_USD_THRESHOLD = 1.00; // $1 of a single token unlocks that evolution 
 // First egg = 5 min, scales up with total hatched, caps at 24 hours
 // Patience beyond minimum = better hatch odds
 function getMinIncubationMs() {
-  // First egg = instant (0), then scales up
-  // 0, 5 min, 30 min, 2 hr, 6 hr, 12 hr, 24 hr (cap)
-  var mins = [0, 5, 30, 120, 360, 720, 1440];
+  // First egg = instant (0), then scales up gently
+  // 0, 1 min, 3 min, 5 min, 10 min, 15 min, 20 min (cap)
+  // Patience bonus still rewards waiting up to 24h for better rarity
+  var mins = [0, 1, 3, 5, 10, 15, 20];
   var idx = Math.min(totalHatched, mins.length - 1);
   return mins[idx] * 60 * 1000;
 }
@@ -7867,10 +8775,14 @@ function recordMeal(w, amount) {
     w.giantFeedCount++;
     if (w.giantFeedCount >= 2) {
       w.lastFed = Date.now();
+      w.lastHappy = Date.now();
+      w.happyAtFeed = w.happy;
       w.giantFeedCount = 0;
     }
   } else {
     w.lastFed = Date.now();
+    w.lastHappy = Date.now();
+    w.happyAtFeed = w.happy;
   }
 }
 
@@ -7932,7 +8844,7 @@ async function doFeed(foodId, amount) {
   selected.care.tokenFeeds[foodId].total += amount;
   // Keep old care fields working
   if (foodId === 'weth') selected.care.wethFeeds++;
-  // Apply D&D stat boosts based on food type
+  // Apply stat boosts based on food type
   var statGains = applyFoodStatBoosts(selected, foodId, feedPower);
   recordMeal(selected, amount);
   var isFav = isFavoriteFood(selected, foodId);
@@ -8180,11 +9092,16 @@ async function doHatch() {
   var eggFeeds = selected.eggTokenFeeds || {};
   for (var tid in eggFeeds) { if (eggFeeds[tid] > bestTokenAmt) { bestTokenAmt = eggFeeds[tid]; dominantToken = tid; } }
   var colorBias = dominantToken ? (TOKEN_COLOR_BIAS[dominantToken] || null) : null;
-  // Fixed character — all baselings are leaf
-  selected.charId = 'leaf';
-  selected.charName = 'Leaf';
-  selected.charRarity = newRarity;
+  // Roll character from available pool based on rarity, token gate, and care
+  var rolled = rollCharacter(selected.eggRarity, selected.sortedToken, tier.bonus, patience.tier, selected.eggColor);
+  selected.charId = rolled.id;
+  selected.charName = rolled.name;
+  selected.charRarity = rolled.rarity;
   selected.combinedRarity = newRarity;
+
+  // Roll color variant (permanent tint — not on fruit trees)
+  var variant = rollColorVariant(rolled.id, selected.eggColor);
+  selected.colorVariant = variant ? variant.id : null;
 
   // Giant — either bought giant egg OR fed $5+ during egg phase
   if (!selected.isGiant) selected.isGiant = (selected.eggLPFed || 0) >= GIANT_USD_THRESHOLD;
@@ -8275,7 +9192,7 @@ function doResurrect() {
 }
 // ADMIN_WALLET: developer wallet for admin/design mode access
 var ADMIN_WALLET = '0x0780b1456d5e60cf26c8cd6541b85e805c8c05f2';
-function isAdmin() { return walletAddr && walletAddr.toLowerCase() === ADMIN_WALLET; }
+function isAdmin() { return (walletAddr && walletAddr.toLowerCase() === ADMIN_WALLET) || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'; }
 var adminMode = false;
 
 // DEV_MODE: set true to speed up evolution for testing (seconds instead of days)
@@ -8401,31 +9318,11 @@ function showMsg(text, color) {
   msgTimeout = setTimeout(function(){ el.style.opacity = 0; }, 1800);
 }
 function updateHUD() {
-  document.getElementById('poop-total').textContent = 'POOP: ' + totalPoop;
   var rc = roomCount(currentRoom);
   var cap = rooms[currentRoom] ? rooms[currentRoom].capacity : '?';
-  document.getElementById('baseling-count').textContent = 'BASELINGS: ' + rc + '/' + cap + ' (total: ' + baselings.length + ')';
-  var ppEl = document.getElementById('power-plant-hud');
-  if (ppEl) {
-    var ppWeth = onchainBalances.ppWeth !== undefined ? onchainBalances.ppWeth.toFixed(6) : powerPlantWETH.toFixed(4);
-    var ppBurned = onchainBalances.ppPoopBurned !== undefined ? onchainBalances.ppPoopBurned.toFixed(2) : '0';
-    ppEl.innerHTML = 'PP: ' + ppWeth + ' ETH <span style="color:#ef4444;margin-left:6px">' + ppBurned + ' burned</span>';
-  }
-  var wEl = document.getElementById('wallet-hud');
-  if (wEl) {
-    if (walletAddr) wEl.textContent = walletAddr.slice(0,6) + '...' + walletAddr.slice(-4);
-    else wEl.textContent = 'CONNECT WALLET';
-  }
-  // Show onchain balances when connected
-  var wethEl = document.getElementById('weth-bal-hud');
-  var poopBalEl = document.getElementById('poop-bal-hud');
-  if (walletAddr) {
-    if (wethEl) wethEl.style.display = '';
-    if (poopBalEl) poopBalEl.style.display = '';
-  } else {
-    if (wethEl) wethEl.style.display = 'none';
-    if (poopBalEl) poopBalEl.style.display = 'none';
-  }
+  var roomName = rooms[currentRoom] ? rooms[currentRoom].name : 'Room';
+  document.getElementById('baseling-count').textContent = roomName + ' — ' + rc + '/' + cap;
+  document.getElementById('poop-total').textContent = 'POOP: ' + totalPoop;
 }
 
 // Poll onchain balances every 30s when wallet connected
@@ -9066,7 +9963,7 @@ function buildRaceSection(w) {
 // --- SAVE / LOAD ---
 var SAVE_KEY = 'baseling-save-v1';
 var SAVE_FIELDS = [
-  'id','stage','eggId','eggRarity','eggColor','charId','charName','charRarity',
+  'id','stage','eggId','eggRarity','eggColor','charId','charName','charRarity','colorVariant',
   'combinedRarity',
   'hunger','hungerAtFeed','happy','poopMeter','poopCount','poopAccum','feedCount',
   'alive','deathCount','isGiant','sparkle',
@@ -9077,7 +9974,8 @@ var SAVE_FIELDS = [
   'evoTier','evoLabel','evoForm','evoFormColor','evolvedAt',
   'raceHistory','raceWins','racesRun',
   'x','y','roomId',
-  'garden','frozen','frozenAt','deathTime','cryoPrice','tokenId','graveyardRoom','lastPoopDist','poopPending'
+  'garden','frozen','frozenAt','deathTime','cryoPrice','tokenId','graveyardRoom','lastPoopDist','poopPending',
+  'gardenAssigned','gardenX','gardenY','lastHappy','happyAtFeed'
 ];
 
 function saveGame() {
@@ -9275,6 +10173,19 @@ function loadGame() {
       };
       baselings.push(w);
     }
+    // Clamp all positions to current viewport's floor zone (handles viewport/device changes)
+    for (var ci = 0; ci < baselings.length; ci++) clampToFloor(baselings[ci]);
+    // One-time migration: reset all baselings to full happy/hunger (v12h-fix)
+    if (!localStorage.getItem('migration-12h-happy')) {
+      for (var mi = 0; mi < baselings.length; mi++) {
+        var mb = baselings[mi];
+        if (mb.alive && mb.stage > 0) {
+          mb.hunger = 100; mb.hungerAtFeed = 100; mb.lastFed = Date.now();
+          mb.happy = 100; mb.happyAtFeed = 100; mb.lastHappy = Date.now();
+        }
+      }
+      localStorage.setItem('migration-12h-happy', '1');
+    }
     updateRoomTabs();
     updateRoomInfo();
     updateHUD();
@@ -9374,8 +10285,8 @@ function render() {
   }
 
   // Draw door indicator — old school arrow pointing up to door
-  var doorX = W * 0.425;
-  var doorY = H * 0.08;
+  var doorX = bgX(0.425);
+  var doorY = bgY(0.08);
   var doorPulse = 0.5 + 0.3 * Math.sin(t * 2);
   ctx.save();
   ctx.globalAlpha = doorPulse;
@@ -9513,6 +10424,26 @@ function showSplash(callback) {
 // --- TUTORIAL SYSTEM --- // MfT SoBs
 // Per-page info panels players click through. Shows on first visit, ? button to re-read.
 var TUTORIALS = {
+  'welcome': {
+    speaker: 'BASELINGS',
+    pages: [
+      'Welcome to Baselings!\nYour own pixel pet world\non Base chain.',
+      'First things first — you need\nan egg! Head to the EGG STORE\nin the neighborhood.',
+      'Don\'t worry about money yet.\nIf your game wallet is empty\nwe\'ll take you to the ATM.',
+      'At the ATM, deposit some WETH\nfrom your main wallet. Grab\nextra for groceries too!',
+      'Your game wallet means ZERO\npopups while you play.\nFund once, play forever!',
+    ]
+  },
+  'atm': {
+    speaker: 'ATM',
+    pages: [
+      'This is your Game Wallet ATM!\nDeposit WETH here from your\nmain wallet.',
+      'Your game wallet is local to\nthis device. All game actions\nuse it — zero wallet popups!',
+      'Deposit enough for an egg\n(~$0.10) plus food (~$1).\nWe suggest ~$1.50 to start.',
+      'Gas on Base costs fractions\nof a cent. A tiny ETH deposit\ncovers thousands of plays.',
+      'You can withdraw back to your\nmain wallet anytime from here.\nYour funds, your control.',
+    ]
+  },
   'egg-store': {
     speaker: 'EGG SALESMAN',
     pages: [
@@ -9652,7 +10583,7 @@ loadAllSprites(function() {
       loadTutorials();
       var hasData = loadGame();
       if (!hasData || baselings.length === 0) {
-        // First time — free room, no free eggs. Open egg store.
+        // First time — free room, show welcome, guide to egg store
         if (!hasData) {
           rooms = [createRoom(0)];
           currentRoom = 0;
@@ -9660,7 +10591,21 @@ loadAllSprites(function() {
         }
         updateRoomTabs();
         updateRoomInfo();
-        openEggStore();
+        // Show welcome tutorial, then open egg store after
+        if (!localStorage.getItem('baseling-intro-done')) {
+          showTutorial('welcome', true);
+          localStorage.setItem('baseling-intro-done', '1');
+          // After tutorial dismissal, open egg store
+          var _origClose = closeTutorial;
+          closeTutorial = function() {
+            _origClose();
+            closeTutorial = _origClose;
+            openNeighborhood();
+            setTimeout(function() { neighborhoodAction('openEggStore'); }, 400);
+          };
+        } else {
+          openEggStore();
+        }
       }
       buildFoodTray();
       loadPanelLayouts();
@@ -9674,10 +10619,26 @@ loadAllSprites(function() {
       // Tell Farcaster Frame host the app is loaded (hides splash screen)
       if (window.farcasterSDK) {
         try { window.farcasterSDK.actions.ready(); } catch(e) { console.warn('[FRAME] ready() failed:', e); }
+        // Request notification permission + send heartbeat
+        (async function() {
+          try {
+            var context = await window.farcasterSDK.context;
+            var fid = context && context.user ? context.user.fid : null;
+            if (fid) {
+              try { await window.farcasterSDK.actions.addMiniApp(); } catch(ae) {}
+              fetch(TREE_API.replace('/tree', '') + '/heartbeat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ fid: fid, wallet: currentAccount || '' })
+              }).catch(function(){});
+            }
+          } catch(ne) { console.warn('[NOTIF] Setup:', ne.message); }
+        })();
       }
     });
   });
 });
 </script>
+</div>
 </body>
 </html>

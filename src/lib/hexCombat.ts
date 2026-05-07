@@ -108,7 +108,7 @@ export function canBrace(weaponName?: string): boolean {
 export function rangePenalty(distance: number, increment: number, farShot: boolean): number {
   if (increment <= 0 || distance <= 1) return 0;  // melee — no range penalty
   if (distance <= increment) return 0;  // within first increment
-  const increments = Math.ceil(distance / increment) - 1;
+  const increments = Math.max(0, Math.floor((distance - 1) / increment));
   return increments * (farShot ? -1 : -2);  // Far Shot halves penalty
 }
 
@@ -165,7 +165,7 @@ export type BattleUnit = {
   reactionUsed: boolean;   // true if used their reaction this round (AoO)
   // ── Spell combat fields ──
   activeEffects: ActiveSpellEffect[];
-  concentrationSpellId?: string;  // spell ID the unit is concentrating on (max 1)
+  concentrationSpellId?: string;  // spell ID the unit is concentrating on (max 1). Caller must dropConcentration() before setting a new one.
   rawAbilities: { str: number; dex: number; con: number; int: number; wis: number; cha: number };
   stabilized?: boolean;           // unconscious but no longer bleeding out
   cruel?: boolean;                // if true, will attack downed/unconscious foes
@@ -181,6 +181,13 @@ export type BattleUnit = {
   _phoenixUsed?: boolean;         // Phoenix: already revived this battle
   _actionSurgeUsed?: boolean;     // Action Surge: already used this battle
   _boonSpellUses?: Record<string, number>; // track boon spell uses (key = spell name)
+  skillRanks?: Record<string, number>;    // skill ranks for retreat/tumble checks
+  // ── Class ability fields ──
+  activeAbilities?: import("./classes").ClassFeature[];  // active abilities available to this unit
+  level?: number;                                        // character level (for ability scaling)
+  _abilityUses?: Record<string, number>;                 // uses consumed per ability effect ID
+  _stunFistActive?: boolean;                             // next hit triggers stunning fist save
+  _flurryActive?: boolean;                               // next attack resolves as two hits at -2
 };
 
 export type AttackResult = {
@@ -443,6 +450,26 @@ export function createPlayerUnit(
       casterLevel: spellInfo.casterLevel,
       castingAbilityMod: spellInfo.castingAbilityMod,
     } : {}),
+    ...(progression?.skill_ranks ? { skillRanks: progression.skill_ranks } : {}),
+    // ── Class active abilities ──
+    level: progression?.total_level ?? 1,
+    activeAbilities: (() => {
+      const abilities: import("./classes").ClassFeature[] = [];
+      if (progression) {
+        for (const cl of progression.class_levels) {
+          const c = getClassById(cl.class_id);
+          if (!c) continue;
+          for (const feat of c.features) {
+            if (feat.active && feat.level <= cl.levels) abilities.push(feat);
+          }
+        }
+      } else if (charClass) {
+        for (const feat of charClass.features) {
+          if (feat.active && feat.level <= 1) abilities.push(feat);
+        }
+      }
+      return abilities.length > 0 ? abilities : undefined;
+    })(),
   };
 }
 
@@ -579,6 +606,19 @@ export function createFollowerUnit(follower: Follower, position: HexCoord, index
       reactionUsed: false,
       activeEffects: [],
       rawAbilities: { str, dex, con, int: 1, wis: 1, cha: 1 },
+      ...(prog.skill_ranks ? { skillRanks: prog.skill_ranks } : {}),
+      level: prog.total_level,
+      activeAbilities: (() => {
+        const abilities: import("./classes").ClassFeature[] = [];
+        for (const cl of prog.class_levels) {
+          const c = getClassById(cl.class_id);
+          if (!c) continue;
+          for (const feat of c.features) {
+            if (feat.active && feat.level <= cl.levels) abilities.push(feat);
+          }
+        }
+        return abilities.length > 0 ? abilities : undefined;
+      })(),
     };
   }
 
@@ -903,22 +943,25 @@ export function resolveAttack(
 
   // ── Apply target resistances/immunities ──
   let resistNote = "";
+  let hasImmunity = false;
   const tRes = target.stats.resistances ?? [];
   const tImm = target.stats.immunities ?? [];
   if (hasLightning && tImm.includes("lightning")) {
     damage -= Math.round(lightningRolled * (isCrit ? 2 : 1));
     resistNote += " (immune lightning)";
+    hasImmunity = true;
   }
   if (hasFire && tImm.includes("fire")) {
     damage -= Math.round(fireRolled * (isCrit ? 2 : 1));
     resistNote += " (immune fire)";
+    hasImmunity = true;
   }
   // Resistance to bludgeoning (physical) halves total physical damage
   if (tRes.includes("bludgeoning") && !hasLightning && !hasFire) {
     damage = Math.max(1, Math.floor(damage / 2));
     resistNote += " (resist bludgeon)";
   }
-  damage = Math.max(1, damage);
+  damage = Math.max(hasImmunity ? 0 : 1, damage);
 
   // ── Retaliation damage (Tempest boon — melee only, roll 2d6) ──
   let retaliationDmg: number | undefined;
@@ -973,7 +1016,8 @@ export function computeEnemyMove(
   target: BattleUnit,
   allUnits: BattleUnit[]
 ): HexCoord {
-  const maxSteps = Math.floor(enemy.stats.speed / 5);
+  const speedMod = enemy.activeEffects.reduce((sum, e) => sum + ((e.buffSpeed as number) ?? 0), 0);
+  const maxSteps = Math.floor(Math.max(0, enemy.stats.speed + speedMod) / 5);
   const current = enemy.position;
   const occupied = new Set(
     allUnits.filter(u => u.id !== enemy.id && isConscious(u)).map(u => `${u.position.q},${u.position.r}`)

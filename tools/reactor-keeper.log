@@ -1,0 +1,217 @@
+[2026-04-29T00:00:47] Reactor Keeper started
+[2026-04-29T00:00:47] Wallet: 0x08b0c030691343976B1be67F9557FBb0D59f6971
+[2026-04-29T00:00:47] Reactors: 8
+[2026-04-29T00:00:47] Cycle: ~110 min
+[2026-04-29T00:00:47] POL: 28.75
+[2026-04-29T00:00:47] 
+[2026-04-29T00:00:47] ========== REACTOR CYCLE START ==========
+[2026-04-29T00:00:47] DDD: cooldown 40 min remaining, skip
+[2026-04-29T00:00:47]   Next reactor in 15 min...
+[2026-04-29T00:15:47] BTN: cooldown 40 min remaining, skip
+[2026-04-29T00:15:47]   Next reactor in 15 min...
+[2026-04-29T00:30:47] LGP: cooldown 13 min remaining, skip
+[2026-04-29T00:30:47]   Next reactor in 15 min...
+[2026-04-29T00:45:48] PKT: cooldown 13 min remaining, skip
+[2026-04-29T00:45:48]   Next reactor in 15 min...
+[2026-04-29T01:00:48] EGP: cooldown 13 min remaining, skip
+[2026-04-29T01:00:48]   Next reactor in 15 min...
+[2026-04-29T01:15:48] OGC: cooldown 40 min remaining, skip
+[2026-04-29T01:15:48]   Next reactor in 15 min...
+[2026-04-29T01:30:48] IGS: cooldown 40 min remaining, skip
+[2026-04-29T01:30:48]   Next reactor in 15 min...
+[2026-04-29T01:45:48] DHG: cooldown 40 min remaining, skip
+[2026-04-29T01:45:48] 
+[2026-04-29T01:45:48] --- Cycle Summary ---
+[2026-04-29T01:45:48]   DDD: cooldown
+[2026-04-29T01:45:48]   BTN: cooldown
+[2026-04-29T01:45:48]   LGP: cooldown
+[2026-04-29T01:45:48]   PKT: cooldown
+[2026-04-29T01:45:48]   EGP: cooldown
+[2026-04-29T01:45:48]   OGC: cooldown
+[2026-04-29T01:45:48]   IGS: cooldown
+[2026-04-29T01:45:48]   DHG: cooldown
+[2026-04-29T01:45:48] ========== CYCLE COMPLETE ==========
+[2026-04-29T01:45:48] Next cycle in 5 min...
+[2026-04-29T01:50:48] 
+[2026-04-29T01:50:48] ========== REACTOR CYCLE START ==========
+[2026-04-29T01:50:54] DDD: FIRED | burned=6820.21 | bought=2134.12 | gas=3140688
+[2026-04-29T01:50:54]   Next reactor in 15 min...
+[2026-04-29T02:05:59] BTN: FIRED | burned=526.45 | bought=299.00 | gas=2749110
+[2026-04-29T02:05:59]   Next reactor in 15 min...
+[2026-04-29T02:20:59] LGP: cooldown 40 min remaining, skip
+[2026-04-29T02:20:59]   Next reactor in 15 min...
+[2026-04-29T02:36:00] PKT: cooldown 40 min remaining, skip
+[2026-04-29T02:36:00]   Next reactor in 15 min...
+[2026-04-29T02:51:00] EGP: cooldown 40 min remaining, skip
+[2026-04-29T02:51:00]   Next reactor in 15 min...
+[2026-04-29T03:06:05] OGC: FIRED | burned=250.20 | bought=81.26 | gas=2536862
+[2026-04-29T03:06:05]   Next reactor in 15 min...
+[2026-04-29T03:21:10] IGS: FIRED | burned=1064.99 | bought=1597.42 | gas=3067133
+[2026-04-29T03:21:10]   Next reactor in 15 min...
+[2026-04-29T03:36:15] DHG: FIRED | burned=80.91 | bought=23.95 | gas=2511411
+[2026-04-29T03:36:15] 
+[2026-04-29T03:36:15] --- Cycle Summary ---
+[2026-04-29T03:36:15]   DDD: burned=6820.21 bought=2134.12
+[2026-04-29T03:36:15]   BTN: burned=526.45 bought=299.00
+[2026-04-29T03:36:15]   LGP: cooldown
+[2026-04-29T03:36:15]   PKT: cooldown
+[2026-04-29T03:36:15]   EGP: cooldown
+[2026-04-29T03:36:15]   OGC: burned=250.20 bought=81.26
+[2026-04-29T03:36:15]   IGS: burned=1064.99 bought=1597.42
+[2026-04-29T03:36:15]   DHG: burned=80.91 bought=23.95
+[2026-04-29T03:36:15] ========== CYCLE COMPLETE ==========
+[2026-04-29T03:36:15] Next cycle in 5 min...
+[2026-04-29T03:41:15] 
+[2026-04-29T03:41:15] ========== REACTOR CYCLE START ==========
+[2026-04-29T03:41:15] DDD: cooldown 10 min remaining, skip
+[2026-04-29T03:41:15]   Next reactor in 15 min...
+[2026-04-29T03:56:16] BTN: cooldown 10 min remaining, skip
+[2026-04-29T03:56:16]   Next reactor in 15 min...
+[2026-04-29T04:11:21] LGP: FIRED | burned=97.04 | bought=1.00 | gas=2444503
+[2026-04-29T04:11:21]   Next reactor in 15 min...
+[2026-04-29T04:26:26] PKT: ERROR transaction execution reverted
+[2026-04-29T04:26:26]   Next reactor in 15 min...
+[2026-04-29T04:41:31] EGP: FIRED | burned=113.38 | bought=24.89 | gas=2463229
+[2026-04-29T04:41:31]   Next reactor in 15 min...
+[2026-04-29T04:56:31] OGC: cooldown 10 min remaining, skip
+[2026-04-29T04:56:31]   Next reactor in 15 min...
+[2026-04-29T05:11:31] IGS: cooldown 10 min remaining, skip
+[2026-04-29T05:11:31]   Next reactor in 15 min...
+[2026-04-29T05:26:32] DHG: cooldown 10 min remaining, skip
+[2026-04-29T05:26:32] 
+[2026-04-29T05:26:32] --- Cycle Summary ---
+[2026-04-29T05:26:32]   DDD: cooldown
+[2026-04-29T05:26:32]   BTN: cooldown
+[2026-04-29T05:26:32]   LGP: burned=97.04 bought=1.00
+[2026-04-29T05:26:32]   PKT: error
+[2026-04-29T05:26:32]   EGP: burned=113.38 bought=24.89
+[2026-04-29T05:26:32]   OGC: cooldown
+[2026-04-29T05:26:32]   IGS: cooldown
+[2026-04-29T05:26:32]   DHG: cooldown
+[2026-04-29T05:26:32] ========== CYCLE COMPLETE ==========
+[2026-04-29T05:26:32] Next cycle in 5 min...
+[2026-04-29T05:31:32] 
+[2026-04-29T05:31:32] ========== REACTOR CYCLE START ==========
+[2026-04-29T05:31:32] DDD: cooldown 40 min remaining, skip
+[2026-04-29T05:31:32]   Next reactor in 15 min...
+[2026-04-29T05:46:32] BTN: cooldown 40 min remaining, skip
+[2026-04-29T05:46:32]   Next reactor in 15 min...
+[2026-04-29T06:01:32] LGP: cooldown 10 min remaining, skip
+[2026-04-29T06:01:32]   Next reactor in 15 min...
+[2026-04-29T06:16:37] PKT: ERROR transaction execution reverted
+[2026-04-29T06:16:37]   Next reactor in 15 min...
+[2026-04-29T06:31:37] EGP: cooldown 10 min remaining, skip
+[2026-04-29T06:31:37]   Next reactor in 15 min...
+[2026-04-29T06:46:37] OGC: cooldown 40 min remaining, skip
+[2026-04-29T06:46:37]   Next reactor in 15 min...
+[2026-04-29T07:01:38] IGS: cooldown 40 min remaining, skip
+[2026-04-29T07:01:38]   Next reactor in 15 min...
+[2026-04-29T07:16:38] DHG: cooldown 40 min remaining, skip
+[2026-04-29T07:16:38] 
+[2026-04-29T07:16:38] --- Cycle Summary ---
+[2026-04-29T07:16:38]   DDD: cooldown
+[2026-04-29T07:16:38]   BTN: cooldown
+[2026-04-29T07:16:38]   LGP: cooldown
+[2026-04-29T07:16:38]   PKT: error
+[2026-04-29T07:16:38]   EGP: cooldown
+[2026-04-29T07:16:38]   OGC: cooldown
+[2026-04-29T07:16:38]   IGS: cooldown
+[2026-04-29T07:16:38]   DHG: cooldown
+[2026-04-29T07:16:38] ========== CYCLE COMPLETE ==========
+[2026-04-29T07:16:38] Next cycle in 5 min...
+[2026-04-29T07:21:38] 
+[2026-04-29T07:21:38] ========== REACTOR CYCLE START ==========
+[2026-04-29T07:21:43] DDD: FIRED | burned=0.01 | bought=12.84 | gas=2652394
+[2026-04-29T07:21:43]   Next reactor in 15 min...
+[2026-04-29T07:36:49] BTN: FIRED | burned=0.00 | bought=0.00 | gas=2609479
+[2026-04-29T07:36:49]   Next reactor in 15 min...
+[2026-04-29T07:51:49] LGP: cooldown 40 min remaining, skip
+[2026-04-29T07:51:49]   Next reactor in 15 min...
+[2026-04-29T08:06:54] PKT: ERROR transaction execution reverted
+[2026-04-29T08:06:54]   Next reactor in 15 min...
+[2026-04-29T08:21:54] EGP: cooldown 40 min remaining, skip
+[2026-04-29T08:21:54]   Next reactor in 15 min...
+[2026-04-29T08:36:59] OGC: FIRED | burned=0.00 | bought=3.80 | gas=2301907
+[2026-04-29T08:36:59]   Next reactor in 15 min...
+[2026-04-29T08:52:04] IGS: FIRED | burned=5.13 | bought=5.43 | gas=2805286
+[2026-04-29T08:52:04]   Next reactor in 15 min...
+[2026-04-29T09:07:09] DHG: ERROR transaction execution reverted
+[2026-04-29T09:07:09] 
+[2026-04-29T09:07:09] --- Cycle Summary ---
+[2026-04-29T09:07:09]   DDD: burned=0.01 bought=12.84
+[2026-04-29T09:07:09]   BTN: burned=0.00 bought=0.00
+[2026-04-29T09:07:09]   LGP: cooldown
+[2026-04-29T09:07:09]   PKT: error
+[2026-04-29T09:07:09]   EGP: cooldown
+[2026-04-29T09:07:09]   OGC: burned=0.00 bought=3.80
+[2026-04-29T09:07:09]   IGS: burned=5.13 bought=5.43
+[2026-04-29T09:07:09]   DHG: error
+[2026-04-29T09:07:09] ========== CYCLE COMPLETE ==========
+[2026-04-29T09:07:09] Next cycle in 5 min...
+[2026-04-29T09:12:09] 
+[2026-04-29T09:12:09] ========== REACTOR CYCLE START ==========
+[2026-04-29T09:12:10] DDD: cooldown 10 min remaining, skip
+[2026-04-29T09:12:10]   Next reactor in 15 min...
+[2026-04-29T09:27:10] BTN: cooldown 10 min remaining, skip
+[2026-04-29T09:27:10]   Next reactor in 15 min...
+[2026-04-29T09:42:11] LGP: ERROR insufficient funds for intrinsic transaction cost
+[2026-04-29T09:42:11]   Next reactor in 15 min...
+[2026-04-29T09:57:11] PKT: ERROR insufficient funds for intrinsic transaction cost
+[2026-04-29T09:57:11]   Next reactor in 15 min...
+[2026-04-29T10:12:12] EGP: ERROR insufficient funds for intrinsic transaction cost
+[2026-04-29T10:12:12]   Next reactor in 15 min...
+[2026-04-29T10:27:12] OGC: cooldown 10 min remaining, skip
+[2026-04-29T10:27:12]   Next reactor in 15 min...
+[2026-04-29T10:42:12] IGS: cooldown 10 min remaining, skip
+[2026-04-29T10:42:12]   Next reactor in 15 min...
+[2026-04-29T10:57:17] DHG: ERROR transaction execution reverted
+[2026-04-29T10:57:17] 
+[2026-04-29T10:57:17] --- Cycle Summary ---
+[2026-04-29T10:57:17]   DDD: cooldown
+[2026-04-29T10:57:17]   BTN: cooldown
+[2026-04-29T10:57:17]   LGP: error
+[2026-04-29T10:57:17]   PKT: error
+[2026-04-29T10:57:17]   EGP: error
+[2026-04-29T10:57:17]   OGC: cooldown
+[2026-04-29T10:57:17]   IGS: cooldown
+[2026-04-29T10:57:17]   DHG: error
+[2026-04-29T10:57:17] ========== CYCLE COMPLETE ==========
+[2026-04-29T10:57:17] Next cycle in 5 min...
+[2026-04-29T11:02:17] 
+[2026-04-29T11:02:17] ========== REACTOR CYCLE START ==========
+[2026-04-29T11:02:23] DDD: FIRED | burned=2272.31 | bought=262.17 | gas=2737832
+[2026-04-29T11:02:23]   Next reactor in 15 min...
+[2026-04-29T11:17:28] BTN: FIRED | burned=184.79 | bought=442.07 | gas=2486928
+[2026-04-29T11:17:28]   Next reactor in 15 min...
+[2026-04-29T11:32:33] LGP: FIRED | burned=335.08 | bought=320.98 | gas=2878092
+[2026-04-29T11:32:33]   Next reactor in 15 min...
+[2026-04-29T11:47:38] PKT: ERROR transaction execution reverted
+[2026-04-29T11:47:38]   Next reactor in 15 min...
+[2026-04-29T12:02:43] EGP: FIRED | burned=1765.72 | bought=1375.69 | gas=2507755
+[2026-04-29T12:02:43]   Next reactor in 15 min...
+[2026-04-29T12:17:48] OGC: FIRED | burned=124.49 | bought=43.51 | gas=1868584
+[2026-04-29T12:17:48]   Next reactor in 15 min...
+[2026-04-29T12:32:54] IGS: FIRED | burned=156.69 | bought=312.65 | gas=2714062
+[2026-04-29T12:32:54]   Next reactor in 15 min...
+[2026-04-29T12:47:59] DHG: ERROR transaction execution reverted
+[2026-04-29T12:47:59] 
+[2026-04-29T12:47:59] --- Cycle Summary ---
+[2026-04-29T12:47:59]   DDD: burned=2272.31 bought=262.17
+[2026-04-29T12:47:59]   BTN: burned=184.79 bought=442.07
+[2026-04-29T12:47:59]   LGP: burned=335.08 bought=320.98
+[2026-04-29T12:47:59]   PKT: error
+[2026-04-29T12:47:59]   EGP: burned=1765.72 bought=1375.69
+[2026-04-29T12:47:59]   OGC: burned=124.49 bought=43.51
+[2026-04-29T12:47:59]   IGS: burned=156.69 bought=312.65
+[2026-04-29T12:47:59]   DHG: error
+[2026-04-29T12:47:59] ========== CYCLE COMPLETE ==========
+[2026-04-29T12:47:59] Next cycle in 5 min...
+[2026-04-29T12:52:59] 
+[2026-04-29T12:52:59] ========== REACTOR CYCLE START ==========
+[2026-04-29T12:52:59] DDD: cooldown 10 min remaining, skip
+[2026-04-29T12:52:59]   Next reactor in 15 min...
+[2026-04-29T13:07:59] BTN: cooldown 10 min remaining, skip
+[2026-04-29T13:07:59]   Next reactor in 15 min...
+[2026-04-29T13:22:59] LGP: cooldown 10 min remaining, skip
+[2026-04-29T13:22:59]   Next reactor in 15 min...
+Fatal: server response 503 Service Unavailable

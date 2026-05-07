@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html>
+<head><title>Manage Baseling NFT</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.1/ethers.umd.min.js"></script>
+</head>
+<body style="background:#0a0608;color:#e8d5b0;font-family:Georgia;padding:30px;max-width:700px;margin:0 auto;">
+
+<h1 style="color:#c9a84c;text-align:center;">Baseling NFT Manager</h1>
+<p style="text-align:center;color:#888;margin-bottom:25px;">Owner-only management for BaselingNFT contract on Base.</p>
+
+<div style="text-align:center;margin-bottom:25px;">
+  <button id="connectBtn" onclick="connect()" style="background:#c9a84c;color:#0a0608;border:none;padding:12px 30px;font-size:15px;font-weight:bold;border-radius:8px;cursor:pointer;font-family:Georgia;">Connect Wallet</button>
+  <p id="walletStatus" style="margin-top:8px;color:#888;font-size:13px;"></p>
+</div>
+
+<!-- CURRENT STATE -->
+<div id="stateBox" style="margin-bottom:20px;padding:18px;background:#1a1418;border:1px solid #c9a84c44;border-radius:8px;display:none;">
+  <h3 style="color:#c9a84c;margin-bottom:10px;">Current State</h3>
+  <div id="stateInfo" style="color:#888;font-size:13px;line-height:2;"></div>
+  <button onclick="refreshState()" style="margin-top:10px;background:#333;color:#e8d5b0;border:1px solid #c9a84c44;padding:6px 16px;border-radius:4px;cursor:pointer;font-family:Georgia;">Refresh</button>
+</div>
+
+<!-- SET PRICES -->
+<div id="priceBox" style="margin-bottom:20px;padding:18px;background:#1a1418;border:1px solid #c9a84c44;border-radius:8px;display:none;">
+  <h3 style="color:#c9a84c;margin-bottom:10px;">Set Egg Prices</h3>
+  <p style="color:#888;font-size:12px;margin-bottom:12px;">Enter prices in USD. Will be converted to WETH using current ETH price.</p>
+  <div style="margin-bottom:8px;">
+    <label style="color:#888;font-size:12px;">Random Egg ($)</label>
+    <input id="priceRandom" type="number" step="0.01" value="0.10" style="width:100%;padding:8px;background:#0d0a0e;color:#e8d5b0;border:1px solid #c9a84c44;border-radius:4px;font-family:Georgia;margin-top:4px;">
+  </div>
+  <div style="margin-bottom:8px;">
+    <label style="color:#888;font-size:12px;">Sorted Egg ($)</label>
+    <input id="priceSorted" type="number" step="0.01" value="1.00" style="width:100%;padding:8px;background:#0d0a0e;color:#e8d5b0;border:1px solid #c9a84c44;border-radius:4px;font-family:Georgia;margin-top:4px;">
+  </div>
+  <div style="margin-bottom:8px;">
+    <label style="color:#888;font-size:12px;">Giant Egg ($)</label>
+    <input id="priceGiant" type="number" step="0.01" value="10.00" style="width:100%;padding:8px;background:#0d0a0e;color:#e8d5b0;border:1px solid #c9a84c44;border-radius:4px;font-family:Georgia;margin-top:4px;">
+  </div>
+  <div style="margin-bottom:8px;">
+    <label style="color:#888;font-size:12px;">ETH Price ($) — used for conversion</label>
+    <input id="ethPrice" type="number" step="1" value="2330" style="width:100%;padding:8px;background:#0d0a0e;color:#e8d5b0;border:1px solid #c9a84c44;border-radius:4px;font-family:Georgia;margin-top:4px;">
+  </div>
+  <div id="pricePreview" style="color:#60a5fa;font-size:12px;margin:10px 0;"></div>
+  <button onclick="previewPrices()" style="background:#333;color:#e8d5b0;border:1px solid #c9a84c44;padding:8px 20px;border-radius:4px;cursor:pointer;font-family:Georgia;margin-right:8px;">Preview WETH</button>
+  <button onclick="setPrices()" style="background:#c9a84c;color:#0a0608;border:none;padding:8px 20px;font-size:14px;font-weight:bold;border-radius:6px;cursor:pointer;font-family:Georgia;">Set Prices On-Chain</button>
+  <p id="priceResult" style="margin-top:8px;color:#888;font-size:12px;"></p>
+</div>
+
+<!-- SET AUTHORIZED / MINTER -->
+<div id="authBox" style="margin-bottom:20px;padding:18px;background:#1a1418;border:1px solid #c9a84c44;border-radius:8px;display:none;">
+  <h3 style="color:#c9a84c;margin-bottom:10px;">Manage Roles</h3>
+  <div style="margin-bottom:8px;">
+    <label style="color:#888;font-size:12px;">Address</label>
+    <input id="authAddr" type="text" placeholder="0x..." style="width:100%;padding:8px;background:#0d0a0e;color:#e8d5b0;border:1px solid #c9a84c44;border-radius:4px;font-family:Georgia;margin-top:4px;">
+  </div>
+  <button onclick="setAuth(true)" style="background:#4ade80;color:#0a0608;border:none;padding:8px 16px;border-radius:4px;cursor:pointer;font-family:Georgia;margin-right:8px;">Grant Authorized</button>
+  <button onclick="setAuth(false)" style="background:#ef4444;color:#fff;border:none;padding:8px 16px;border-radius:4px;cursor:pointer;font-family:Georgia;">Revoke Authorized</button>
+  <p id="authResult" style="margin-top:8px;color:#888;font-size:12px;"></p>
+</div>
+
+<script>
+var CHAIN_ID = 8453;
+var CHAIN_HEX = '0x2105';
+var NFT_ADDR = '0xFCb825491490284189C75fD330Fd08Df5E9217b9';
+var NFT_ABI = [
+  'function owner() view returns (address)',
+  'function totalMinted() view returns (uint256)',
+  'function randomEggPrice() view returns (uint256)',
+  'function sortedEggPrice() view returns (uint256)',
+  'function giantEggPrice() view returns (uint256)',
+  'function powerPlantBalance() view returns (uint256)',
+  'function totalPoopMinted() view returns (uint256)',
+  'function totalPoopBurned() view returns (uint256)',
+  'function balanceOf(address) view returns (uint256)',
+  'function setEggPrices(uint256,uint256,uint256)',
+  'function setAuthorized(address,bool)',
+];
+
+var provider, signer, contract, walletAddr;
+
+async function connect() {
+  if (!window.ethereum) { alert('No wallet found'); return; }
+  provider = new ethers.BrowserProvider(window.ethereum);
+  var net = await provider.getNetwork();
+  if (Number(net.chainId) !== CHAIN_ID) {
+    try { await window.ethereum.request({method:'wallet_switchEthereumChain',params:[{chainId:CHAIN_HEX}]}); }
+    catch(e) { alert('Switch to Base chain'); return; }
+    provider = new ethers.BrowserProvider(window.ethereum);
+  }
+  signer = await provider.getSigner();
+  walletAddr = await signer.getAddress();
+  contract = new ethers.Contract(NFT_ADDR, NFT_ABI, signer);
+  document.getElementById('walletStatus').textContent = 'Connected: ' + walletAddr;
+  document.getElementById('connectBtn').textContent = 'Connected';
+  document.getElementById('stateBox').style.display = '';
+  document.getElementById('priceBox').style.display = '';
+  document.getElementById('authBox').style.display = '';
+  refreshState();
+}
+
+async function refreshState() {
+  var el = document.getElementById('stateInfo');
+  el.textContent = 'Loading...';
+  try {
+    var read = new ethers.Contract(NFT_ADDR, NFT_ABI, provider);
+    var [owner, minted, rp, sp, gp, ppBal, bal] = await Promise.all([
+      read.owner(), read.totalMinted(), read.randomEggPrice(),
+      read.sortedEggPrice(), read.giantEggPrice(), read.powerPlantBalance(),
+      read.balanceOf(walletAddr)
+    ]);
+    var ethP = parseFloat(document.getElementById('ethPrice').value) || 2330;
+    el.innerHTML =
+      '<b>Owner:</b> ' + owner + (owner.toLowerCase() === walletAddr.toLowerCase() ? ' (YOU)' : ' (NOT YOU)') + '<br>' +
+      '<b>Total Minted:</b> ' + minted.toString() + '<br>' +
+      '<b>Your NFTs:</b> ' + bal.toString() + '<br>' +
+      '<b>Random Price:</b> ' + ethers.formatEther(rp) + ' WETH (~$' + (parseFloat(ethers.formatEther(rp)) * ethP).toFixed(2) + ')<br>' +
+      '<b>Sorted Price:</b> ' + ethers.formatEther(sp) + ' WETH (~$' + (parseFloat(ethers.formatEther(sp)) * ethP).toFixed(2) + ')<br>' +
+      '<b>Giant Price:</b> ' + ethers.formatEther(gp) + ' WETH (~$' + (parseFloat(ethers.formatEther(gp)) * ethP).toFixed(2) + ')<br>' +
+      '<b>Power Plant:</b> ' + ethers.formatEther(ppBal) + ' WETH';
+  } catch(e) { el.textContent = 'Error: ' + e.message; }
+}
+
+function previewPrices() {
+  var ethP = parseFloat(document.getElementById('ethPrice').value) || 2330;
+  var r = parseFloat(document.getElementById('priceRandom').value) / ethP;
+  var s = parseFloat(document.getElementById('priceSorted').value) / ethP;
+  var g = parseFloat(document.getElementById('priceGiant').value) / ethP;
+  document.getElementById('pricePreview').innerHTML =
+    'Random: ' + r.toFixed(8) + ' WETH<br>' +
+    'Sorted: ' + s.toFixed(8) + ' WETH<br>' +
+    'Giant: ' + g.toFixed(8) + ' WETH';
+}
+
+async function setPrices() {
+  var el = document.getElementById('priceResult');
+  var ethP = parseFloat(document.getElementById('ethPrice').value) || 2330;
+  var r = ethers.parseEther((parseFloat(document.getElementById('priceRandom').value) / ethP).toFixed(18));
+  var s = ethers.parseEther((parseFloat(document.getElementById('priceSorted').value) / ethP).toFixed(18));
+  var g = ethers.parseEther((parseFloat(document.getElementById('priceGiant').value) / ethP).toFixed(18));
+  el.textContent = 'Sending tx...';
+  try {
+    var tx = await contract.setEggPrices(r, s, g);
+    el.textContent = 'Tx sent: ' + tx.hash;
+    await tx.wait();
+    el.textContent = 'Prices updated!';
+    refreshState();
+  } catch(e) { el.textContent = 'Error: ' + (e.reason || e.message); }
+}
+
+async function setAuth(status) {
+  var el = document.getElementById('authResult');
+  var addr = document.getElementById('authAddr').value.trim();
+  if (!addr) { el.textContent = 'Enter address'; return; }
+  el.textContent = 'Sending tx...';
+  try {
+    var tx = await contract.setAuthorized(addr, status);
+    el.textContent = 'Tx sent: ' + tx.hash;
+    await tx.wait();
+    el.textContent = (status ? 'Granted' : 'Revoked') + ' for ' + addr;
+  } catch(e) { el.textContent = 'Error: ' + (e.reason || e.message); }
+}
+</script>
+</body>
+</html>

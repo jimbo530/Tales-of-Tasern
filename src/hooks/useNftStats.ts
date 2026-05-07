@@ -8,7 +8,6 @@ import { supabase } from "@/lib/supabase";
 import { computeD20Stats, DEFAULT_BOON_FIELDS } from "@/lib/computeD20Stats";
 
 const TOKEN_ID = BigInt(1);
-const MAX_TOKEN_ID = 200;
 const STATS_CACHE_KEY = "tot-stats-cache-v2"; // v2: D20 ability scores
 const STATS_CACHE_TTL = 48 * 60 * 60 * 1000; // 48 hours — markets are slow, reduce API calls
 
@@ -246,40 +245,21 @@ export function useNftStats() {
 
         async function checkOwnership(client: any, nfts: typeof GAME_NFTS, chainName: string) {
           if (!client || nfts.length === 0) return;
-          const accounts = Array(MAX_TOKEN_ID).fill(address) as `0x${string}`[];
-          const ids = Array.from({ length: MAX_TOKEN_ID }, (_, i) => BigInt(i + 1));
+          // Only check token ID 1 — the only ID the game uses (1 call per NFT, not 200)
           const calls = nfts.map((nft) => ({
             address: nft.contractAddress,
             abi: ERC1155_ABI,
-            functionName: "balanceOfBatch" as const,
-            args: [accounts, ids] as [readonly `0x${string}`[], readonly bigint[]],
+            functionName: "balanceOf" as const,
+            args: [address, BigInt(1)] as [`0x${string}`, bigint],
           }));
           try {
             const results = await client.multicall({ contracts: calls, allowFailure: true });
             nfts.forEach((nft, i) => {
               const r = results[i];
-              if (r.status === "success" && Array.isArray(r.result)) {
-                const total = (r.result as bigint[]).reduce((sum: number, b: bigint) => sum + Number(b), 0);
-                ownershipMap.set(nft.contractAddress.toLowerCase(), total);
-              } else {
-                ownershipMap.set(nft.contractAddress.toLowerCase(), 0);
-              }
+              ownershipMap.set(nft.contractAddress.toLowerCase(), r.status === "success" ? Number(r.result as bigint) : 0);
             });
           } catch (e) {
-            console.warn(`[ToT] ${chainName} batch ownership check failed, falling back to ID 1:`, e);
-            try {
-              const fallbackCalls = nfts.map((nft) => ({
-                address: nft.contractAddress,
-                abi: ERC1155_ABI,
-                functionName: "balanceOf" as const,
-                args: [address, BigInt(1)] as [`0x${string}`, bigint],
-              }));
-              const fallbackResults = await client.multicall({ contracts: fallbackCalls, allowFailure: true });
-              nfts.forEach((nft, i) => {
-                const r = fallbackResults[i];
-                ownershipMap.set(nft.contractAddress.toLowerCase(), r.status === "success" ? Number(r.result as bigint) : 0);
-              });
-            } catch {}
+            console.warn(`[ToT] ${chainName} ownership check failed:`, e);
           }
         }
 
@@ -404,20 +384,17 @@ export function useNftStats() {
       let ownershipMap = new Map<string, number>();
       async function checkOwnership(client: any, nfts: typeof GAME_NFTS, chainName: string) {
         if (!client || nfts.length === 0) return;
-        const accounts = Array(MAX_TOKEN_ID).fill(address) as `0x${string}`[];
-        const ids = Array.from({ length: MAX_TOKEN_ID }, (_, i) => BigInt(i + 1));
+        // Only check token ID 1 — the only ID the game uses (1 call per NFT, not 200)
         const calls = nfts.map((nft) => ({
           address: nft.contractAddress, abi: ERC1155_ABI,
-          functionName: "balanceOfBatch" as const,
-          args: [accounts, ids] as [readonly `0x${string}`[], readonly bigint[]],
+          functionName: "balanceOf" as const,
+          args: [address, BigInt(1)] as [`0x${string}`, bigint],
         }));
         try {
           const results = await client.multicall({ contracts: calls, allowFailure: true });
           nfts.forEach((nft, i) => {
             const r = results[i];
-            if (r.status === "success" && Array.isArray(r.result)) {
-              ownershipMap.set(nft.contractAddress.toLowerCase(), (r.result as bigint[]).reduce((sum: number, b: bigint) => sum + Number(b), 0));
-            }
+            ownershipMap.set(nft.contractAddress.toLowerCase(), r.status === "success" ? Number(r.result as bigint) : 0);
           });
         } catch {}
       }

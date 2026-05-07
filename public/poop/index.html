@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>POOP &mdash; On-Chain Data &middot; Base</title>
+    <meta name="description" content="Live supply tracking, burn rate, and pool data for POOP token on Base. Verify everything on-chain.">
+    <style>
+        *{margin:0;padding:0;box-sizing:border-box}
+        :root{
+            --bg:#0b0e11;--surface:rgba(21,26,33,.88);--border:rgba(55,65,81,.5);
+            --text:#c9d1d9;--dim:#8b949e;--bright:#e6edf3;
+            --accent:#58a6ff;--green:#3fb950;--orange:#d29922;--brown:#c69026;
+            --mono:'SF Mono','Cascadia Code','Fira Code',monospace;
+        }
+        body{
+            background:var(--bg);color:var(--text);
+            font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;
+            line-height:1.6;min-height:100vh;position:relative;overflow-x:hidden;
+        }
+
+        /* Poop emoji background */
+        .emoji-bg{
+            position:fixed;inset:0;z-index:0;overflow:hidden;
+            font-size:3rem;line-height:1;opacity:.06;
+            word-break:break-all;user-select:none;pointer-events:none;
+            padding:1rem;
+        }
+
+        .wrap{max-width:1100px;margin:0 auto;padding:2rem 1.5rem;position:relative;z-index:1}
+
+        /* Header */
+        header{text-align:center;margin-bottom:2.5rem}
+        .logo{font-size:4rem;margin-bottom:.25rem}
+        header h1{font-size:2.8rem;color:var(--bright);letter-spacing:.1em;margin-bottom:.25rem}
+        .addr{font-family:var(--mono);font-size:.82rem;color:var(--dim);
+            background:var(--surface);padding:.45rem 1.1rem;border-radius:8px;
+            display:inline-block;cursor:pointer;position:relative;
+            border:1px solid var(--border);backdrop-filter:blur(12px);
+            transition:color .2s,border-color .2s}
+        .addr:hover{color:var(--brown);border-color:var(--brown)}
+        .copied{position:absolute;top:-1.8rem;left:50%;transform:translateX(-50%);
+            font-size:.7rem;color:var(--green);opacity:0;transition:opacity .3s}
+        .copied.show{opacity:1}
+        .chain{font-size:.78rem;color:var(--dim);margin-top:.5rem}
+
+        /* Glass */
+        .glass{background:var(--surface);border:1px solid var(--border);border-radius:12px;
+            backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px)}
+
+        /* Charts */
+        .charts{display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;margin-bottom:2rem}
+        .chart-box{padding:1.25rem;min-height:400px}
+        .chart-box h2{font-size:.75rem;text-transform:uppercase;letter-spacing:.1em;color:var(--dim);margin-bottom:1rem}
+        .chart-box iframe{width:100%;height:350px;border:none;border-radius:8px}
+
+        /* Stats */
+        .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;margin-bottom:2rem}
+        .stat{padding:1.25rem;text-align:center}
+        .stat-label{font-size:.68rem;text-transform:uppercase;letter-spacing:.1em;color:var(--dim);margin-bottom:.4rem}
+        .stat-val{font-family:var(--mono);font-size:1.4rem;font-weight:700;color:var(--bright)}
+        .stat-val.grn{color:var(--green)}.stat-val.org{color:var(--orange)}
+
+        /* Sections */
+        .section{padding:1.5rem;margin-bottom:1.5rem}
+        .section h2{font-size:1rem;color:var(--bright);margin-bottom:1rem;padding-bottom:.75rem;border-bottom:1px solid var(--border)}
+        .section h2 span{color:var(--dim);font-weight:normal;font-size:.85rem}
+        table{width:100%;border-collapse:collapse}
+        th{text-align:left;font-size:.68rem;text-transform:uppercase;letter-spacing:.1em;color:var(--dim);padding:.5rem .75rem}
+        td{padding:.6rem .75rem;font-size:.85rem;border-top:1px solid var(--border)}
+        td.m{font-family:var(--mono);font-size:.78rem}
+        tr:hover td{background:rgba(198,144,38,.04)}
+        a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
+        .badge{font-size:.62rem;padding:.15rem .55rem;border-radius:99px;font-weight:600}
+        .badge.bc{background:rgba(88,166,255,.15);color:var(--accent)}
+        .badge.cm{background:rgba(63,185,80,.15);color:var(--green)}
+
+        /* Mechanics */
+        .mech li{padding:.45rem 0 .45rem 1.6rem;position:relative;font-size:.9rem;list-style:none}
+        .mech li::before{content:'\2192';position:absolute;left:0;color:var(--brown)}
+
+        /* Code */
+        pre{background:rgba(11,14,17,.6);border:1px solid var(--border);border-radius:8px;padding:1rem;
+            font-family:var(--mono);font-size:.78rem;overflow-x:auto;color:var(--text);line-height:1.9}
+
+        /* Share */
+        .share-btn{background:var(--surface);border:1px solid var(--border);color:var(--brown);
+            padding:.5rem 1.2rem;border-radius:8px;cursor:pointer;font-size:.85rem;
+            font-family:inherit;margin-top:.75rem;display:inline-block;
+            backdrop-filter:blur(12px);transition:background .2s,border-color .2s}
+        .share-btn:hover{background:rgba(198,144,38,.12);border-color:var(--brown)}
+        .share-msg{font-size:.75rem;color:var(--green);margin-top:.3rem;min-height:1.2em}
+
+        /* Timestamp */
+        .timestamp{text-align:center;font-size:.75rem;color:var(--dim);margin-bottom:1.5rem}
+
+        /* Footer */
+        footer{text-align:center;padding:2rem 0;color:var(--dim);font-size:.85rem}
+        footer a{color:var(--brown)}
+        footer a:hover{color:var(--green)}
+
+        @media(max-width:768px){
+            .charts{grid-template-columns:1fr}
+            .stats{grid-template-columns:repeat(2,1fr)}
+            header h1{font-size:2rem}
+            .addr{font-size:.68rem;word-break:break-all}
+            .stat-val{font-size:1.1rem}
+            .emoji-bg{font-size:2rem}
+        }
+    </style>
+</head>
+<body>
+
+<div class="emoji-bg" aria-hidden="true" id="emojiBg"></div>
+
+<div class="wrap">
+
+    <header>
+        <div class="logo">&#x1F4A9;</div>
+        <h1>POOP</h1>
+        <div class="addr" id="addrCopy" title="Click to copy">
+            <span class="copied" id="copiedTip">Copied</span>
+            0x126555aecBAC290b25644e4b7f29c016aE95f4dc
+        </div>
+        <div class="chain">Base (8453) &middot; ERC20 &middot; 18 decimals &middot; 1% fee pools</div>
+        <button class="share-btn" onclick="sharePage()">Share</button>
+        <div class="share-msg" id="shareMsg"></div>
+    </header>
+
+    <div class="timestamp" id="ts">Loading data&hellip;</div>
+
+    <!-- Charts -->
+    <div class="charts">
+        <div class="chart-box glass">
+            <h2>Price &mdash; POOP / WETH</h2>
+            <iframe
+                src="https://www.geckoterminal.com/base/pools/0x97ca8db8076b3c8a5f5c5c58c67988ea3723dbe7?embed=1&info=0&swaps=0"
+                loading="lazy" allowfullscreen>
+            </iframe>
+        </div>
+        <div class="chart-box glass">
+            <h2>Price &mdash; POOP / USDC</h2>
+            <iframe
+                src="https://www.geckoterminal.com/base/pools/0xd92A713A1BA56bA2b0c90bFaac8Cae918Fa9e281?embed=1&info=0&swaps=0"
+                loading="lazy" allowfullscreen>
+            </iframe>
+        </div>
+    </div>
+
+    <!-- Live Stats -->
+    <div class="stats">
+        <div class="stat glass">
+            <div class="stat-label">Total Supply</div>
+            <div class="stat-val" id="sMinted">&mdash;</div>
+        </div>
+        <div class="stat glass">
+            <div class="stat-label">Burned + Dead</div>
+            <div class="stat-val org" id="sBurned">&mdash;</div>
+        </div>
+        <div class="stat glass">
+            <div class="stat-label">Circulating</div>
+            <div class="stat-val grn" id="sCirc">&mdash;</div>
+        </div>
+        <div class="stat glass">
+            <div class="stat-label">Total Generated</div>
+            <div class="stat-val" id="sGen">&mdash;</div>
+        </div>
+    </div>
+
+    <!-- Trading -->
+    <div class="section glass">
+        <h2>Trading Opportunity</h2>
+        <ul class="mech">
+            <li>Thin liquidity across 11 pools = wide spreads = profit on swings</li>
+            <li>1% fee tier means every trade burns meaningful supply &mdash; your volume is deflationary</li>
+            <li>Volatility in underlying pairs (ETH, BTC) moves POOP price without POOP-specific volume &mdash; passive opportunity</li>
+            <li>Keeper collects fees and burns every 2.4 hours &mdash; liquidity deepens each cycle</li>
+            <li>Three blue chip pairs (WETH, USDC, cbBTC) for direct entry/exit</li>
+            <li>Fixed mint rate from gameplay does not respond to demand &mdash; supply compression is one-directional</li>
+            <li>Every trade you make reduces the total supply of what you're holding</li>
+        </ul>
+    </div>
+
+    <!-- Burn Pools -->
+    <div class="section glass">
+        <h2>Active Burn Pools <span id="poolCt"></span></h2>
+        <table>
+            <thead><tr><th>Pool</th><th>Address</th><th>Fee</th><th>Type</th><th></th></tr></thead>
+            <tbody id="poolTb"><tr><td colspan="5" style="color:var(--dim);font-size:.85rem">Loading&hellip;</td></tr></tbody>
+        </table>
+    </div>
+
+    <!-- Burn Mechanics -->
+    <div class="section glass">
+        <h2>Burn Mechanics</h2>
+        <ul class="mech">
+            <li>Every swap through a POOP V3 pool generates 1% fees</li>
+            <li>Fees are collected and burned every 2.4 hours &mdash; POOP side burned directly, other side sold for blue chips or locked</li>
+            <li>11 pools burning simultaneously: WETH, USDC, cbBTC + 8 community tokens</li>
+            <li>Burns and LP additions compound every 2.4hr keeper cycle &mdash; deeper liquidity each round</li>
+            <li>Mint rate is fixed by gameplay &mdash; baselings produce POOP based on locked LP value</li>
+            <li>Mint rate does not scale with demand &mdash; burns do</li>
+            <li>All LP permanently locked &mdash; no withdrawals, ever</li>
+            <li>Dead and frozen game assets become pure burn engines</li>
+            <li>External market volatility (ETH/BTC price moves) generates burns passively</li>
+        </ul>
+    </div>
+
+    <!-- Transparency -->
+    <div class="section glass">
+        <h2>Transparency</h2>
+        <ul class="mech">
+            <li><strong>Mint access:</strong> only addresses with isMinter role can mint. Currently only the game contract (BaselingNFT) has minter access.</li>
+            <li><strong>24hr timelock:</strong> all minter role changes must be proposed on-chain and wait 24 hours before execution.</li>
+            <li><strong>No max supply:</strong> emissions are controlled by LP fee revenue, not a hard cap.</li>
+            <li><strong>Phantom accounting:</strong> when game assets die or freeze, LP fees are still generated but never enter circulation. <strong>totalSupply()</strong> is always the accurate circulating figure.</li>
+            <li><strong>No pause or freeze:</strong> transfers cannot be blocked by anyone.</li>
+            <li><strong>130 lines of Solidity, no proxy, no inheritance:</strong> read it yourself on <a href="https://basescan.org/address/0x126555aecBAC290b25644e4b7f29c016aE95f4dc#code" target="_blank" rel="noopener">Basescan</a></li>
+        </ul>
+    </div>
+
+    <!-- For Agents -->
+    <div class="section glass">
+        <h2>For Agents &amp; Developers</h2>
+        <pre>Contract:  0x126555aecBAC290b25644e4b7f29c016aE95f4dc
+Chain:     Base (8453)
+Decimals:  18
+LP:        All locked forever. No withdrawals.
+
+totalSupply()    = real tokens in existence
+totalMinted()    = includes phantom accounting
+totalBurned()    = includes phantom accounting
+balanceOf(addr)  = standard ERC20
+
+Dead address: 0x000000000000000000000000000000000000dEaD
+circulating  = totalSupply() - balanceOf(dead)
+
+Factory: 0x33128a8fC17869897dcE68Ed026d694621f6FDfD
+getPool(POOP, tokenX, 10000) = pool address (1% fee)
+
+REST:  https://tasern.quest/api/baseling/agent/guide
+MCP:   35 tools via stdin/stdout JSON-RPC</pre>
+    </div>
+
+    <footer>
+        <a href="impact.html">What does holding POOP grow?</a>
+        &nbsp;&middot;&nbsp;
+        <a href="https://app.uniswap.org/swap?chain=base&outputCurrency=0x126555aecBAC290b25644e4b7f29c016aE95f4dc" target="_blank" rel="noopener">Buy on Uniswap</a>
+        &nbsp;&middot;&nbsp;
+        <a href="/mft/">MfT burns</a>
+        &nbsp;&middot;&nbsp;
+        <a href="/earth/">EARTH data</a>
+        &nbsp;&middot;&nbsp;
+        <a href="/">home</a>
+    </footer>
+
+</div>
+<script>
+// Fill emoji bg
+const bg = document.getElementById('emojiBg');
+bg.textContent = Array(800).fill('\uD83D\uDCA9').join(' ');
+
+const SCAN = 'https://basescan.org';
+const fAddr = a => a.slice(0,6)+'...'+a.slice(-4);
+const fmt = v => { const n=parseFloat(v); return n.toLocaleString('en-US',{maximumFractionDigits:0}); };
+
+// Copy
+document.getElementById('addrCopy').onclick = () => {
+    navigator.clipboard.writeText('0x126555aecBAC290b25644e4b7f29c016aE95f4dc');
+    const tip = document.getElementById('copiedTip');
+    tip.classList.add('show');
+    setTimeout(() => tip.classList.remove('show'), 1200);
+};
+
+// Share
+function sharePage() {
+    const url = window.location.href;
+    if (navigator.share) {
+        navigator.share({title:'POOP \u2014 On-Chain Data', text:'POOP on Base. Burns on every trade. 11 pools.', url}).catch(() => {});
+    } else {
+        navigator.clipboard.writeText(url).then(() => {
+            document.getElementById('shareMsg').textContent = 'Link copied';
+            setTimeout(() => document.getElementById('shareMsg').textContent = '', 2000);
+        });
+    }
+}
+
+// Load data
+fetch('data.json').then(r => r.json()).then(data => {
+    document.getElementById('sMinted').textContent = fmt(data.totalSupply);
+    document.getElementById('sBurned').textContent = fmt(data.removed);
+    document.getElementById('sCirc').textContent = fmt(data.circulating);
+    document.getElementById('sGen').textContent = fmt(data.totalMinted);
+
+    // Pools
+    const tbody = document.getElementById('poolTb');
+    tbody.innerHTML = '';
+    for (const p of data.pools) {
+        const badge = p.type === 'bc'
+            ? '<span class="badge bc">blue chip</span>'
+            : '<span class="badge cm">community</span>';
+        const tr = document.createElement('tr');
+        tr.innerHTML = '<td>POOP / '+p.sym+'</td>'
+            + '<td class="m"><a href="'+SCAN+'/address/'+p.pool+'" target="_blank" rel="noopener">'+fAddr(p.pool)+'</a></td>'
+            + '<td>1%</td><td>'+badge+'</td>'
+            + '<td><a href="'+SCAN+'/address/'+p.pool+'" target="_blank" rel="noopener">verify</a></td>';
+        tbody.appendChild(tr);
+    }
+    document.getElementById('poolCt').textContent = '('+data.pools.length+')';
+
+    const when = new Date(data.updated);
+    document.getElementById('ts').innerHTML =
+        'Last updated ' + when.toLocaleDateString() + ' ' + when.toLocaleTimeString() +
+        ' &mdash; <a href="'+SCAN+'/token/0x126555aecBAC290b25644e4b7f29c016aE95f4dc" target="_blank" rel="noopener" style="color:var(--brown)">verify on Basescan</a>';
+}).catch(err => {
+    console.error('Failed to load data:', err);
+    document.getElementById('ts').textContent = 'Failed to load data';
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Sprite Compare — 64 vs 128</title>
+<style>
+body{background:#1a1a2e;color:#f0d060;font-family:'Courier New',monospace;display:flex;flex-direction:column;align-items:center;padding:20px;gap:20px}
+h1{font-size:16px;margin:0}
+.row{display:flex;gap:40px;align-items:flex-start}
+.col{text-align:center}
+.col h2{font-size:12px;margin:0 0 8px;color:#aaa}
+canvas{image-rendering:pixelated;border:1px solid #333;background:#0a0a1a}
+</style>
+</head>
+<body>
+<h1>BASELING BUNNY — 64px vs 128px</h1>
+<div class="row">
+  <div class="col">
+    <h2>64x64 (shown at 4x = 256px)</h2>
+    <canvas id="c64" width="64" height="64" style="width:256px;height:256px"></canvas>
+  </div>
+  <div class="col">
+    <h2>128x128 (shown at 2x = 256px)</h2>
+    <canvas id="c128" width="128" height="128" style="width:256px;height:256px"></canvas>
+  </div>
+</div>
+<div class="row">
+  <div class="col">
+    <h2>64x64 (actual size)</h2>
+    <canvas id="c64s" width="64" height="64"></canvas>
+  </div>
+  <div class="col">
+    <h2>128x128 (actual size)</h2>
+    <canvas id="c128s" width="128" height="128"></canvas>
+  </div>
+</div>
+
+<script>
+function spx(s,x,y,c){s.fillStyle=c;s.fillRect(x,y,1,1);}
+function srect(s,x,y,w,h,c){s.fillStyle=c;s.fillRect(x,y,w,h);}
+function soval(s,cx,cy,rx,ry,c){
+  s.fillStyle=c;
+  for(var y=-ry;y<=ry;y++){
+    var xw=Math.round(rx*Math.sqrt(1-(y*y)/(ry*ry)));
+    s.fillRect(cx-xw,cy+y,xw*2,1);
+  }
+}
+
+// ===============================================
+// 64x64 BUNNY — from scratch
+// ===============================================
+function drawBunny64(s){
+  var W='#faf8f5',Wh='#fff',Wm='#f0eee8',Ws='#ddd8d0',Wss='#c8c2b8',
+      P='#ffb0c0',Ph='#ffd0dd',Ps='#e898a8',
+      Bl='#fff0e0',Blh='#fff8f0',Bls='#e8d8c0',
+      ey='#181828',ir='#7755aa',irh='#9978cc',irl='#5a3d88',
+      ns='#ff8899',nsh='#ffaacc',mt='#e05070';
+  // EARS
+  srect(s,17,1,6,3,W); srect(s,16,4,8,5,W); srect(s,15,9,9,11,W);
+  spx(s,18,0,W); spx(s,19,0,W); spx(s,20,0,Wh);
+  srect(s,15,9,2,10,Wh); srect(s,23,10,1,8,Ws);
+  srect(s,18,3,4,3,Ph); srect(s,17,6,6,4,P); srect(s,16,10,7,8,P);
+  srect(s,17,11,5,4,Ph); srect(s,16,16,6,2,Ps);
+  srect(s,41,1,6,3,W); srect(s,40,4,8,5,W); srect(s,39,9,9,11,W);
+  spx(s,43,0,W); spx(s,44,0,W); spx(s,45,0,Wh);
+  srect(s,39,9,2,10,Wh); srect(s,47,10,1,8,Ws);
+  srect(s,42,3,4,3,Ph); srect(s,41,6,6,4,P); srect(s,40,10,7,8,P);
+  srect(s,41,11,5,4,Ph); srect(s,40,16,6,2,Ps);
+  // Crown tuft
+  srect(s,26,17,12,3,W); spx(s,31,15,W); spx(s,32,15,W);
+  spx(s,28,16,Wh); spx(s,35,16,Wh);
+  // HEAD
+  srect(s,14,21,36,15,W); srect(s,16,19,32,2,W); srect(s,18,18,28,1,W);
+  srect(s,16,19,2,2,W); srect(s,46,19,2,2,W);
+  srect(s,13,23,1,10,W); srect(s,50,23,1,10,W);
+  srect(s,12,25,1,6,W); srect(s,51,25,1,6,W);
+  srect(s,14,21,3,14,Wh); srect(s,47,22,3,12,Ws); srect(s,49,24,1,8,Wss);
+  // CHEEK BLUSH
+  soval(s,16,30,4,3,P); soval(s,48,30,4,3,P);
+  soval(s,16,30,3,2,Ph); soval(s,48,30,3,2,Ph);
+  // EYES — big cute
+  srect(s,18,23,12,10,ey); srect(s,34,23,12,10,ey);
+  spx(s,18,23,Ws); spx(s,29,23,Ws); spx(s,18,32,Ws); spx(s,29,32,Ws);
+  spx(s,34,23,Ws); spx(s,45,23,Ws); spx(s,34,32,Ws); spx(s,45,32,Ws);
+  srect(s,20,25,8,6,ir); srect(s,36,25,8,6,ir);
+  srect(s,21,25,4,3,irh); srect(s,37,25,4,3,irh);
+  srect(s,20,29,8,2,irl); srect(s,36,29,8,2,irl);
+  srect(s,22,26,4,4,'#0a0a18'); srect(s,38,26,4,4,'#0a0a18');
+  srect(s,25,24,3,3,'#fff'); srect(s,41,24,3,3,'#fff');
+  spx(s,20,30,'#fff'); spx(s,36,30,'#fff');
+  spx(s,21,31,'#ddd'); spx(s,37,31,'#ddd');
+  // NOSE
+  srect(s,30,33,4,2,ns); spx(s,31,32,ns); spx(s,32,32,ns);
+  spx(s,30,33,nsh); spx(s,31,33,nsh);
+  // WHISKERS
+  srect(s,7,28,5,1,'#e0dcd5'); srect(s,6,30,6,1,'#ddd8d0'); srect(s,8,32,4,1,'#e0dcd5');
+  srect(s,52,28,5,1,'#e0dcd5'); srect(s,52,30,6,1,'#ddd8d0'); srect(s,52,32,4,1,'#e0dcd5');
+  // MOUTH — cute W
+  spx(s,29,35,mt); spx(s,30,36,mt); spx(s,31,35,W); spx(s,32,35,W);
+  spx(s,33,36,mt); spx(s,34,35,mt);
+  // BODY
+  srect(s,19,37,26,14,W); srect(s,18,39,1,10,W); srect(s,45,39,1,10,W);
+  srect(s,17,41,1,6,W); srect(s,46,41,1,6,W);
+  srect(s,19,37,3,14,Wh); srect(s,43,38,2,12,Ws); srect(s,44,40,1,8,Wss);
+  // Belly
+  soval(s,32,46,8,4,Bl); soval(s,32,45,5,3,Blh);
+  // Arms
+  srect(s,12,40,5,9,W); srect(s,11,42,1,5,W);
+  srect(s,47,40,5,9,W); srect(s,52,42,1,5,W);
+  srect(s,12,40,2,9,Wh); srect(s,50,41,2,7,Ws);
+  srect(s,12,48,5,2,P); srect(s,47,48,5,2,P);
+  srect(s,13,48,3,1,Ph); srect(s,48,48,3,1,Ph);
+  // Feet
+  srect(s,17,52,12,6,W); srect(s,16,53,1,4,W); srect(s,29,53,1,4,W);
+  srect(s,17,52,3,3,Wh); srect(s,27,55,2,2,Ws); srect(s,17,57,12,1,Ws);
+  srect(s,35,52,12,6,W); srect(s,34,53,1,4,W); srect(s,47,53,1,4,W);
+  srect(s,35,52,3,3,Wh); srect(s,45,55,2,2,Ws); srect(s,35,57,12,1,Ws);
+  // Toe beans
+  spx(s,20,54,P); spx(s,23,54,P); spx(s,26,54,P); srect(s,21,56,4,1,P);
+  spx(s,38,54,P); spx(s,41,54,P); spx(s,44,54,P); srect(s,39,56,4,1,P);
+  // Tail
+  soval(s,48,44,5,4,W); soval(s,49,43,4,3,Wh);
+  spx(s,52,46,Ws); spx(s,47,43,Wh);
+}
+
+// ===============================================
+// 128x128 BUNNY — from scratch, 4x the detail
+// ===============================================
+function drawBunny128(s){
+  var W='#faf8f5',Wh='#fff',Wm='#f0eee8',Ws='#ddd8d0',Wss='#c8c2b8',Wsss='#b0a8a0',
+      P='#ffb0c0',Ph='#ffd0dd',Pm='#ffbbcc',Ps='#e898a8',Pss='#d08090',
+      Bl='#fff0e0',Blh='#fff8f0',Blm='#f8e8d0',Bls='#e8d8c0',
+      ey='#181828',ey2='#222238',
+      ir='#7755aa',irh='#9978cc',irh2='#b090dd',irl='#5a3d88',irl2='#4a2d78',
+      ns='#ff8899',nsh='#ffaacc',nss='#dd6677',
+      mt='#e05070',mth='#ff6688',W2='#ede8e0';
+  // === LEFT EAR (12px wide, 40px tall) ===
+  srect(s,34,0,8,4,W); srect(s,33,4,10,6,W); srect(s,31,10,14,8,W); srect(s,30,18,16,22,W);
+  spx(s,36,0,Wh); spx(s,37,0,Wh); spx(s,38,0,Wh); spx(s,39,0,Wh); // rounded tip
+  srect(s,30,18,3,20,Wh); srect(s,31,16,2,4,Wh); // left highlight
+  srect(s,44,20,2,18,Ws); srect(s,45,22,1,14,Wss); // right shadow
+  // Inner pink — gradient
+  srect(s,36,3,4,3,Ph); srect(s,35,6,6,4,Pm); srect(s,34,10,8,5,P);
+  srect(s,33,15,10,5,P); srect(s,32,20,12,16,P);
+  srect(s,34,22,8,8,Ph); // bright center patch
+  srect(s,33,32,9,4,Ps); // shadow bottom
+  srect(s,32,35,10,2,Pss); // deep shadow
+  // === RIGHT EAR ===
+  srect(s,86,0,8,4,W); srect(s,85,4,10,6,W); srect(s,83,10,14,8,W); srect(s,82,18,16,22,W);
+  spx(s,88,0,Wh); spx(s,89,0,Wh); spx(s,90,0,Wh); spx(s,91,0,Wh);
+  srect(s,82,18,3,20,Wh); srect(s,83,16,2,4,Wh);
+  srect(s,96,20,2,18,Ws); srect(s,97,22,1,14,Wss);
+  srect(s,88,3,4,3,Ph); srect(s,87,6,6,4,Pm); srect(s,86,10,8,5,P);
+  srect(s,85,15,10,5,P); srect(s,84,20,12,16,P);
+  srect(s,86,22,8,8,Ph); srect(s,85,32,9,4,Ps); srect(s,84,35,10,2,Pss);
+  // === FLUFFY CROWN ===
+  srect(s,50,34,28,6,W);
+  spx(s,56,32,W); spx(s,57,31,Wh); spx(s,58,32,W);
+  spx(s,69,32,W); spx(s,70,31,Wh); spx(s,71,32,W);
+  spx(s,62,30,W); spx(s,63,29,Wh); spx(s,64,29,Wh); spx(s,65,30,W);
+  // === HEAD — huge round (72px wide, 36px tall) ===
+  srect(s,30,40,4,2,W); srect(s,94,40,4,2,W); // top corners
+  srect(s,28,42,72,30,W); // main block
+  srect(s,32,40,64,2,W); srect(s,34,38,60,2,W); srect(s,36,37,56,1,W); // top curve
+  srect(s,26,46,2,20,W); srect(s,100,46,2,20,W); // side bulge
+  srect(s,24,50,2,12,W); srect(s,102,50,2,12,W); // extra round
+  // Head shading
+  srect(s,28,42,5,28,Wh); // left highlight band
+  srect(s,95,43,5,26,Ws); // right shadow band
+  srect(s,99,46,2,18,Wss); // deep shadow
+  srect(s,28,71,3,1,Ws); srect(s,97,71,3,1,Ws); // chin
+  // Fur texture
+  spx(s,40,44,W2); spx(s,55,42,W2); spx(s,72,45,W2); spx(s,88,48,W2);
+  spx(s,45,50,W2); spx(s,80,52,W2);
+  // === CHEEK BLUSH (bigger, softer) ===
+  soval(s,32,60,7,5,P); soval(s,96,60,7,5,P);
+  soval(s,32,59,5,4,Ph); soval(s,96,59,5,4,Ph);
+  soval(s,32,58,3,2,Pm); soval(s,96,58,3,2,Pm); // inner glow
+  // === EYES — massive cute (20x16 each) ===
+  // Left eye
+  srect(s,36,46,20,16,ey); // main shape
+  srect(s,35,48,1,12,ey); srect(s,56,48,1,12,ey); // round sides
+  spx(s,36,46,ey2); spx(s,55,46,ey2); spx(s,36,61,ey2); spx(s,55,61,ey2); // soften corners
+  // Iris
+  srect(s,40,50,12,10,ir); srect(s,41,49,10,1,ir); srect(s,41,60,10,1,ir); // round iris
+  srect(s,42,50,6,4,irh); srect(s,43,49,4,2,irh2); // iris highlight
+  srect(s,40,56,12,4,irl); srect(s,41,59,10,2,irl2); // iris shadow
+  // Pupil (6x6)
+  srect(s,43,52,6,6,'#0a0a18'); srect(s,44,51,4,1,'#0a0a18');
+  // Big sparkle
+  srect(s,49,48,5,5,'#ffffff'); spx(s,49,48,Wm); spx(s,53,52,Wm); // soften
+  srect(s,50,47,3,1,'#ffffff'); // extra bright
+  // Small sparkle
+  srect(s,40,58,2,2,'#ffffff'); spx(s,42,59,'#ddd');
+  // Right eye (mirror)
+  srect(s,72,46,20,16,ey);
+  srect(s,71,48,1,12,ey); srect(s,92,48,1,12,ey);
+  spx(s,72,46,ey2); spx(s,91,46,ey2); spx(s,72,61,ey2); spx(s,91,61,ey2);
+  srect(s,76,50,12,10,ir); srect(s,77,49,10,1,ir); srect(s,77,60,10,1,ir);
+  srect(s,78,50,6,4,irh); srect(s,79,49,4,2,irh2);
+  srect(s,76,56,12,4,irl); srect(s,77,59,10,2,irl2);
+  srect(s,79,52,6,6,'#0a0a18'); srect(s,80,51,4,1,'#0a0a18');
+  srect(s,85,48,5,5,'#ffffff'); spx(s,85,48,Wm); spx(s,89,52,Wm);
+  srect(s,86,47,3,1,'#ffffff');
+  srect(s,76,58,2,2,'#ffffff'); spx(s,78,59,'#ddd');
+  // === NOSE — cute triangle ===
+  srect(s,60,64,8,4,ns); srect(s,61,63,6,1,ns); srect(s,62,62,4,1,ns);
+  spx(s,60,64,nsh); spx(s,61,64,nsh); spx(s,62,63,nsh); // highlight
+  srect(s,62,67,4,1,nss); // shadow
+  // === WHISKERS ===
+  srect(s,12,56,10,1,'#e8e4dd'); srect(s,10,60,12,1,'#e0dcd5'); srect(s,14,64,8,1,'#e8e4dd');
+  srect(s,106,56,10,1,'#e8e4dd'); srect(s,106,60,12,1,'#e0dcd5'); srect(s,106,64,8,1,'#e8e4dd');
+  // === MOUTH — cute W ===
+  spx(s,57,68,mt); spx(s,58,69,mt); spx(s,59,70,mt);
+  spx(s,60,69,W); spx(s,61,69,W); srect(s,62,68,4,1,W); spx(s,66,69,W); spx(s,67,69,W);
+  spx(s,68,70,mt); spx(s,69,69,mt); spx(s,70,68,mt);
+  // Buck teeth hint
+  srect(s,61,70,2,2,Wh); srect(s,65,70,2,2,Wh);
+  spx(s,62,71,Ws); spx(s,66,71,Ws);
+  // === BODY (52px wide, 28px tall) ===
+  srect(s,38,74,52,28,W);
+  srect(s,36,78,2,20,W); srect(s,90,78,2,20,W);
+  srect(s,34,82,2,12,W); srect(s,92,82,2,12,W);
+  srect(s,38,74,5,28,Wh); srect(s,86,76,4,24,Ws); srect(s,89,80,2,16,Wss);
+  // Fur texture
+  spx(s,48,80,W2); spx(s,60,78,W2); spx(s,75,82,W2);
+  spx(s,52,90,W2); spx(s,70,88,W2); spx(s,82,84,W2);
+  // Belly
+  soval(s,64,92,14,7,Bl); soval(s,64,90,10,5,Blh); soval(s,64,89,6,3,Blm);
+  srect(s,56,97,16,2,Bls);
+  // === ARMS ===
+  srect(s,24,80,10,18,W); srect(s,22,84,2,10,W);
+  srect(s,94,80,10,18,W); srect(s,104,84,2,10,W);
+  srect(s,24,80,3,18,Wh); srect(s,101,82,3,14,Ws);
+  // Paw pads
+  srect(s,24,96,10,3,P); srect(s,94,96,10,3,P);
+  srect(s,26,96,6,2,Ph); srect(s,96,96,6,2,Ph);
+  spx(s,25,95,Ps); spx(s,28,95,Ps); spx(s,31,95,Ps); // finger pads
+  spx(s,95,95,Ps); spx(s,98,95,Ps); spx(s,101,95,Ps);
+  // === FEET ===
+  srect(s,34,104,24,10,W); srect(s,32,106,2,6,W); srect(s,58,106,2,6,W);
+  srect(s,34,104,5,5,Wh); srect(s,54,108,4,4,Ws); srect(s,34,113,24,1,Ws);
+  srect(s,70,104,24,10,W); srect(s,68,106,2,6,W); srect(s,94,106,2,6,W);
+  srect(s,70,104,5,5,Wh); srect(s,90,108,4,4,Ws); srect(s,70,113,24,1,Ws);
+  // Toe beans
+  srect(s,38,108,3,2,P); srect(s,43,108,3,2,P); srect(s,48,108,3,2,P);
+  srect(s,40,111,8,2,P); srect(s,42,111,4,1,Ph);
+  srect(s,74,108,3,2,P); srect(s,79,108,3,2,P); srect(s,84,108,3,2,P);
+  srect(s,76,111,8,2,P); srect(s,78,111,4,1,Ph);
+  // === TAIL ===
+  soval(s,94,88,8,7,W); soval(s,95,86,6,5,Wh); soval(s,96,85,4,3,Wm);
+  srect(s,100,93,3,2,Ws); spx(s,92,85,Wh); spx(s,93,84,Wh);
+}
+
+// --- OUTLINE (1px border around non-transparent pixels) ---
+function addOutline(canvas, color){
+  var w=canvas.width,h=canvas.height;
+  var s=canvas.getContext('2d');
+  var id=s.getImageData(0,0,w,h),d=id.data;
+  var out=new Uint8ClampedArray(d.length);
+  for(var y=0;y<h;y++)for(var x=0;x<w;x++){
+    var i=(y*w+x)*4;
+    if(d[i+3]>0){out[i]=d[i];out[i+1]=d[i+1];out[i+2]=d[i+2];out[i+3]=d[i+3];continue;}
+    var hasN=false;
+    if(x>0&&d[i-4+3]>0)hasN=true;
+    if(x<w-1&&d[i+4+3]>0)hasN=true;
+    if(y>0&&d[(i-w*4)+3]>0)hasN=true;
+    if(y<h-1&&d[(i+w*4)+3]>0)hasN=true;
+    if(hasN){
+      var r=parseInt(color.slice(1,3),16)||0;
+      var g=parseInt(color.slice(3,5),16)||0;
+      var b=parseInt(color.slice(5,7),16)||0;
+      out[i]=r;out[i+1]=g;out[i+2]=b;out[i+3]=255;
+    }
+  }
+  s.putImageData(new ImageData(out,w,h),0,0);
+}
+
+// Draw both
+var s64 = document.getElementById('c64').getContext('2d');
+drawBunny64(s64);
+addOutline(document.getElementById('c64'),'#2a1a3e');
+
+var s128 = document.getElementById('c128').getContext('2d');
+drawBunny128(s128);
+addOutline(document.getElementById('c128'),'#2a1a3e');
+
+// Copy to actual-size canvases
+var s64s = document.getElementById('c64s').getContext('2d');
+s64s.drawImage(document.getElementById('c64'),0,0);
+
+var s128s = document.getElementById('c128s').getContext('2d');
+s128s.drawImage(document.getElementById('c128'),0,0);
+</script>
+</body>
+</html>

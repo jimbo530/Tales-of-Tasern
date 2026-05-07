@@ -1,0 +1,16 @@
+{
+  "name": "tasern-balancer",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "balance": "node tasern-balancer.js",
+    "prices": "node tasern-balancer.js prices",
+    "once": "node tasern-balancer.js once",
+    "run": "node tasern-balancer.js run",
+    "approve": "node tasern-balancer.js approve"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "ethers": "^6.13.2"
+  }
+}

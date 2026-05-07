@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MfT &mdash; Token Directory</title>
+    <meta name="description" content="All game and impact tokens in the MfT ecosystem on Base and Polygon. Addresses, purposes, and on-chain links.">
+    <style>
+        *{margin:0;padding:0;box-sizing:border-box}
+        :root{
+            --green:#3fb950;--green-dim:#2ea043;--green-glow:rgba(63,185,80,.25);
+            --card:rgba(21,26,33,.82);--border:rgba(55,65,81,.5);
+            --text:#c9d1d9;--dim:#8b949e;--bright:#e6edf3;
+            --accent:#58a6ff;--orange:#d29922;--purple:#a371f7;
+            --mono:'SF Mono','Cascadia Code','Fira Code',monospace;
+        }
+        body{
+            margin:0;color:var(--text);
+            font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;
+            line-height:1.6;min-height:100vh;background:#0b0e11;
+        }
+        body::before{
+            content:'';position:fixed;inset:0;z-index:-2;
+            background:url('/mft/bg.jpg') center/cover no-repeat;
+        }
+        body::after{
+            content:'';position:fixed;inset:0;z-index:-1;
+            background:linear-gradient(180deg,rgba(5,10,5,.68) 0%,rgba(8,14,8,.85) 40%,rgba(5,10,5,.94) 100%);
+        }
+        .wrap{max-width:960px;margin:0 auto;padding:2rem 1.5rem;position:relative;z-index:1}
+
+        /* Header */
+        header{text-align:center;margin-bottom:2.5rem}
+        .logo{font-size:2.8rem;font-weight:800;color:#fff;letter-spacing:.08em;margin-bottom:.15rem;
+            text-shadow:0 0 40px var(--green-glow),0 2px 8px rgba(0,0,0,.6)}
+        .logo span{color:var(--green)}
+        .subtitle{font-size:1rem;color:var(--green);font-weight:500;text-shadow:0 1px 6px rgba(0,0,0,.5)}
+
+        /* Glass */
+        .glass{background:var(--card);border:1px solid var(--border);border-radius:12px;
+            backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px)}
+
+        /* Chain sections */
+        .chain-header{
+            display:flex;align-items:center;gap:.75rem;margin:2rem 0 1rem;
+            padding-left:.25rem;
+        }
+        .chain-name{font-size:1.1rem;font-weight:700;color:var(--bright)}
+        .chain-badge{font-size:.6rem;text-transform:uppercase;letter-spacing:.1em;
+            padding:.2rem .6rem;border-radius:99px;font-weight:600}
+        .chain-badge.base{background:rgba(88,166,255,.15);color:var(--accent)}
+        .chain-badge.pol{background:rgba(163,113,247,.15);color:var(--purple)}
+
+        /* Token rows */
+        .token-list{padding:0;margin-bottom:2rem}
+        .token{
+            display:grid;grid-template-columns:auto 1fr auto;gap:1rem;
+            align-items:center;padding:.9rem 1.25rem;
+            border-bottom:1px solid var(--border);
+            text-decoration:none;color:inherit;
+            transition:background .15s;
+        }
+        .token:last-child{border-bottom:none}
+        .token:hover{background:rgba(63,185,80,.06)}
+        .t-sym{font-weight:700;color:var(--bright);font-size:1rem;min-width:80px}
+        .t-sym a{color:var(--bright);text-decoration:none}
+        .t-sym a:hover{color:var(--green);text-decoration:underline}
+        .t-desc{font-size:.82rem;color:var(--dim);line-height:1.4}
+        .t-addr{font-family:var(--mono);font-size:.72rem;color:var(--dim);margin-top:.15rem}
+        .t-link{font-size:.78rem}
+        .t-link a{color:var(--accent);text-decoration:none}
+        .t-link a:hover{text-decoration:underline}
+
+        /* Category labels */
+        .cat{font-size:.58rem;text-transform:uppercase;letter-spacing:.08em;
+            padding:.15rem .45rem;border-radius:99px;font-weight:600;display:inline-block;margin-right:.4rem;vertical-align:middle}
+        .cat-eco{background:rgba(63,185,80,.15);color:var(--green)}
+        .cat-game{background:rgba(210,153,34,.15);color:var(--orange)}
+        .cat-impact{background:rgba(163,113,247,.15);color:var(--purple)}
+
+        /* Footer */
+        footer{text-align:center;padding:2rem 0;color:var(--dim);font-size:.82rem}
+        footer a{color:var(--green);text-decoration:none}
+        footer a:hover{text-decoration:underline}
+
+        @media(max-width:600px){
+            .token{grid-template-columns:1fr;gap:.3rem}
+            .t-sym{min-width:auto}
+            .logo{font-size:2rem}
+            .wrap{padding:1.5rem 1rem}
+        }
+    </style>
+</head>
+<body>
+<div class="wrap">
+
+    <header>
+        <div class="logo"><span>M</span>f<span>T</span></div>
+        <div class="subtitle">Token Directory</div>
+    </header>
+
+    <!-- ── BASE ──────────────────────────────────────── -->
+    <div class="chain-header">
+        <div class="chain-name">Base</div>
+        <span class="chain-badge base">chain 8453</span>
+    </div>
+
+    <div class="token-list glass">
+
+        <div class="token">
+            <div class="t-sym"><span class="cat cat-eco">ecosystem</span><br><a href="/mft/">MfT</a></div>
+            <div><div class="t-desc">Deflationary hub token. Every game action burns MfT. Gardens, NFT sales, reactors all route value here.</div>
+            <div class="t-addr">0x8FB87d13B40B1A67B22ED1a17e2835fe7e3a9bA3</div></div>
+            <div class="t-link"><a href="https://basescan.org/token/0x8FB87d13B40B1A67B22ED1a17e2835fe7e3a9bA3" target="_blank" rel="noopener">basescan</a></div>
+        </div>
+
+        <div class="token">
+            <div class="t-sym"><span class="cat cat-eco">ecosystem</span><br><a href="/earth/">EARTH</a></div>
+            <div><div class="t-desc">Deflationary rebase token. Burns more than it mints. 9 reactor pools running 24/7.</div>
+            <div class="t-addr">0x5CfBecf0209F7ada1EdF1fC0D2Fce3a809C0aE08</div></div>
+            <div class="t-link"><a href="https://basescan.org/token/0x5CfBecf0209F7ada1EdF1fC0D2Fce3a809C0aE08" target="_blank" rel="noopener">basescan</a></div>
+        </div>
+
+        <div class="token">
+            <div class="t-sym"><span class="cat cat-eco">ecosystem</span><br><a href="/tokens/info.html?token=bb">BB</a></div>
+            <div><div class="t-desc">BTC-backed band token. 500K sell wall over cbBTC. 10 reactor pools at 1% fee. Accumulates Bitcoin backing.</div>
+            <div class="t-addr">0xf967bf3dccF8b6826F82de1781C98E61Bda3b106</div></div>
+            <div class="t-link"><a href="https://basescan.org/token/0xf967bf3dccF8b6826F82de1781C98E61Bda3b106" target="_blank" rel="noopener">basescan</a></div>
+        </div>
+
+        <div class="token">
+            <div class="t-sym"><span class="cat cat-eco">ecosystem</span><br><a href="/tokens/info.html?token=eb">EB</a></div>
+            <div><div class="t-desc">ETH-backed band token. 500K sell wall over WETH. 10 reactor pools at 1% fee. Accumulates Ethereum backing.</div>
+            <div class="t-addr">0x17a176Ab2379b86F1E65D79b03bD8c75981244D8</div></div>
+            <div class="t-link"><a href="https://basescan.org/token/0x17a176Ab2379b86F1E65D79b03bD8c75981244D8" target="_blank" rel="noopener">basescan</a></div>
+        </div>
+
+        <div class="token">
+            <div class="t-sym"><span class="cat cat-game">game</span><br><a href="/poop/">POOP</a></div>
+            <div><div class="t-desc">Baseling fuel token. Minted by pets, burned by reactors. 11 V3 pools. Inflationary by design, deflationary by volume.</div>
+            <div class="t-addr">0x126555aecBAC290b25644e4b7f29c016aE95f4dc</div></div>
+            <div class="t-link"><a href="https://basescan.org/token/0x126555aecBAC290b25644e4b7f29c016aE95f4dc" target="_blank" rel="noopener">basescan</a></div>
+        </div>
+
+        <div class="token">
+            <div class="t-sym"><span class="cat cat-game">game</span><br><a href="/tokens/info.html?token=egp">EGP</a></div>
+            <div><div class="t-desc">Elf faction game token. Cross-chain on Base and Polygon. Reactor pools burn EGP through fees.</div>
+            <div class="t-addr">0xc1BA76771bbF0dD841347630E57c793F9d5ACcEe</div></div>
+            <div class="t-link"><a href="https://basescan.org/token/0xc1BA76771bbF0dD841347630E57c793F9d5ACcEe" target="_blank" rel="noopener">basescan</a></div>
+        </div>
+
+        <div class="token">
+            <div class="t-sym"><span class="cat cat-impact">impact</span><br><a href="/tokens/info.html?token=char">CHAR</a></div>
+            <div><div class="t-desc">Biochar carbon sequestration. EARTH/CHAR and POOP/CHAR reactor pools burn CHAR every cycle.</div>
+            <div class="t-addr">0x20b048fA035D5763685D695e66aDF62c5D9f5055</div></div>
+            <div class="t-link"><a href="https://basescan.org/token/0x20b048fA035D5763685D695e66aDF62c5D9f5055" target="_blank" rel="noopener">basescan</a></div>
+        </div>
+
+        <div class="token">
+            <div class="t-sym"><span class="cat cat-impact">impact</span><br><a href="/tokens/info.html?token=burgers">BURGERS</a></div>
+            <div><div class="t-desc">Feeds people IRL. LP fees from main pools fund meals. Garden and reactor burn target.</div>
+            <div class="t-addr">0x06A05043eb2C1691b19c2C13219dB9212269dDc5</div></div>
+            <div class="t-link"><a href="https://basescan.org/token/0x06A05043eb2C1691b19c2C13219dB9212269dDc5" target="_blank" rel="noopener">basescan</a></div>
+        </div>
+
+        <div class="token">
+            <div class="t-sym"><span class="cat cat-impact">impact</span><br><a href="/tokens/info.html?token=tgn">TGN</a></div>
+            <div><div class="t-desc">Impact token. Reactor pool token paired with POOP and EARTH.</div>
+            <div class="t-addr">0xD75dfa972C6136f1c594Fec1945302f885E1ab29</div></div>
+            <div class="t-link"><a href="https://basescan.org/token/0xD75dfa972C6136f1c594Fec1945302f885E1ab29" target="_blank" rel="noopener">basescan</a></div>
+        </div>
+
+        <div class="token">
+            <div class="t-sym"><span class="cat cat-game">game</span><br><a href="/tokens/info.html?token=brett">BRETT</a></div>
+            <div><div class="t-desc">Major Base meme token. POOP/BRETT garden pool. Burns via reactor fees.</div>
+            <div class="t-addr">0x532f27101965dd16442E59d40670FaF5eBB142E4</div></div>
+            <div class="t-link"><a href="https://basescan.org/token/0x532f27101965dd16442E59d40670FaF5eBB142E4" target="_blank" rel="noopener">basescan</a></div>
+        </div>
+
+        <div class="token">
+            <div class="t-sym"><span class="cat cat-game">game</span><br><a href="/tokens/info.html?token=buster">BUSTER</a></div>
+            <div><div class="t-desc">Game token. Garden pool and reactor burn target.</div>
+            <div class="t-addr">0xBFC5cD421bBC91A2Ca976C4AB1754748634b7D41</div></div>
+            <div class="t-link"><a href="https://basescan.org/token/0xBFC5cD421bBC91A2Ca976C4AB1754748634b7D41" target="_blank" rel="noopener">basescan</a></div>
+        </div>
+
+        <div class="token">
+            <div class="t-sym"><span class="cat cat-game">game</span><br><a href="/tokens/info.html?token=fun">FUN</a></div>
+            <div><div class="t-desc">Game token. POOP/FUN pool. Reactor burn target.</div>
+            <div class="t-addr">0x16EE7ecAc70d1028E7712751E2Ee6BA808a7dd92</div></div>
+            <div class="t-link"><a href="https://basescan.org/token/0x16EE7ecAc70d1028E7712751E2Ee6BA808a7dd92" target="_blank" rel="noopener">basescan</a></div>
+        </div>
+
+        <div class="token">
+            <div class="t-sym"><span class="cat cat-impact">impact</span><br><a href="/tokens/info.html?token=azusd">AZUSD</a></div>
+            <div><div class="t-desc">Regenerative agriculture stablecoin. EARTH and POOP reactor pairs.</div>
+            <div class="t-addr">0x3595ca37596D5895B70EFAB592ac315D5B9809B2</div></div>
+            <div class="t-link"><a href="https://basescan.org/token/0x3595ca37596D5895B70EFAB592ac315D5B9809B2" target="_blank" rel="noopener">basescan</a></div>
+        </div>
+
+    </div>
+
+    <!-- ── POLYGON ───────────────────────────────────── -->
+    <div class="chain-header">
+        <div class="chain-name">Polygon</div>
+        <span class="chain-badge pol">chain 137</span>
+    </div>
+
+    <div class="token-list glass">
+
+        <div class="token">
+            <div class="t-sym"><span class="cat cat-game">game</span><br><a href="/tokens/info.html?token=ddd">DDD</a></div>
+            <div><div class="t-desc">Human faction. Primary game token on Polygon. Reactor fuel with charity pairings.</div>
+            <div class="t-addr">0x4BF82cF0d6b2afC87367052B793097153C859D38</div></div>
+            <div class="t-link"><a href="https://polygonscan.com/token/0x4BF82cF0d6b2afC87367052B793097153C859D38" target="_blank" rel="noopener">polygonscan</a></div>
+        </div>
+
+        <div class="token">
+            <div class="t-sym"><span class="cat cat-game">game</span><br><a href="/tokens/info.html?token=egp-pol">EGP</a></div>
+            <div><div class="t-desc">Elf faction on Polygon, also deployed on Base.</div>
+            <div class="t-addr">0x64F6F111E9FDB753877f17F399b759de97379170</div></div>
+            <div class="t-link"><a href="https://polygonscan.com/token/0x64F6F111E9FDB753877f17F399b759de97379170" target="_blank" rel="noopener">polygonscan</a></div>
+        </div>
+
+        <div class="token">
+            <div class="t-sym"><span class="cat cat-game">game</span><br><a href="/tokens/info.html?token=ogc">OGC</a></div>
+            <div><div class="t-desc">Offset Gold Credit. Defense and HP contributor. Impact token.</div>
+            <div class="t-addr">0xCCf37622e6B72352E7B410481DD4913563038b7C</div></div>
+            <div class="t-link"><a href="https://polygonscan.com/token/0xCCf37622e6B72352E7B410481DD4913563038b7C" target="_blank" rel="noopener">polygonscan</a></div>
+        </div>
+
+        <div class="token">
+            <div class="t-sym"><span class="cat cat-game">game</span><br><a href="/tokens/info.html?token=btn">BTN</a></div>
+            <div><div class="t-desc">Biotech Token. HP contributor. Impact and game token.</div>
+            <div class="t-addr">0xD7c584D40216576f1d8651eab8beF9De69497666</div></div>
+            <div class="t-link"><a href="https://polygonscan.com/token/0xD7c584D40216576f1d8651eab8beF9De69497666" target="_blank" rel="noopener">polygonscan</a></div>
+        </div>
+
+        <div class="token">
+            <div class="t-sym"><span class="cat cat-game">game</span><br><a href="/tokens/info.html?token=pkt">PKT</a></div>
+            <div><div class="t-desc">Pirate faction. Stat contributor in card game and RPG.</div>
+            <div class="t-addr">0x8A088DcEeCbCF457762eb7C66f78fFf27dc0c04A</div></div>
+            <div class="t-link"><a href="https://polygonscan.com/token/0x8A088DcEeCbCF457762eb7C66f78fFf27dc0c04A" target="_blank" rel="noopener">polygonscan</a></div>
+        </div>
+
+        <div class="token">
+            <div class="t-sym"><span class="cat cat-game">game</span><br><a href="/tokens/info.html?token=dhg">DHG</a></div>
+            <div><div class="t-desc">Dragon faction. HP contributor.</div>
+            <div class="t-addr">0x75C0A194CD8b4F01D5ed58BE5b7c5b61a9c69d0A</div></div>
+            <div class="t-link"><a href="https://polygonscan.com/token/0x75C0A194CD8b4F01D5ed58BE5b7c5b61a9c69d0A" target="_blank" rel="noopener">polygonscan</a></div>
+        </div>
+
+        <div class="token">
+            <div class="t-sym"><span class="cat cat-game">game</span><br><a href="/tokens/info.html?token=igs">IGS</a></div>
+            <div><div class="t-desc">Igypt faction. Mana and HP contributor.</div>
+            <div class="t-addr">0xE302672798D12E7f68c783dB2C2D5E6B48ccF3CE</div></div>
+            <div class="t-link"><a href="https://polygonscan.com/token/0xE302672798D12E7f68c783dB2C2D5E6B48ccF3CE" target="_blank" rel="noopener">polygonscan</a></div>
+        </div>
+
+        <div class="token">
+            <div class="t-sym"><span class="cat cat-game">game</span><br><a href="/tokens/info.html?token=lgp">LGP</a></div>
+            <div><div class="t-desc">Dwarf faction. Defense and LP contributor.</div>
+            <div class="t-addr">0xDDc330761761751e005333208889BFe36c6e6760</div></div>
+            <div class="t-link"><a href="https://polygonscan.com/token/0xDDc330761761751e005333208889BFe36c6e6760" target="_blank" rel="noopener">polygonscan</a></div>
+        </div>
+
+        <div class="token">
+            <div class="t-sym"><span class="cat cat-impact">impact</span><br><a href="/tokens/info.html?token=ccc">CCC</a></div>
+            <div><div class="t-desc">Carbon Credit Collective. Charity token paired with game tokens via reactors.</div>
+            <div class="t-addr">0x11f98A36aCBD04cA3Aa3a149d402AFFbD5966fe7</div></div>
+            <div class="t-link"><a href="https://polygonscan.com/token/0x11f98A36aCBD04cA3Aa3a149d402AFFbD5966fe7" target="_blank" rel="noopener">polygonscan</a></div>
+        </div>
+
+        <div class="token">
+            <div class="t-sym"><span class="cat cat-impact">impact</span><br><a href="/tokens/info.html?token=nct">NCT</a></div>
+            <div><div class="t-desc">Toucan Protocol nature carbon credit. 1 NCT = 1 tonne CO2 offset. Mana contributor.</div>
+            <div class="t-addr">0xD838290e877E0188a4A44700463419eD96C16107</div></div>
+            <div class="t-link"><a href="https://polygonscan.com/token/0xD838290e877E0188a4A44700463419eD96C16107" target="_blank" rel="noopener">polygonscan</a></div>
+        </div>
+
+        <div class="token">
+            <div class="t-sym"><span class="cat cat-impact">impact</span><br><a href="/tokens/info.html?token=bct">BCT</a></div>
+            <div><div class="t-desc">Toucan Protocol broad carbon pool. Most liquid on-chain carbon credit. Mana contributor.</div>
+            <div class="t-addr">0x2F800Db0fdb5223b3C3F354886d907A671414A7f</div></div>
+            <div class="t-link"><a href="https://polygonscan.com/token/0x2F800Db0fdb5223b3C3F354886d907A671414A7f" target="_blank" rel="noopener">polygonscan</a></div>
+        </div>
+
+        <div class="token">
+            <div class="t-sym"><span class="cat cat-impact">impact</span><br><a href="/tokens/info.html?token=regen">REGEN</a></div>
+            <div><div class="t-desc">Regeneration token. HP and ATK contributor. Environmental impact.</div>
+            <div class="t-addr">0xDFFFE0c33B4011C4218ACD61e68A62A32EaF9a8B</div></div>
+            <div class="t-link"><a href="https://polygonscan.com/token/0xDFFFE0c33B4011C4218ACD61e68A62A32EaF9a8B" target="_blank" rel="noopener">polygonscan</a></div>
+        </div>
+
+        <div class="token">
+            <div class="t-sym"><span class="cat cat-impact">impact</span><br><a href="/tokens/info.html?token=lantern">LANTERN</a></div>
+            <div><div class="t-desc">Renewable energy impact. Fire Attack bonus in games.</div>
+            <div class="t-addr">0x8e87497eC9FD80FC102B33837035f76cf17C3020</div></div>
+            <div class="t-link"><a href="https://polygonscan.com/token/0x8e87497eC9FD80FC102B33837035f76cf17C3020" target="_blank" rel="noopener">polygonscan</a></div>
+        </div>
+
+        <div class="token">
+            <div class="t-sym"><span class="cat cat-impact">impact</span><br><a href="/tokens/info.html?token=crisp-m">CRISP-M</a></div>
+            <div><div class="t-desc">Crop-Responsive Impact token. Global magic multiplier in games.</div>
+            <div class="t-addr">0xeF6AB48Ef8DFe984FAb0D5C4cD6aFF2e54DFda14</div></div>
+            <div class="t-link"><a href="https://polygonscan.com/token/0xeF6AB48Ef8DFe984FAb0D5C4cD6aFF2e54DFda14" target="_blank" rel="noopener">polygonscan</a></div>
+        </div>
+
+        <div class="token">
+            <div class="t-sym"><span class="cat cat-impact">impact</span><br><a href="/tokens/info.html?token=tb01">TB01</a></div>
+            <div><div class="t-desc">Cigarette butt cleanup. 1 TB01 = 1 butt off the street. Defense and armor contributor.</div>
+            <div class="t-addr">0xCb2a97776c87433050E0DDf9De0F53eAD661dAb4</div></div>
+            <div class="t-link"><a href="https://polygonscan.com/token/0xCb2a97776c87433050E0DDf9De0F53eAD661dAb4" target="_blank" rel="noopener">polygonscan</a></div>
+        </div>
+
+        <div class="token">
+            <div class="t-sym"><span class="cat cat-impact">impact</span><br><a href="/tokens/info.html?token=au24t">AU24T</a></div>
+            <div><div class="t-desc">2024 Tokenized Trees. Armor and defense contributor.</div>
+            <div class="t-addr">0x146642d83879257ac9ED35074b1C3714B7E8f452</div></div>
+            <div class="t-link"><a href="https://polygonscan.com/token/0x146642d83879257ac9ED35074b1C3714B7E8f452" target="_blank" rel="noopener">polygonscan</a></div>
+        </div>
+
+        <div class="token">
+            <div class="t-sym"><span class="cat cat-impact">impact</span><br><a href="/tokens/info.html?token=ltk">LTK</a></div>
+            <div><div class="t-desc">Litter Cleanup Token. Armor contributor. Environmental cleanup impact.</div>
+            <div class="t-addr">0x861f57E96678c6Cb586F07DD8D3b0c34cE19dD82</div></div>
+            <div class="t-link"><a href="https://polygonscan.com/token/0x861f57E96678c6Cb586F07DD8D3b0c34cE19dD82" target="_blank" rel="noopener">polygonscan</a></div>
+        </div>
+
+        <div class="token">
+            <div class="t-sym"><span class="cat cat-impact">impact</span><br><a href="/tokens/info.html?token=jlt-f24">JLT-F24</a></div>
+            <div><div class="t-desc">Renewable energy credits (2024). Electric Attack bonus.</div>
+            <div class="t-addr">0xCDB4574ADB7c6643153A65ee1A953AFd5A189ceF</div></div>
+            <div class="t-link"><a href="https://polygonscan.com/token/0xCDB4574ADB7c6643153A65ee1A953AFd5A189ceF" target="_blank" rel="noopener">polygonscan</a></div>
+        </div>
+
+    </div>
+
+    <footer>
+        <a href="/">&larr; home</a>
+        &nbsp;&middot;&nbsp;
+        <a href="/mft/">MfT burn stats</a>
+        &nbsp;&middot;&nbsp;
+        <a href="/poop/">POOP data</a>
+        &nbsp;&middot;&nbsp;
+        <a href="/earth/">EARTH data</a>
+    </footer>
+
+</div>
+</body>
+</html>

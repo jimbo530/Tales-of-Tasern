@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Impact Burns &mdash; MfT Reactor &middot; Base</title>
+    <meta name="description" content="Live on-chain tracker of tokens permanently burned by MfT reactors. Every token here has been removed from circulation forever.">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.1/ethers.umd.min.js"></script>
+    <style>
+        *{margin:0;padding:0;box-sizing:border-box}
+        :root{
+            --bg:#0b0e11;--surface:#151a21;--border:#21262d;
+            --text:#c9d1d9;--dim:#6e7681;--bright:#e6edf3;
+            --accent:#58a6ff;--green:#3fb950;--orange:#d29922;--red:#f85149;
+            --mono:'SF Mono','Cascadia Code','Fira Code',monospace;
+        }
+        body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;line-height:1.6}
+        .wrap{max-width:900px;margin:0 auto;padding:2rem 1.5rem}
+
+        /* Header */
+        header{text-align:center;margin-bottom:2.5rem}
+        header h1{font-size:2.5rem;color:var(--bright);letter-spacing:.05em;margin-bottom:.25rem}
+        .subtitle{font-size:1rem;color:var(--dim);margin-bottom:1rem}
+        .addr{font-family:var(--mono);font-size:.82rem;color:var(--dim);background:var(--surface);padding:.4rem 1rem;border-radius:6px;display:inline-block;cursor:pointer;position:relative;border:1px solid var(--border)}
+        .addr:hover{color:var(--accent)}
+        .copied{position:absolute;top:-1.8rem;left:50%;transform:translateX(-50%);font-size:.7rem;color:var(--green);opacity:0;transition:opacity .3s}
+        .copied.show{opacity:1}
+        .chain{font-size:.8rem;color:var(--dim);margin-top:.5rem}
+
+        /* Summary stats */
+        .summary{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-bottom:2rem}
+        .sum-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:1.25rem;text-align:center}
+        .sum-label{font-size:.7rem;text-transform:uppercase;letter-spacing:.08em;color:var(--dim);margin-bottom:.4rem}
+        .sum-val{font-family:var(--mono);font-size:1.5rem;font-weight:600;color:var(--bright)}
+        .sum-val.fire{color:var(--orange)}
+
+        /* Token table */
+        .section{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:1.5rem;margin-bottom:1.5rem}
+        .section h2{font-size:1rem;color:var(--bright);margin-bottom:1rem;padding-bottom:.75rem;border-bottom:1px solid var(--border)}
+        .section h2 span{color:var(--dim);font-weight:normal;font-size:.85rem}
+        table{width:100%;border-collapse:collapse}
+        th{text-align:left;font-size:.7rem;text-transform:uppercase;letter-spacing:.08em;color:var(--dim);padding:.5rem .75rem}
+        td{padding:.7rem .75rem;font-size:.9rem;border-top:1px solid var(--border)}
+        td.m{font-family:var(--mono);font-size:.85rem}
+        td.bal{font-family:var(--mono);font-size:1rem;font-weight:600;color:var(--orange)}
+        a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
+        .badge{font-size:.65rem;padding:.15rem .5rem;border-radius:99px}
+        .badge.bc{background:rgba(88,166,255,.12);color:var(--accent)}
+        .badge.cm{background:rgba(63,185,80,.12);color:var(--green)}
+        .badge.core{background:rgba(210,153,34,.12);color:var(--orange)}
+
+        /* Explanation */
+        .mech li{padding:.45rem 0 .45rem 1.5rem;position:relative;font-size:.9rem;list-style:none}
+        .mech li::before{content:'\2192';position:absolute;left:0;color:var(--dim)}
+
+        /* Loading */
+        .loading{color:var(--dim);font-size:.85rem;font-style:italic;padding:1rem 0;text-align:center}
+
+        /* Timestamp */
+        .timestamp{text-align:center;font-size:.75rem;color:var(--dim);margin-bottom:1.5rem}
+
+        /* Footer */
+        footer{text-align:center;padding:2rem 0;color:var(--dim);font-size:.85rem}
+
+        /* Share */
+        .share-btn{background:var(--surface);border:1px solid var(--border);color:var(--accent);padding:.5rem 1.2rem;border-radius:6px;cursor:pointer;font-size:.85rem;font-family:inherit;margin-top:.75rem;display:inline-block;transition:background .2s}
+        .share-btn:hover{background:var(--border)}
+        .share-msg{font-size:.75rem;color:var(--green);margin-top:.3rem;min-height:1.2em}
+
+        @media(max-width:768px){
+            .summary{grid-template-columns:1fr}
+            header h1{font-size:1.8rem}
+            .addr{font-size:.68rem;word-break:break-all}
+            .sum-val{font-size:1.2rem}
+        }
+    </style>
+</head>
+<body>
+<div class="wrap">
+
+    <header>
+        <h1>Impact Burns</h1>
+        <div class="subtitle">Tokens permanently removed from circulation by MfT reactors</div>
+        <div class="addr" id="addrCopy" title="Click to copy">
+            <span class="copied" id="copiedTip">Copied</span>
+            0xfd780B0aE569e15e514B819ecFDF46f804953a4B
+        </div>
+        <div class="chain">Base (8453) &middot; Burn address &middot; No keys &middot; Tokens sent here are gone forever</div>
+        <button class="share-btn" onclick="sharePage()">Share</button>
+        <div class="share-msg" id="shareMsg"></div>
+    </header>
+
+    <div class="timestamp" id="ts">Querying on-chain data&hellip;</div>
+
+    <!-- Summary cards -->
+    <div class="summary">
+        <div class="sum-card">
+            <div class="sum-label">Tokens Burned</div>
+            <div class="sum-val fire" id="tokenCount">&mdash;</div>
+        </div>
+        <div class="sum-card">
+            <div class="sum-label">ETH Balance</div>
+            <div class="sum-val" id="ethBal">&mdash;</div>
+        </div>
+        <div class="sum-card">
+            <div class="sum-label">Verified On-Chain</div>
+            <div class="sum-val" style="font-size:1rem"><a href="https://basescan.org/address/0xfd780B0aE569e15e514B819ecFDF46f804953a4B" target="_blank" rel="noopener">Basescan</a></div>
+        </div>
+    </div>
+
+    <!-- Token balances -->
+    <div class="section">
+        <h2>Burned Token Balances <span id="balCt"></span></h2>
+        <table>
+            <thead><tr><th>Token</th><th>Type</th><th style="text-align:right">Balance</th><th></th></tr></thead>
+            <tbody id="balTb"><tr><td colspan="4" class="loading">Reading balances from Base RPC&hellip;</td></tr></tbody>
+        </table>
+    </div>
+
+    <!-- What is this -->
+    <div class="section">
+        <h2>How Reactor Burns Work</h2>
+        <ul class="mech">
+            <li>Every swap through an MfT reactor pool generates 1% fees</li>
+            <li>The token side of fees is sent to this burn address &mdash; permanently removing it from circulation</li>
+            <li>The other side is used to deepen liquidity, making future trades more efficient</li>
+            <li>Multiple reactors (MfT, EARTH, game tokens) all feed burns here</li>
+            <li>This address has no private key &mdash; tokens sent here can never be moved</li>
+            <li>Everything on this page is read directly from Base &mdash; verify any number on <a href="https://basescan.org/address/0xfd780B0aE569e15e514B819ecFDF46f804953a4B" target="_blank" rel="noopener">Basescan</a></li>
+        </ul>
+    </div>
+
+    <footer>
+        <a href="/poop/">POOP data</a>
+        &nbsp;&middot;&nbsp;
+        <a href="/">Tales of Tasern</a>
+    </footer>
+
+</div>
+<script>
+const BURN  = '0xfd780B0aE569e15e514B819ecFDF46f804953a4B';
+const RPC   = 'https://mainnet.base.org';
+const SCAN  = 'https://basescan.org';
+
+// Known tokens to check — add new ones here as reactors expand
+const TOKENS = [
+    // Core
+    {sym:'MfT',     addr:'0x8FB87d13B40B1A67B22ED1a17e2835fe7e3a9bA3', dec:18, tag:'core'},
+    {sym:'EARTH',   addr:'0x5CfBecf0209F7ada1EdF1fC0D2Fce3a809C0aE08', dec:18, tag:'core'},
+    {sym:'POOP',    addr:'0x126555aecBAC290b25644e4b7f29c016aE95f4dc', dec:18, tag:'core'},
+    // Blue chips
+    {sym:'WETH',    addr:'0x4200000000000000000000000000000000000006', dec:18, tag:'bc'},
+    {sym:'USDC',    addr:'0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', dec:6,  tag:'bc'},
+    {sym:'cbBTC',   addr:'0xcbB7C0000AB88B473b1f5aFd9ef808440eed33Bf', dec:8,  tag:'bc'},
+    // Community / game tokens
+    {sym:'CHAR',    addr:'0x20b048fa035d5763685d695e66adf62c5d9f5055', dec:18, tag:'cm'},
+    {sym:'BURGERS', addr:'0x06A05043eb2C1691b19c2C13219dB9212269dDc5', dec:18, tag:'cm'},
+    {sym:'TGN',     addr:'0xD75dfa972C6136f1c594Fec1945302f885E1ab29', dec:18, tag:'cm'},
+    {sym:'AZUSD',   addr:'0x3595ca37596D5895B70EFAB592ac315D5B9809B2', dec:18, tag:'cm'},
+    {sym:'EGP',     addr:'0xc1ba76771bbf0dd841347630e57c793f9d5accee', dec:18, tag:'cm'},
+    {sym:'BRETT',   addr:'0x532f27101965dd16442E59d40670FaF5eBB142E4', dec:18, tag:'cm'},
+    {sym:'BUSTER',  addr:'0xBFC5cD421bBC91A2Ca976C4AB1754748634b7D41', dec:18, tag:'cm'},
+    {sym:'FUN',     addr:'0x16EE7ecAc70d1028E7712751E2Ee6BA808a7dd92', dec:18, tag:'cm'},
+];
+
+const TAG_LABELS = {
+    core: '<span class="badge core">core</span>',
+    bc:   '<span class="badge bc">blue chip</span>',
+    cm:   '<span class="badge cm">community</span>',
+};
+
+function fmtBal(raw, dec) {
+    const n = parseFloat(ethers.formatUnits(raw, dec));
+    if (n === 0) return '0';
+    if (n < 0.001) return '<0.001';
+    if (n < 1) return n.toFixed(4);
+    if (n < 1000) return n.toFixed(2);
+    return n.toLocaleString('en-US', {maximumFractionDigits: 2});
+}
+
+function fAddr(a) { return a.slice(0,6) + '...' + a.slice(-4); }
+
+// Copy
+document.getElementById('addrCopy').onclick = () => {
+    navigator.clipboard.writeText(BURN);
+    const tip = document.getElementById('copiedTip');
+    tip.classList.add('show');
+    setTimeout(() => tip.classList.remove('show'), 1200);
+};
+
+// Share
+function sharePage() {
+    const url = window.location.href;
+    const title = 'Impact Burns — MfT Reactor';
+    const text = 'Tokens permanently burned by MfT reactors on Base. Verify on-chain.';
+    if (navigator.share) {
+        navigator.share({title, text, url}).catch(() => {});
+    } else {
+        navigator.clipboard.writeText(url).then(() => {
+            document.getElementById('shareMsg').textContent = 'Link copied';
+            setTimeout(() => document.getElementById('shareMsg').textContent = '', 2000);
+        });
+    }
+}
+
+async function init() {
+    const provider = new ethers.JsonRpcProvider(RPC);
+
+    // ETH balance
+    const ethBal = await provider.getBalance(BURN);
+    document.getElementById('ethBal').textContent = fmtBal(ethBal, 18) + ' ETH';
+
+    // Query all token balances in parallel
+    const iface = new ethers.Interface(['function balanceOf(address) view returns (uint256)']);
+    const results = await Promise.all(
+        TOKENS.map(async t => {
+            try {
+                const contract = new ethers.Contract(t.addr, iface, provider);
+                const bal = await contract.balanceOf(BURN);
+                return { ...t, bal };
+            } catch (e) {
+                console.warn('Failed to query', t.sym, e);
+                return { ...t, bal: 0n };
+            }
+        })
+    );
+
+    // Filter to non-zero and sort by tag priority then balance
+    const tagOrder = {core: 0, bc: 1, cm: 2};
+    const nonZero = results
+        .filter(r => r.bal > 0n)
+        .sort((a, b) => {
+            const ta = tagOrder[a.tag] ?? 9, tb = tagOrder[b.tag] ?? 9;
+            if (ta !== tb) return ta - tb;
+            return a.bal > b.bal ? -1 : 1;
+        });
+
+    // Update summary
+    document.getElementById('tokenCount').textContent = nonZero.length;
+
+    // Build table
+    const tbody = document.getElementById('balTb');
+    tbody.innerHTML = '';
+
+    if (nonZero.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" class="loading">No token balances found yet — reactors may not have executed.</td></tr>';
+    } else {
+        for (const t of nonZero) {
+            const tr = document.createElement('tr');
+            tr.innerHTML =
+                '<td><strong>' + t.sym + '</strong></td>' +
+                '<td>' + (TAG_LABELS[t.tag] || '') + '</td>' +
+                '<td class="bal" style="text-align:right">' + fmtBal(t.bal, t.dec) + '</td>' +
+                '<td class="m"><a href="' + SCAN + '/token/' + t.addr + '?a=' + BURN + '" target="_blank" rel="noopener">verify</a></td>';
+            tbody.appendChild(tr);
+        }
+    }
+    document.getElementById('balCt').textContent = '(' + nonZero.length + ' with balance)';
+
+    // Timestamp
+    const now = new Date();
+    document.getElementById('ts').textContent =
+        'Data read from Base at ' + now.toLocaleString() + ' — refresh to update';
+}
+
+init().catch(err => {
+    console.error('Init error:', err);
+    document.getElementById('ts').textContent = 'Error loading on-chain data — check console';
+});
+</script>
+</body>
+</html>

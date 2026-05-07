@@ -11,6 +11,38 @@ export const maxDuration = 300; // Allow up to 5 minutes for RPC calls
 
 const TOKEN_ID = BigInt(1);
 
+// BatchReader contracts — replaces ~100+ chunked multicalls with 2 reads per chain
+const BATCH_READER_BASE = "0xADcAd5C07a70229907D0B83B2700e244218F7084" as const;
+const BATCH_READER_POLYGON = "" as const; // TODO: deploy and set address
+const BATCH_READER_ABI = [
+  {
+    name: "batchPairInfo",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "pairs", type: "address[]" }],
+    outputs: [{
+      name: "infos", type: "tuple[]",
+      components: [
+        { name: "token0", type: "address" },
+        { name: "token1", type: "address" },
+        { name: "totalSupply", type: "uint256" },
+        { name: "reserve0", type: "uint112" },
+        { name: "reserve1", type: "uint112" },
+      ],
+    }],
+  },
+  {
+    name: "batchLpBalances",
+    type: "function",
+    stateMutability: "view",
+    inputs: [
+      { name: "nfts", type: "address[]" },
+      { name: "pairs", type: "address[]" },
+    ],
+    outputs: [{ name: "balances", type: "uint256[]" }],
+  },
+] as const;
+
 const baseClient = createPublicClient({ chain: base, transport: http(process.env.NEXT_PUBLIC_ALCHEMY_BASE_URL ?? undefined) });
 const polygonClient = createPublicClient({ chain: polygon, transport: http(process.env.NEXT_PUBLIC_ALCHEMY_POLYGON_URL ?? undefined) });
 
@@ -220,96 +252,188 @@ export async function computeAllStats(batch?: { index: number; total: number }):
 
     // Stat computation now uses shared computeD20Stats (imported at top)
 
-    // Pair static data
-    const basePairStaticCalls = KNOWN_LP_PAIRS.base.flatMap((pair) => [
-      { address: pair, abi: V2_PAIR_ABI, functionName: "token0" as const, args: [] as [] },
-      { address: pair, abi: V2_PAIR_ABI, functionName: "token1" as const, args: [] as [] },
-      { address: pair, abi: V2_PAIR_ABI, functionName: "totalSupply" as const, args: [] as [] },
-      { address: pair, abi: V2_PAIR_ABI, functionName: "getReserves" as const, args: [] as [] },
-    ]);
-    const polyPairStaticCalls = KNOWN_LP_PAIRS.polygon.flatMap((pair) => [
-      { address: pair, abi: V2_PAIR_ABI, functionName: "token0" as const, args: [] as [] },
-      { address: pair, abi: V2_PAIR_ABI, functionName: "token1" as const, args: [] as [] },
-      { address: pair, abi: V2_PAIR_ABI, functionName: "totalSupply" as const, args: [] as [] },
-      { address: pair, abi: V2_PAIR_ABI, functionName: "getReserves" as const, args: [] as [] },
-    ]);
+    // ── Base: use BatchReader contract (2 calls instead of ~100+ multicalls) ──
+    // Normalize addresses to lowercase for BatchReader (avoids EIP-55 checksum errors)
+    const baseNftAddrs = NFT_BATCH.map(n => n.contractAddress.toLowerCase() as `0x${string}`);
+    const basePairAddrs = KNOWN_LP_PAIRS.base.map(a => a.toLowerCase() as `0x${string}`);
 
-    // LP balance calls — only for NFT_BATCH (reduces RPC load in batch mode)
-    const baseLpBalanceCalls = NFT_BATCH.flatMap((nft) =>
-      KNOWN_LP_PAIRS.base.map((pair) => ({
-        address: pair, abi: V2_PAIR_ABI, functionName: "balanceOf" as const,
-        args: [nft.contractAddress] as [`0x${string}`],
-      }))
-    );
-    const polyLpBalanceCalls = NFT_BATCH.flatMap((nft) =>
-      KNOWN_LP_PAIRS.polygon.map((pair) => ({
-        address: pair, abi: V2_PAIR_ABI, functionName: "balanceOf" as const,
-        args: [nft.contractAddress] as [`0x${string}`],
-      }))
-    );
+    type BatchPairInfo = { token0: string; token1: string; totalSupply: bigint; reserve0: bigint; reserve1: bigint };
+    let baseBatchPairInfos: BatchPairInfo[] = [];
+    let baseBatchBalances: bigint[] = [];
 
-    // Fire all multicalls
-    const [basePairStaticResults, baseLpBalanceResults] = await Promise.all([
-      chunkedMulticall(baseClient, basePairStaticCalls, 50),
-      chunkedMulticall(baseClient, baseLpBalanceCalls, 80),
-    ]);
-
-    let polyPairStaticResults: McResult[] = [];
-    let polyLpBalanceResults: McResult[] = [];
     try {
-      const polyResults = await Promise.all([
-        chunkedMulticall(polygonClient, polyPairStaticCalls, 50),
-        chunkedMulticall(polygonClient, polyLpBalanceCalls, 80),
+      const [pairInfos, balances] = await Promise.all([
+        baseClient.readContract({
+          address: BATCH_READER_BASE,
+          abi: BATCH_READER_ABI,
+          functionName: "batchPairInfo",
+          args: [basePairAddrs],
+        }),
+        baseClient.readContract({
+          address: BATCH_READER_BASE,
+          abi: BATCH_READER_ABI,
+          functionName: "batchLpBalances",
+          args: [baseNftAddrs, basePairAddrs],
+        }),
       ]);
-      polyPairStaticResults = polyResults[0];
-      polyLpBalanceResults = polyResults[1];
-    } catch { /* polygon optional */ }
-
-    // Retry failed Polygon LP balances — find chunks that returned all failures and retry them
-    if (polyLpBalanceResults.length > 0) {
-      const polyPairCount = KNOWN_LP_PAIRS.polygon.length;
-      for (let nftIdx = 0; nftIdx < NFT_BATCH.length; nftIdx++) {
-        const start = nftIdx * polyPairCount;
-        const nftResults = polyLpBalanceResults.slice(start, start + polyPairCount);
-        const allFailed = nftResults.every(r => r.status !== "success");
-        if (allFailed && polyPairCount > 0) {
-          // This NFT got no Polygon data — retry just its calls
-          try {
-            const retryCalls = KNOWN_LP_PAIRS.polygon.map(pair => ({
-              address: pair, abi: V2_PAIR_ABI, functionName: "balanceOf" as const,
-              args: [NFT_BATCH[nftIdx].contractAddress] as [`0x${string}`],
-            }));
-            const retryResults = await chunkedMulticall(polygonClient, retryCalls, 30);
-            for (let j = 0; j < retryResults.length; j++) {
-              polyLpBalanceResults[start + j] = retryResults[j];
-            }
-          } catch { /* retry failed too */ }
-        }
-      }
-      const polySuccess = polyLpBalanceResults.filter(r => r.status === "success").length;
-      console.log("[API] Polygon LP after retries:", polySuccess, "/", polyLpBalanceResults.length, "successful");
-    }
-
-    // Parse pair infos
-    type PairInfo = { address: `0x${string}`; token0: string; token1: string; totalSupply: bigint; reserve0: bigint; reserve1: bigint };
-    function parsePairInfos(pairs: `0x${string}`[], results: McResult[]): PairInfo[] {
-      return pairs.map((pair, i) => {
+      baseBatchPairInfos = pairInfos as unknown as BatchPairInfo[];
+      baseBatchBalances = balances as unknown as bigint[];
+      console.log("[API] BatchReader Base: got", baseBatchPairInfos.length, "pair infos,", baseBatchBalances.length, "balances in 2 calls");
+    } catch (e) {
+      console.error("[API] BatchReader Base failed, falling back to multicall:", e);
+      // Fallback: use chunked multicall (same as before)
+      const basePairStaticCalls = KNOWN_LP_PAIRS.base.flatMap((pair) => [
+        { address: pair, abi: V2_PAIR_ABI, functionName: "token0" as const, args: [] as [] },
+        { address: pair, abi: V2_PAIR_ABI, functionName: "token1" as const, args: [] as [] },
+        { address: pair, abi: V2_PAIR_ABI, functionName: "totalSupply" as const, args: [] as [] },
+        { address: pair, abi: V2_PAIR_ABI, functionName: "getReserves" as const, args: [] as [] },
+      ]);
+      const baseLpBalanceCalls = NFT_BATCH.flatMap((nft) =>
+        KNOWN_LP_PAIRS.base.map((pair) => ({
+          address: pair, abi: V2_PAIR_ABI, functionName: "balanceOf" as const,
+          args: [nft.contractAddress] as [`0x${string}`],
+        }))
+      );
+      const [basePairStaticResults, baseLpBalanceResults] = await Promise.all([
+        chunkedMulticall(baseClient, basePairStaticCalls, 50),
+        chunkedMulticall(baseClient, baseLpBalanceCalls, 80),
+      ]);
+      // Convert multicall results to BatchReader format
+      for (let i = 0; i < KNOWN_LP_PAIRS.base.length; i++) {
         const b = i * 4;
-        const rv = results[b + 3];
+        const rv = basePairStaticResults[b + 3];
         const reserves = rv?.status === "success" ? rv.result as readonly [bigint, bigint, number] : [0n, 0n, 0];
-        return {
-          address: pair,
-          token0: results[b]?.status === "success" ? (results[b].result as string).toLowerCase() : "",
-          token1: results[b+1]?.status === "success" ? (results[b+1].result as string).toLowerCase() : "",
-          totalSupply: results[b+2]?.status === "success" ? (results[b+2].result as bigint) : 0n,
+        baseBatchPairInfos.push({
+          token0: basePairStaticResults[b]?.status === "success" ? (basePairStaticResults[b].result as string) : "",
+          token1: basePairStaticResults[b+1]?.status === "success" ? (basePairStaticResults[b+1].result as string) : "",
+          totalSupply: basePairStaticResults[b+2]?.status === "success" ? (basePairStaticResults[b+2].result as bigint) : 0n,
           reserve0: reserves[0] as bigint,
           reserve1: reserves[1] as bigint,
-        };
-      });
+        });
+      }
+      for (const r of baseLpBalanceResults) {
+        baseBatchBalances.push(r.status === "success" ? (r.result as bigint) : 0n);
+      }
     }
 
-    const basePairInfos = parsePairInfos(KNOWN_LP_PAIRS.base, basePairStaticResults);
-    const polyPairInfos = parsePairInfos(KNOWN_LP_PAIRS.polygon, polyPairStaticResults);
+    // ── Polygon: use BatchReader if deployed, else chunked multicall ──
+    const polyNftAddrs = NFT_BATCH.map(n => n.contractAddress.toLowerCase() as `0x${string}`);
+    const polyPairAddrs = KNOWN_LP_PAIRS.polygon.map(a => a.toLowerCase() as `0x${string}`);
+
+    let polyBatchPairInfos: BatchPairInfo[] = [];
+    let polyBatchBalances: bigint[] = [];
+
+    if (BATCH_READER_POLYGON) {
+      try {
+        const [pairInfos, balances] = await Promise.all([
+          polygonClient.readContract({
+            address: BATCH_READER_POLYGON as `0x${string}`,
+            abi: BATCH_READER_ABI,
+            functionName: "batchPairInfo",
+            args: [polyPairAddrs],
+          }),
+          polygonClient.readContract({
+            address: BATCH_READER_POLYGON as `0x${string}`,
+            abi: BATCH_READER_ABI,
+            functionName: "batchLpBalances",
+            args: [polyNftAddrs, polyPairAddrs],
+          }),
+        ]);
+        polyBatchPairInfos = pairInfos as unknown as BatchPairInfo[];
+        polyBatchBalances = balances as unknown as bigint[];
+        console.log("[API] BatchReader Polygon: got", polyBatchPairInfos.length, "pair infos,", polyBatchBalances.length, "balances in 2 calls");
+      } catch (e) {
+        console.error("[API] BatchReader Polygon failed, falling back to multicall:", e);
+        // Fall through to multicall below
+      }
+    }
+
+    // Multicall fallback for Polygon (when BatchReader not deployed or failed)
+    let polyPairStaticResults: McResult[] = [];
+    let polyLpBalanceResults: McResult[] = [];
+    if (polyBatchPairInfos.length === 0) {
+      const polyPairStaticCalls = KNOWN_LP_PAIRS.polygon.flatMap((pair) => [
+        { address: pair, abi: V2_PAIR_ABI, functionName: "token0" as const, args: [] as [] },
+        { address: pair, abi: V2_PAIR_ABI, functionName: "token1" as const, args: [] as [] },
+        { address: pair, abi: V2_PAIR_ABI, functionName: "totalSupply" as const, args: [] as [] },
+        { address: pair, abi: V2_PAIR_ABI, functionName: "getReserves" as const, args: [] as [] },
+      ]);
+      const polyLpBalanceCalls = NFT_BATCH.flatMap((nft) =>
+        KNOWN_LP_PAIRS.polygon.map((pair) => ({
+          address: pair, abi: V2_PAIR_ABI, functionName: "balanceOf" as const,
+          args: [nft.contractAddress] as [`0x${string}`],
+        }))
+      );
+      try {
+        const polyResults = await Promise.all([
+          chunkedMulticall(polygonClient, polyPairStaticCalls, 50),
+          chunkedMulticall(polygonClient, polyLpBalanceCalls, 80),
+        ]);
+        polyPairStaticResults = polyResults[0];
+        polyLpBalanceResults = polyResults[1];
+      } catch { /* polygon optional */ }
+
+      // Retry failed Polygon LP balances
+      if (polyLpBalanceResults.length > 0) {
+        const polyPairCount = KNOWN_LP_PAIRS.polygon.length;
+        for (let nftIdx = 0; nftIdx < NFT_BATCH.length; nftIdx++) {
+          const start = nftIdx * polyPairCount;
+          const nftResults = polyLpBalanceResults.slice(start, start + polyPairCount);
+          const allFailed = nftResults.every(r => r.status !== "success");
+          if (allFailed && polyPairCount > 0) {
+            try {
+              const retryCalls = KNOWN_LP_PAIRS.polygon.map(pair => ({
+                address: pair, abi: V2_PAIR_ABI, functionName: "balanceOf" as const,
+                args: [NFT_BATCH[nftIdx].contractAddress] as [`0x${string}`],
+              }));
+              const retryResults = await chunkedMulticall(polygonClient, retryCalls, 30);
+              for (let j = 0; j < retryResults.length; j++) {
+                polyLpBalanceResults[start + j] = retryResults[j];
+              }
+            } catch { /* retry failed too */ }
+          }
+        }
+        const polySuccess = polyLpBalanceResults.filter(r => r.status === "success").length;
+        console.log("[API] Polygon LP after retries:", polySuccess, "/", polyLpBalanceResults.length, "successful");
+      }
+
+      // Convert multicall results to batch format
+      for (let i = 0; i < KNOWN_LP_PAIRS.polygon.length; i++) {
+        const b = i * 4;
+        const rv = polyPairStaticResults[b + 3];
+        const reserves = rv?.status === "success" ? rv.result as readonly [bigint, bigint, number] : [0n, 0n, 0];
+        polyBatchPairInfos.push({
+          token0: polyPairStaticResults[b]?.status === "success" ? (polyPairStaticResults[b].result as string) : "",
+          token1: polyPairStaticResults[b+1]?.status === "success" ? (polyPairStaticResults[b+1].result as string) : "",
+          totalSupply: polyPairStaticResults[b+2]?.status === "success" ? (polyPairStaticResults[b+2].result as bigint) : 0n,
+          reserve0: reserves[0] as bigint,
+          reserve1: reserves[1] as bigint,
+        });
+      }
+      for (const r of polyLpBalanceResults) {
+        polyBatchBalances.push(r.status === "success" ? (r.result as bigint) : 0n);
+      }
+    }
+
+    // Build pair infos from batch data
+    type PairInfo = { address: `0x${string}`; token0: string; token1: string; totalSupply: bigint; reserve0: bigint; reserve1: bigint };
+
+    const basePairInfos: PairInfo[] = KNOWN_LP_PAIRS.base.map((pair, i) => ({
+      address: pair,
+      token0: (baseBatchPairInfos[i]?.token0 ?? "").toLowerCase(),
+      token1: (baseBatchPairInfos[i]?.token1 ?? "").toLowerCase(),
+      totalSupply: baseBatchPairInfos[i]?.totalSupply ?? 0n,
+      reserve0: baseBatchPairInfos[i]?.reserve0 ?? 0n,
+      reserve1: baseBatchPairInfos[i]?.reserve1 ?? 0n,
+    }));
+    const polyPairInfos: PairInfo[] = KNOWN_LP_PAIRS.polygon.map((pair, i) => ({
+      address: pair,
+      token0: (polyBatchPairInfos[i]?.token0 ?? "").toLowerCase(),
+      token1: (polyBatchPairInfos[i]?.token1 ?? "").toLowerCase(),
+      totalSupply: polyBatchPairInfos[i]?.totalSupply ?? 0n,
+      reserve0: polyBatchPairInfos[i]?.reserve0 ?? 0n,
+      reserve1: polyBatchPairInfos[i]?.reserve1 ?? 0n,
+    }));
 
     // Derive USD prices for game tokens from stablecoin pairs
     // USDGLO = $1, USDC = $1, USDT = $1
@@ -328,6 +452,23 @@ export async function computeAllStats(batch?: { index: number; total: number }):
     const mftPair = basePairInfos.find(p => p.token1 === "0x8fb87d13b40b1a67b22ed1a17e2835fe7e3a9ba3" || p.token0 === "0x8fb87d13b40b1a67b22ed1a17e2835fe7e3a9ba3");
     if (mftPair) console.log("[API] MfT pair found:", mftPair.token0.slice(0,10), "/", mftPair.token1.slice(0,10), "reserves:", Number(mftPair.reserve0), Number(mftPair.reserve1));
     else console.log("[API] WARNING: No MfT pair found in basePairInfos!");
+    // Helper for parsing multicall results into PairInfo (used by pricing-only pairs)
+    function parsePairInfos(pairs: `0x${string}`[], results: McResult[]): PairInfo[] {
+      return pairs.map((pair, i) => {
+        const b = i * 4;
+        const rv = results[b + 3];
+        const reserves = rv?.status === "success" ? rv.result as readonly [bigint, bigint, number] : [0n, 0n, 0];
+        return {
+          address: pair,
+          token0: results[b]?.status === "success" ? (results[b].result as string).toLowerCase() : "",
+          token1: results[b+1]?.status === "success" ? (results[b+1].result as string).toLowerCase() : "",
+          totalSupply: results[b+2]?.status === "success" ? (results[b+2].result as bigint) : 0n,
+          reserve0: reserves[0] as bigint,
+          reserve1: reserves[1] as bigint,
+        };
+      });
+    }
+
     // Also fetch reference-only pairs for pricing (not in game, just for price derivation)
     const pricingOnlyPairs: `0x${string}`[] = [
       "0x0fdef11a0b332b3e723d181c0cb5cb10ea52d135", // PKT/USDT
@@ -487,27 +628,24 @@ export async function computeAllStats(batch?: { index: number; total: number }):
       const tokenMap = new Map<string, bigint>();
       const accum = (addr: string, amt: bigint) => tokenMap.set(addr, (tokenMap.get(addr) ?? 0n) + amt);
 
-      // Base LP
+      // Base LP — read from BatchReader flat array (nftIdx * pairCount + pairIdx)
       KNOWN_LP_PAIRS.base.forEach((_, pairIdx) => {
-        const balResult = baseLpBalanceResults[nftIdx * KNOWN_LP_PAIRS.base.length + pairIdx];
-        if (!balResult || balResult.status !== "success") return;
-        const lpHeld = balResult.result as bigint;
+        const balIdx = nftIdx * KNOWN_LP_PAIRS.base.length + pairIdx;
+        const lpHeld = baseBatchBalances[balIdx] ?? 0n;
         if (lpHeld === 0n) return;
         const p = basePairInfos[pairIdx];
         if (p.totalSupply === 0n) return;
         const share = (lpHeld * BigInt(1e18)) / p.totalSupply;
         const amt0 = (p.reserve0 * share) / BigInt(1e18) / supplyDiv;
         const amt1 = (p.reserve1 * share) / BigInt(1e18) / supplyDiv;
-        // Accumulate all recognized tokens
         accum(p.token0, amt0);
         accum(p.token1, amt1);
       });
 
-      // Polygon LP
+      // Polygon LP — read from batch flat array (same format as Base)
       KNOWN_LP_PAIRS.polygon.forEach((_, pairIdx) => {
-        const balResult = polyLpBalanceResults[nftIdx * KNOWN_LP_PAIRS.polygon.length + pairIdx];
-        if (!balResult || balResult.status !== "success") return;
-        const lpHeld = balResult.result as bigint;
+        const balIdx = nftIdx * KNOWN_LP_PAIRS.polygon.length + pairIdx;
+        const lpHeld = polyBatchBalances[balIdx] ?? 0n;
         if (lpHeld === 0n) return;
         const p = polyPairInfos[pairIdx];
         if (!p || p.totalSupply === 0n) return;

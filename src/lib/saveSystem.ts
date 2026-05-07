@@ -149,6 +149,19 @@ export type CharacterSave = {
   // ── Multi-Party Adventuring ──
   parties: AdventureParty[];         // multiple parties exploring independently
   active_party_index: number;        // which party is currently selected
+  // ── Pending Fight (anti-refresh) ──
+  pending_fight?: {
+    enemies: Array<{
+      name: string; imageEmoji: string; imageUrl?: string;
+      stats: Record<string, number>;
+      subtypes: string[];
+      hpOverride?: number; motivation?: string; cruel?: boolean;
+      attackRange?: number; rangeIncrement?: number;
+    }>;
+    difficulty: "easy" | "medium" | "hard" | "deadly";
+    questName: string;
+    mapImage?: string;
+  } | null;
   created_at: string;
   updated_at: string;
 };
@@ -490,7 +503,7 @@ export async function logBattle(entry: {
 export function isQuestOnCooldown(cooldowns: Record<string, string>, questId: string): boolean {
   const expiry = cooldowns[questId];
   if (!expiry) return false;
-  return new Date(expiry) > new Date();
+  return new Date(expiry).getTime() > Date.now();
 }
 
 export function setQuestCooldown(cooldowns: Record<string, string>, questId: string, minutes: number): Record<string, string> {
@@ -523,4 +536,27 @@ export function cooldownRemaining(cooldowns: Record<string, string>, questId: st
   const expiry = cooldowns[questId];
   if (!expiry) return 0;
   return Math.max(0, new Date(expiry).getTime() - Date.now());
+}
+
+// ── Gate Mail Helpers ─────────────────────────────────────────────────────────
+
+export const GATE_MAIL_MAX_MESSAGES = 50;
+
+/** Add a message to gate mail, capping at GATE_MAIL_MAX_MESSAGES most recent */
+export function addGateMailMessage(
+  mail: { coins: Coins; messages: string[] },
+  message: string,
+): { coins: Coins; messages: string[] } {
+  const messages = [...mail.messages, message].slice(-GATE_MAIL_MAX_MESSAGES);
+  return { coins: mail.coins, messages };
+}
+
+/** Add coins + a message to gate mail, capping messages at GATE_MAIL_MAX_MESSAGES */
+export function addGateMail(
+  mail: { coins: Coins; messages: string[] },
+  coinsCp: number,
+  message: string,
+): { coins: Coins; messages: string[] } {
+  const messages = [...mail.messages, message].slice(-GATE_MAIL_MAX_MESSAGES);
+  return { coins: addCp(mail.coins, coinsCp), messages };
 }

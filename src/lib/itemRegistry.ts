@@ -3,7 +3,7 @@
 // Combines loot, shop, and food items into one registry.
 // ============================================================
 
-import { JUNK_LOOT, COMMON_LOOT, UNCOMMON_LOOT, RARE_LOOT, type LootItem } from "./loot";
+import { JUNK_LOOT, COMMON_LOOT, UNCOMMON_LOOT, RARE_LOOT, LEGENDARY_LOOT, type LootItem } from "./loot";
 import { ALL_SHOPS, type ShopItem } from "./shops";
 import { COMMON_FOOD, EXOTIC_FOOD, FRESH_FOOD, type FoodItem } from "./foodItems";
 
@@ -66,6 +66,7 @@ addLoot(JUNK_LOOT);
 addLoot(COMMON_LOOT);
 addLoot(UNCOMMON_LOOT);
 addLoot(RARE_LOOT);
+addLoot(LEGENDARY_LOOT);
 for (const shop of ALL_SHOPS) addShop(shop.items);
 addFood(COMMON_FOOD);
 addFood(EXOTIC_FOOD);

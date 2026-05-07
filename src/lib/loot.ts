@@ -20,7 +20,7 @@ export type LootItem = {
   effect?: string; // mechanical effect if any
 };
 
-export type LootTier = "junk" | "common" | "uncommon" | "rare";
+export type LootTier = "junk" | "common" | "uncommon" | "rare" | "legendary";
 
 export type TerrainLoot = {
   terrain: string;
@@ -234,6 +234,127 @@ export const JUNK_LOOT: LootItem[] = [
     value: 0.1,
     weight: 0,
     description: "A dried-out leather belt with a bent buckle.",
+  },
+  // A&E Guide trade goods — junk tier
+  {
+    id: "junk_tallow_stub",
+    name: "Tallow Candle Stub",
+    category: "trade_good",
+    value: 0.01,
+    weight: 0.1,
+    description: "A half-melted tallow candle, still faintly scented with rendered fat.",
+  },
+  {
+    id: "junk_hemp_twine",
+    name: "Scrap of Hemp Twine",
+    category: "trade_good",
+    value: 0.05,
+    weight: 0.1,
+    description: "A tangled length of rough hemp twine, good for maybe one knot.",
+  },
+  {
+    id: "junk_clay_cup",
+    name: "Chipped Clay Cup",
+    category: "gear",
+    value: 0.03,
+    weight: 0.5,
+    description: "A handleless clay cup with a chip on the rim. Holds water, barely.",
+  },
+  {
+    id: "junk_wooden_comb",
+    name: "Wooden Comb",
+    category: "gear",
+    value: 0.05,
+    weight: 0.1,
+    description: "A rough-carved boxwood comb missing several teeth.",
+  },
+  {
+    id: "junk_fishhook",
+    name: "Iron Fishhook",
+    category: "gear",
+    value: 0.1,
+    weight: 0.05,
+    description: "A bent iron fishhook, barbed but rusty. Still sharp enough to catch a meal.",
+  },
+  {
+    id: "junk_chalk_chunk",
+    name: "Chunk of Chalk",
+    category: "trade_good",
+    value: 0.01,
+    weight: 0.25,
+    description: "A lump of white chalk. Good for marking walls or drawing rude pictures.",
+  },
+  {
+    id: "junk_grain_sack",
+    name: "Sack of Spoiled Grain",
+    category: "trade_good",
+    value: 0.02,
+    weight: 3,
+    description: "A small burlap sack of mildewed wheat. The weevils have had their fill.",
+  },
+  {
+    id: "junk_rabbit_pelt",
+    name: "Rabbit Pelt",
+    category: "trade_good",
+    value: 0.03,
+    weight: 0.25,
+    description: "A small, poorly cured rabbit skin. Stiff and patchy.",
+  },
+  {
+    id: "junk_wax_lump",
+    name: "Lump of Beeswax",
+    category: "trade_good",
+    value: 0.1,
+    weight: 0.25,
+    description: "A sticky lump of raw beeswax. Useful for waterproofing thread.",
+  },
+  {
+    id: "junk_tar_pot",
+    name: "Pot of Dried Tar",
+    category: "trade_good",
+    value: 0.2,
+    weight: 1,
+    description: "A small clay pot of hardened pine tar. Could be softened over a fire.",
+  },
+  {
+    id: "junk_rough_soap",
+    name: "Rough Soap Bar",
+    category: "trade_good",
+    value: 0.05,
+    weight: 0.25,
+    description: "A lump of lye soap, cracked and gritty. It'll strip the dirt off — and half your skin.",
+  },
+  {
+    id: "junk_iron_nail_bag",
+    name: "Bag of Iron Nails",
+    category: "trade_good",
+    value: 0.5,
+    weight: 1,
+    description: "A canvas pouch of mixed iron nails, some bent, some usable.",
+  },
+  {
+    id: "junk_leather_scrap",
+    name: "Leather Scrap",
+    category: "trade_good",
+    value: 0.1,
+    weight: 0.5,
+    description: "A palm-sized piece of cured cowhide. Enough for a patch or two.",
+  },
+  {
+    id: "junk_wooden_bowl",
+    name: "Wooden Bowl",
+    category: "gear",
+    value: 0.03,
+    weight: 0.5,
+    description: "A hand-turned wooden bowl, warped from moisture but still functional.",
+  },
+  {
+    id: "junk_copper_wire",
+    name: "Copper Wire",
+    category: "trade_good",
+    value: 0.5,
+    weight: 0.1,
+    description: "A coil of thin copper wire, tarnished green. An armorer or jeweler could use it.",
   },
 ];
 
@@ -575,6 +696,243 @@ export const COMMON_LOOT: LootItem[] = [
     description: "Five clay flasks of lamp oil. Also useful as improvised fire weapons.",
     effect: "Fuel for lantern (6 hrs each) or splash weapon (1d3 fire)",
   },
+  // A&E Guide trade goods — common tier
+  {
+    id: "common_iron_bar",
+    name: "Iron Bar",
+    category: "trade_good",
+    value: 1,
+    weight: 10,
+    description: "A rough-smelted bar of pig iron. Raw material for any blacksmith.",
+  },
+  {
+    id: "common_copper_ingot",
+    name: "Copper Ingot",
+    category: "trade_good",
+    value: 5,
+    weight: 10,
+    description: "A half-pound ingot of smelted copper, stamped with a foundry mark.",
+  },
+  {
+    id: "common_sack_of_salt",
+    name: "Sack of Salt",
+    category: "trade_good",
+    value: 5,
+    weight: 5,
+    description: "A pound of coarse rock salt. Essential for preserving meat on long journeys.",
+  },
+  {
+    id: "common_sack_of_flour",
+    name: "Sack of Flour",
+    category: "trade_good",
+    value: 2,
+    weight: 10,
+    description: "Ten pounds of milled wheat flour in a canvas sack.",
+  },
+  {
+    id: "common_pepper_pouch",
+    name: "Pouch of Pepper",
+    category: "trade_good",
+    value: 2,
+    weight: 0.25,
+    description: "A small leather pouch of cracked black peppercorns. Worth its weight to a cook.",
+  },
+  {
+    id: "common_cinnamon_sticks",
+    name: "Bundle of Cinnamon",
+    category: "trade_good",
+    value: 1,
+    weight: 0.25,
+    description: "A bundle of dried cinnamon bark, tied with string. Aromatic and tradeable.",
+  },
+  {
+    id: "common_wool_bolt",
+    name: "Bolt of Rough Wool",
+    category: "trade_good",
+    value: 1,
+    weight: 5,
+    description: "A roll of undyed sheep's wool fabric. Standard clothing material.",
+  },
+  {
+    id: "common_linen_bolt",
+    name: "Bolt of Linen",
+    category: "trade_good",
+    value: 3,
+    weight: 4,
+    description: "A roll of bleached linen cloth, neatly folded and tied.",
+  },
+  {
+    id: "common_fox_pelt",
+    name: "Fox Pelt",
+    category: "trade_good",
+    value: 5,
+    weight: 1,
+    description: "A red fox skin, well-cured with the brush still attached.",
+  },
+  {
+    id: "common_canvas_yard",
+    name: "Canvas (5 sq yards)",
+    category: "trade_good",
+    value: 2,
+    weight: 5,
+    description: "Five square yards of heavy canvas. Useful for tarps, sail repair, or shelter.",
+  },
+  {
+    id: "common_iron_cooking_pot",
+    name: "Iron Cooking Pot",
+    category: "gear",
+    value: 5,
+    weight: 10,
+    description: "A heavy cast-iron pot with a bail handle. Worth its weight on the trail.",
+  },
+  {
+    id: "common_iron_skillet",
+    name: "Iron Skillet",
+    category: "gear",
+    value: 3,
+    weight: 4,
+    description: "A well-seasoned iron skillet. Trail cooking at its finest.",
+  },
+  {
+    id: "common_crowbar",
+    name: "Crowbar",
+    category: "gear",
+    value: 2,
+    weight: 5,
+    description: "A bent iron bar for prying open crates, doors, and other stubborn things.",
+    effect: "+2 circumstance bonus to Strength checks to force open doors/lids",
+  },
+  {
+    id: "common_fishing_net",
+    name: "Fishing Net",
+    category: "gear",
+    value: 4,
+    weight: 5,
+    description: "A weighted throw-net of knotted cord, sized for stream fishing.",
+  },
+  {
+    id: "common_pitons_10",
+    name: "Pitons (10)",
+    category: "gear",
+    value: 1,
+    weight: 5,
+    description: "Ten iron spikes for hammering into rock or wood.",
+  },
+  {
+    id: "common_hooded_lantern",
+    name: "Hooded Lantern",
+    category: "gear",
+    value: 7,
+    weight: 2,
+    description: "A tin lantern with shutters that can narrow or block its beam.",
+    effect: "30 ft bright light, 60 ft shadowy; burns 6 hours per pint of oil",
+  },
+  {
+    id: "common_miners_pick",
+    name: "Miner's Pick",
+    category: "gear",
+    value: 3,
+    weight: 10,
+    description: "A heavy pick for breaking stone. Not designed as a weapon, but in a pinch...",
+    effect: "Improvised weapon: 1d6 piercing, x4 crit, -4 to attack (non-proficient)",
+  },
+  {
+    id: "common_hemp_rope",
+    name: "Hemp Rope (50 ft)",
+    category: "gear",
+    value: 1,
+    weight: 10,
+    description: "Fifty feet of coarse hemp rope. Rough on the hands but strong.",
+    effect: "HP 2, Break DC 23",
+  },
+  {
+    id: "common_belt_pouch",
+    name: "Belt Pouch (leather)",
+    category: "gear",
+    value: 1,
+    weight: 0.5,
+    description: "A leather belt pouch with a drawstring and bone toggle.",
+  },
+  {
+    id: "common_barrel_empty",
+    name: "Empty Barrel",
+    category: "gear",
+    value: 2,
+    weight: 30,
+    description: "An oak barrel with iron hoops. Holds 50 gallons or 300 lbs of dry goods.",
+  },
+  {
+    id: "common_wool_blanket",
+    name: "Wool Blanket",
+    category: "gear",
+    value: 1,
+    weight: 3,
+    description: "A thick undyed wool blanket. Scratchy but warm.",
+  },
+  {
+    id: "common_whetstone",
+    name: "Whetstone",
+    category: "gear",
+    value: 0.5,
+    weight: 1,
+    description: "A fine-grained stone for keeping blades sharp.",
+  },
+  {
+    id: "common_ink_vial",
+    name: "Ink Vial",
+    category: "gear",
+    value: 8,
+    weight: 0.1,
+    description: "A small glass vial of iron-gall ink. Writes dark and permanent.",
+  },
+  {
+    id: "common_parchment_5",
+    name: "Parchment (5 sheets)",
+    category: "gear",
+    value: 1,
+    weight: 0.1,
+    description: "Five sheets of prepared calfskin vellum, smooth and ready for writing.",
+  },
+  {
+    id: "common_tallow_candles_20",
+    name: "Tallow Candles (20)",
+    category: "trade_good",
+    value: 1,
+    weight: 2,
+    description: "Twenty dipped tallow candles bundled in waxed paper.",
+  },
+  {
+    id: "common_chicken",
+    name: "Live Chicken",
+    category: "trade_good",
+    value: 0.02,
+    weight: 3,
+    description: "A plump hen. Lays eggs if you keep her fed, or provides one good meal.",
+  },
+  {
+    id: "common_pig",
+    name: "Small Pig",
+    category: "trade_good",
+    value: 3,
+    weight: 50,
+    description: "A young shoat, fattening up nicely. Worth more alive than butchered.",
+  },
+  {
+    id: "common_scroll_case",
+    name: "Scroll Case",
+    category: "gear",
+    value: 1,
+    weight: 0.5,
+    description: "A capped leather tube for carrying maps or scrolls. Waterproof.",
+  },
+  {
+    id: "common_merchants_scale",
+    name: "Merchant's Scale",
+    category: "gear",
+    value: 2,
+    weight: 1,
+    description: "A small hand-held balance scale with brass weights. Standard trade equipment.",
+  },
 ];
 
 // ============================================================
@@ -907,6 +1265,190 @@ export const UNCOMMON_LOOT: LootItem[] = [
     description: "Two crystal flasks of water blessed by a temple cleric.",
     effect: "2d4 damage to undead/evil outsiders on direct hit; 1 splash",
   },
+  // A&E Guide trade goods — uncommon tier
+  {
+    id: "uncommon_saffron_jar",
+    name: "Jar of Saffron",
+    category: "trade_good",
+    value: 15,
+    weight: 0.25,
+    description: "A sealed clay jar of dried saffron threads. Worth a small fortune by weight.",
+  },
+  {
+    id: "uncommon_indigo_cake",
+    name: "Cake of Indigo Dye",
+    category: "trade_good",
+    value: 15,
+    weight: 1,
+    description: "A dense block of pressed indigo, deep blue and crumbly. Dyers pay well.",
+  },
+  {
+    id: "uncommon_mink_pelt",
+    name: "Mink Pelt",
+    category: "trade_good",
+    value: 20,
+    weight: 0.5,
+    description: "A glossy mink skin, supple and well-preserved. Popular with furriers.",
+  },
+  {
+    id: "uncommon_ermine_pelt",
+    name: "Ermine Pelt",
+    category: "trade_good",
+    value: 30,
+    weight: 0.25,
+    description: "A small white ermine skin with a black-tipped tail. Symbol of nobility.",
+  },
+  {
+    id: "uncommon_cask_of_brandy",
+    name: "Cask of Brandy",
+    category: "trade_good",
+    value: 20,
+    weight: 25,
+    description: "A small oak cask of apple brandy, well-aged and smooth.",
+  },
+  {
+    id: "uncommon_vanilla_bundle",
+    name: "Bundle of Vanilla Pods",
+    category: "trade_good",
+    value: 15,
+    weight: 0.25,
+    description: "A dozen cured vanilla pods from southern shores. Rare and fragrant.",
+  },
+  {
+    id: "uncommon_cochineal_pouch",
+    name: "Pouch of Cochineal",
+    category: "trade_good",
+    value: 20,
+    weight: 0.5,
+    description: "Dried cochineal insects used to make vivid crimson dye. Very tradeable.",
+  },
+  {
+    id: "uncommon_silver_candlestick",
+    name: "Silver Candlestick",
+    category: "trade_good",
+    value: 25,
+    weight: 2,
+    description: "A polished silver candlestick with a weighted base. Fine dining ware.",
+  },
+  {
+    id: "uncommon_silver_mirror",
+    name: "Small Silver Mirror",
+    category: "gear",
+    value: 35,
+    weight: 0.5,
+    description: "A hand mirror of polished silver in a carved wooden frame.",
+  },
+  {
+    id: "uncommon_masterwork_tools",
+    name: "Masterwork Artisan's Tools",
+    category: "gear",
+    value: 50,
+    weight: 5,
+    description: "A complete set of finely made craft tools in a fitted leather case.",
+    effect: "+2 circumstance bonus to relevant Craft checks",
+  },
+  {
+    id: "uncommon_four_person_tent",
+    name: "Tent (4-person)",
+    category: "gear",
+    value: 15,
+    weight: 20,
+    description: "A canvas tent with poles, stakes, and guy lines. Sleeps four uncomfortably.",
+  },
+  {
+    id: "uncommon_riding_saddle",
+    name: "Riding Saddle",
+    category: "gear",
+    value: 25,
+    weight: 25,
+    description: "A leather riding saddle with stirrups and cinch. Standard military issue.",
+  },
+  {
+    id: "uncommon_silver_holy_symbol",
+    name: "Silver Holy Symbol",
+    category: "gear",
+    value: 25,
+    weight: 1,
+    description: "A holy symbol cast in solid silver, stamped with a deity's seal.",
+    effect: "Divine focus for spellcasting",
+  },
+  {
+    id: "uncommon_lute",
+    name: "Lute",
+    category: "gear",
+    value: 35,
+    weight: 3,
+    description: "A pear-shaped lute with gut strings and a rosewood soundboard.",
+    effect: "Required for Perform (string instruments) checks",
+  },
+  {
+    id: "uncommon_flute",
+    name: "Silver Flute",
+    category: "gear",
+    value: 20,
+    weight: 0.5,
+    description: "A slender flute of polished silver. Warm, clear tone.",
+    effect: "Required for Perform (wind instruments) checks",
+  },
+  {
+    id: "uncommon_cow",
+    name: "Dairy Cow",
+    category: "trade_good",
+    value: 10,
+    weight: 0,
+    description: "A healthy milking cow. Produces a gallon of milk per day.",
+  },
+  {
+    id: "uncommon_ox",
+    name: "Draft Ox",
+    category: "trade_good",
+    value: 15,
+    weight: 0,
+    description: "A strong, docile ox trained to pull carts and plows.",
+  },
+  {
+    id: "uncommon_donkey",
+    name: "Donkey",
+    category: "trade_good",
+    value: 8,
+    weight: 0,
+    description: "A sturdy pack donkey. Carries 100 lbs without complaint.",
+  },
+  {
+    id: "uncommon_disguise_kit",
+    name: "Disguise Kit",
+    category: "gear",
+    value: 50,
+    weight: 8,
+    description: "Makeup, wigs, prosthetics, and adhesives in a locked case.",
+    effect: "+2 circumstance bonus to Disguise checks; 10 uses",
+  },
+  {
+    id: "uncommon_bullseye_lantern",
+    name: "Bullseye Lantern",
+    category: "gear",
+    value: 12,
+    weight: 3,
+    description: "A lantern with a polished reflector that focuses light in a 60-ft cone.",
+    effect: "60 ft bright cone, 120 ft shadowy; burns 6 hours per pint of oil",
+  },
+  {
+    id: "uncommon_iron_manacles",
+    name: "Iron Manacles",
+    category: "gear",
+    value: 15,
+    weight: 2,
+    description: "A pair of heavy iron wrist shackles with a key.",
+    effect: "Break DC 26, Escape Artist DC 30",
+  },
+  {
+    id: "uncommon_chess_set",
+    name: "Carved Chess Set",
+    category: "trade_good",
+    value: 25,
+    weight: 3,
+    description: "A wooden chess set with bone-inlaid pieces. Popular tavern entertainment.",
+  },
 ];
 
 // ============================================================
@@ -1128,6 +1670,507 @@ export const RARE_LOOT: LootItem[] = [
     weight: 0.1,
     description: "A divine scroll penned on vellum with silver ink.",
     effect: "Casts Protection from Evil (CL 1); +2 deflection AC and +2 resistance saves vs evil creatures for 1 min",
+  },
+  // A&E Guide trade goods — rare tier
+  {
+    id: "rare_sable_pelt",
+    name: "Sable Pelt",
+    category: "trade_good",
+    value: 50,
+    weight: 0.5,
+    description: "A luxurious sable fur, dark and silky. Only nobility wears these.",
+  },
+  {
+    id: "rare_tyrian_purple_dye",
+    name: "Vial of Tyrian Purple",
+    category: "trade_good",
+    value: 150,
+    weight: 0.5,
+    description: "A tiny vial of murex-shell dye. The royal color — worth a fortune per ounce.",
+  },
+  {
+    id: "rare_gold_bar_small",
+    name: "Small Gold Bar",
+    category: "trade_good",
+    value: 50,
+    weight: 1,
+    description: "A one-pound bar of refined gold, stamped with a mint mark.",
+  },
+  {
+    id: "rare_barrel_fine_wine",
+    name: "Barrel of Fine Wine",
+    category: "trade_good",
+    value: 100,
+    weight: 50,
+    description: "A small cask of aged elven red, sealed with wax. A noble's vintage.",
+  },
+  {
+    id: "rare_bale_exotic_furs",
+    name: "Bale of Exotic Furs",
+    category: "trade_good",
+    value: 100,
+    weight: 15,
+    description: "A pressed bale of mixed furs — mink, ermine, and fox. Trade caravan staple.",
+  },
+  {
+    id: "rare_chest_of_tea",
+    name: "Chest of Fine Tea",
+    category: "trade_good",
+    value: 75,
+    weight: 10,
+    description: "A cedar chest packed with dried tea leaves from the eastern mountains.",
+  },
+  {
+    id: "rare_silver_tea_service",
+    name: "Silver Tea Service",
+    category: "trade_good",
+    value: 100,
+    weight: 5,
+    description: "A polished silver teapot with four cups and a tray. Finely engraved.",
+  },
+  {
+    id: "rare_ivory_chess_set",
+    name: "Ivory Chess Set",
+    category: "trade_good",
+    value: 80,
+    weight: 3,
+    description: "A chess set carved from walrus ivory and ebony. Each piece is a tiny masterwork.",
+  },
+  {
+    id: "rare_crystal_decanter",
+    name: "Crystal Decanter",
+    category: "trade_good",
+    value: 75,
+    weight: 2,
+    description: "A cut crystal decanter that throws rainbows in the light.",
+  },
+  {
+    id: "rare_gold_holy_symbol",
+    name: "Gold Holy Symbol",
+    category: "gear",
+    value: 100,
+    weight: 1,
+    description: "A holy symbol cast in solid gold, set with a tiny garnet.",
+    effect: "Divine focus for spellcasting",
+  },
+  {
+    id: "rare_masterwork_lute",
+    name: "Masterwork Lute",
+    category: "gear",
+    value: 100,
+    weight: 3,
+    description: "A lute of rare rosewood and mother-of-pearl inlay. Resonant, beautiful tone.",
+    effect: "+2 circumstance bonus to Perform (string) checks",
+  },
+  {
+    id: "rare_riding_horse",
+    name: "Riding Horse",
+    category: "trade_good",
+    value: 75,
+    weight: 0,
+    description: "A healthy, trained light horse suitable for riding. Comes with bridle.",
+  },
+  {
+    id: "rare_guard_dog",
+    name: "Trained Guard Dog",
+    category: "trade_good",
+    value: 25,
+    weight: 0,
+    description: "A large mastiff trained to guard and attack on command.",
+  },
+  {
+    id: "rare_exotic_saddle",
+    name: "Military Saddle",
+    category: "gear",
+    value: 60,
+    weight: 30,
+    description: "A reinforced war saddle with stirrups, cantle, and weapon hooks.",
+    effect: "+2 circumstance bonus to Ride checks to stay in saddle",
+  },
+  {
+    id: "rare_mw_thieves_tools",
+    name: "Masterwork Thieves' Tools",
+    category: "gear",
+    value: 100,
+    weight: 2,
+    description: "Exquisitely crafted lockpicks of tempered steel in a velvet-lined case.",
+    effect: "+2 circumstance bonus to Open Lock checks (stacks with skill)",
+  },
+  {
+    id: "rare_spice_chest",
+    name: "Chest of Mixed Spices",
+    category: "trade_good",
+    value: 120,
+    weight: 10,
+    description: "A merchant's sample chest: saffron, cloves, cardamom, star anise, and nutmeg.",
+  },
+  {
+    id: "rare_bolt_of_velvet",
+    name: "Bolt of Velvet",
+    category: "trade_good",
+    value: 80,
+    weight: 5,
+    description: "A roll of deep crimson velvet. Tailors and upholsterers will bid high.",
+  },
+  {
+    id: "rare_silver_candlelabra",
+    name: "Silver Candelabra",
+    category: "trade_good",
+    value: 90,
+    weight: 4,
+    description: "A three-armed silver candelabra with leaf-and-vine engravings.",
+  },
+  {
+    id: "rare_potion_cats_grace",
+    name: "Potion of Cat's Grace",
+    category: "consumable",
+    value: 150,
+    weight: 0.5,
+    description: "A swirling amber potion that smells of wild grass and ozone.",
+    effect: "+4 enhancement bonus to DEX for 3 minutes",
+  },
+  {
+    id: "rare_potion_bulls_strength",
+    name: "Potion of Bull's Strength",
+    category: "consumable",
+    value: 150,
+    weight: 0.5,
+    description: "A thick red potion that tastes like iron and courage.",
+    effect: "+4 enhancement bonus to STR for 3 minutes",
+  },
+];
+
+// ============================================================
+//  LEGENDARY LOOT  (150 – 500+ gp)
+//  Masterwork weapons, exotic arms, high-value A&E trade goods
+// ============================================================
+
+export const LEGENDARY_LOOT: LootItem[] = [
+  // Masterwork weapons (DMG/A&E)
+  {
+    id: "legend_mw_longsword",
+    name: "Masterwork Longsword",
+    category: "weapon",
+    value: 315,
+    weight: 4,
+    description: "A flawlessly forged longsword with a mirror-bright blade and wire-wrapped grip. Forge-marked by a master smith.",
+    effect: "1d8 slashing, 19-20/x2 crit; +1 attack (masterwork)",
+  },
+  {
+    id: "legend_mw_greatsword",
+    name: "Masterwork Greatsword",
+    category: "weapon",
+    value: 350,
+    weight: 8,
+    description: "A two-handed blade of impeccable steel, the fuller etched with a maker's rune.",
+    effect: "2d6 slashing, 19-20/x2 crit; +1 attack (masterwork)",
+  },
+  {
+    id: "legend_mw_greataxe",
+    name: "Masterwork Greataxe",
+    category: "weapon",
+    value: 320,
+    weight: 12,
+    description: "A broad-headed war axe with twin crescent blades on a steel-capped haft.",
+    effect: "1d12 slashing, x3 crit; +1 attack (masterwork)",
+  },
+  {
+    id: "legend_mw_comp_longbow",
+    name: "Masterwork Composite Longbow",
+    category: "weapon",
+    value: 400,
+    weight: 3,
+    description: "A recurve longbow of laminated horn and sinew, smooth as glass to draw.",
+    effect: "1d8 piercing, x3 crit, 110 ft range; +1 attack (masterwork)",
+  },
+  {
+    id: "legend_mw_heavy_crossbow",
+    name: "Masterwork Heavy Crossbow",
+    category: "weapon",
+    value: 350,
+    weight: 8,
+    description: "A precision-machined heavy crossbow with a polished walnut stock and brass fittings.",
+    effect: "1d10 piercing, 19-20/x2 crit, 120 ft range; +1 attack (masterwork)",
+  },
+  {
+    id: "legend_mw_warhammer",
+    name: "Masterwork Warhammer",
+    category: "weapon",
+    value: 312,
+    weight: 5,
+    description: "A dwarven-forged warhammer with a hardened steel head and octagonal grip.",
+    effect: "1d8 bludgeoning, x3 crit; +1 attack (masterwork)",
+  },
+  {
+    id: "legend_mw_rapier",
+    name: "Masterwork Rapier",
+    category: "weapon",
+    value: 320,
+    weight: 2,
+    description: "A slender dueling blade with a swept hilt of chased silver.",
+    effect: "1d6 piercing, 18-20/x2 crit; +1 attack (masterwork)",
+  },
+  // Exotic weapons (A&E)
+  {
+    id: "legend_bastard_sword",
+    name: "Bastard Sword",
+    category: "weapon",
+    value: 35,
+    weight: 6,
+    description: "A hand-and-a-half sword usable one-handed by those with the training.",
+    effect: "1d10 slashing, 19-20/x2 crit; exotic weapon proficiency required for one-handed use",
+  },
+  {
+    id: "legend_dwarven_waraxe",
+    name: "Dwarven Waraxe",
+    category: "weapon",
+    value: 30,
+    weight: 8,
+    description: "A broad-bladed axe balanced for one-handed dwarven fighting style.",
+    effect: "1d10 slashing, x3 crit; exotic weapon proficiency for one-handed use",
+  },
+  {
+    id: "legend_spiked_chain",
+    name: "Spiked Chain",
+    category: "weapon",
+    value: 25,
+    weight: 10,
+    description: "A length of barbed chain whirled in deadly arcs. Requires unusual training.",
+    effect: "2d4 piercing, x2 crit; reach, can trip; exotic weapon proficiency required",
+  },
+  // Masterwork armor
+  {
+    id: "legend_mw_chain_shirt",
+    name: "Masterwork Chain Shirt",
+    category: "armor",
+    value: 250,
+    weight: 25,
+    description: "Finely riveted chain links polished to a soft gleam. Light and supple.",
+    effect: "+4 AC, max Dex +4, armor check penalty -1 (masterwork)",
+  },
+  {
+    id: "legend_mw_breastplate",
+    name: "Masterwork Breastplate",
+    category: "armor",
+    value: 350,
+    weight: 30,
+    description: "A gleaming steel breastplate with fluted shoulders and articulated faulds.",
+    effect: "+5 AC, max Dex +3, armor check penalty -3 (masterwork)",
+  },
+  {
+    id: "legend_mw_studded_leather",
+    name: "Masterwork Studded Leather",
+    category: "armor",
+    value: 175,
+    weight: 20,
+    description: "Studded leather armor of exceptional quality, supple yet tough.",
+    effect: "+3 AC, max Dex +5, armor check penalty 0 (masterwork)",
+  },
+  {
+    id: "legend_mw_scale_mail",
+    name: "Masterwork Scale Mail",
+    category: "armor",
+    value: 200,
+    weight: 30,
+    description: "Overlapping steel scales, each one individually tempered and fitted.",
+    effect: "+4 AC, max Dex +3, armor check penalty -3 (masterwork)",
+  },
+  {
+    id: "legend_mw_heavy_steel_shield",
+    name: "Masterwork Heavy Shield",
+    category: "armor",
+    value: 170,
+    weight: 15,
+    description: "A heavy steel shield with a mirror finish and reinforced boss.",
+    effect: "+2 AC, armor check penalty -1 (masterwork)",
+  },
+  // High-value A&E trade goods (150-500gp)
+  {
+    id: "legend_gold_bar_large",
+    name: "Gold Bar (5 lb)",
+    category: "trade_good",
+    value: 250,
+    weight: 5,
+    description: "Five pounds of refined gold in a single bar, stamped with a royal mint seal.",
+  },
+  {
+    id: "legend_platinum_coin_pouch",
+    name: "Pouch of Platinum Coins",
+    category: "trade_good",
+    value: 500,
+    weight: 1,
+    description: "A velvet drawstring pouch containing fifty platinum coins.",
+  },
+  {
+    id: "legend_bolt_of_cloth_of_gold",
+    name: "Bolt of Cloth-of-Gold",
+    category: "trade_good",
+    value: 300,
+    weight: 6,
+    description: "Fabric woven with real gold thread. Reserved for royalty and high clergy.",
+  },
+  {
+    id: "legend_crate_of_tyrian_purple",
+    name: "Crate of Tyrian Purple Dye",
+    category: "trade_good",
+    value: 450,
+    weight: 15,
+    description: "Three pounds of murex-shell dye in sealed clay jars. A merchant's fortune.",
+  },
+  {
+    id: "legend_ivory_tusk",
+    name: "Ivory Tusk",
+    category: "trade_good",
+    value: 200,
+    weight: 10,
+    description: "An elephant tusk, polished and cured. Carvers and artisans pay handsomely.",
+  },
+  {
+    id: "legend_bale_of_sable",
+    name: "Bale of Sable Furs",
+    category: "trade_good",
+    value: 350,
+    weight: 8,
+    description: "A dozen matched sable pelts, bundled and sealed. A noble's winter wardrobe.",
+  },
+  {
+    id: "legend_amber_chunk",
+    name: "Large Amber Specimen",
+    category: "trade_good",
+    value: 200,
+    weight: 1,
+    description: "A fist-sized piece of clear amber with an ancient insect perfectly preserved within.",
+  },
+  {
+    id: "legend_spice_merchants_chest",
+    name: "Spice Merchant's Locked Chest",
+    category: "trade_good",
+    value: 400,
+    weight: 20,
+    description: "An iron-bound cedar chest packed with saffron, vanilla, cloves, and star anise. A caravan's profit.",
+  },
+  {
+    id: "legend_warhorse",
+    name: "Light Warhorse",
+    category: "trade_good",
+    value: 150,
+    weight: 0,
+    description: "A trained light warhorse, battle-steady and armored with leather barding.",
+  },
+  {
+    id: "legend_heavy_warhorse",
+    name: "Heavy Warhorse",
+    category: "trade_good",
+    value: 400,
+    weight: 0,
+    description: "A massive destrier bred for war. Trained to charge, trample, and stand firm.",
+  },
+  {
+    id: "legend_gold_chalice",
+    name: "Gold Chalice",
+    category: "trade_good",
+    value: 200,
+    weight: 2,
+    description: "A solid gold chalice with ruby-set stem. Temple or noble house piece.",
+  },
+  {
+    id: "legend_jeweled_dagger",
+    name: "Jeweled Ceremonial Dagger",
+    category: "weapon",
+    value: 300,
+    weight: 1,
+    description: "A curved dagger with an emerald pommel and gold-inlaid blade. More art than weapon.",
+    effect: "1d4 piercing, 19-20/x2 crit; worth double as art object",
+  },
+  {
+    id: "legend_tapestry",
+    name: "Large Wool Tapestry",
+    category: "trade_good",
+    value: 250,
+    weight: 20,
+    description: "A richly dyed tapestry depicting a famous battle, six feet tall and ten wide.",
+  },
+  {
+    id: "legend_silver_dinner_set",
+    name: "Silver Dinner Service",
+    category: "trade_good",
+    value: 300,
+    weight: 15,
+    description: "A complete 12-place silver dinner service in a felt-lined wooden chest.",
+  },
+  {
+    id: "legend_darkwood_shield",
+    name: "Darkwood Shield",
+    category: "armor",
+    value: 257,
+    weight: 5,
+    description: "A shield carved from darkwood — half the weight of steel with the same strength.",
+    effect: "+2 AC, armor check penalty -1; weighs half normal (special material)",
+  },
+  // High-level consumables
+  {
+    id: "legend_potion_cure_moderate",
+    name: "Potion of Cure Moderate Wounds",
+    category: "consumable",
+    value: 300,
+    weight: 0.5,
+    description: "A glowing red potion in a crystal phial, sealed with blessed wax.",
+    effect: "Heals 2d8+3 hit points when consumed",
+  },
+  {
+    id: "legend_potion_invisibility",
+    name: "Potion of Invisibility",
+    category: "consumable",
+    value: 300,
+    weight: 0.5,
+    description: "A potion that refracts light through its glass, making your hand seem to vanish.",
+    effect: "Invisible for 3 minutes or until you attack",
+  },
+  {
+    id: "legend_potion_fly",
+    name: "Potion of Fly",
+    category: "consumable",
+    value: 375,
+    weight: 0.5,
+    description: "A pale blue potion that fizzes and floats slightly in its bottle.",
+    effect: "Fly 60 ft (good) for 5 minutes",
+  },
+  {
+    id: "legend_scroll_fireball",
+    name: "Scroll of Fireball",
+    category: "consumable",
+    value: 375,
+    weight: 0.1,
+    description: "An arcane scroll inscribed in fiery red ink that seems to flicker.",
+    effect: "Casts Fireball (CL 5); 5d6 fire damage, 20 ft radius, DC 14 Reflex half",
+  },
+  {
+    id: "legend_scroll_cure_serious",
+    name: "Scroll of Cure Serious Wounds",
+    category: "consumable",
+    value: 375,
+    weight: 0.1,
+    description: "A divine scroll on blessed parchment, the words glowing faintly gold.",
+    effect: "Casts Cure Serious Wounds (CL 5); heals 3d8+5 hit points",
+  },
+  // Alchemical high-value
+  {
+    id: "legend_sovereign_glue",
+    name: "Sovereign Glue (1 oz)",
+    category: "alchemical",
+    value: 200,
+    weight: 0.1,
+    description: "A tiny vial of legendary adhesive. Bonds any two surfaces permanently.",
+    effect: "Permanently bonds any two surfaces; only Universal Solvent can undo it",
+  },
+  {
+    id: "legend_universal_solvent",
+    name: "Universal Solvent (1 oz)",
+    category: "alchemical",
+    value: 200,
+    weight: 0.1,
+    description: "A shimmering liquid that dissolves any adhesive, including Sovereign Glue.",
+    effect: "Dissolves any adhesive or binding on contact",
   },
 ];
 
@@ -1393,46 +2436,31 @@ export function pickLoot(tier: LootTier): LootItem {
 /**
  * Roll a loot drop based on character level range and find outcome.
  *
- * Level 1-3:
- *   minor_find → 1 common  OR  2 junk
- *   major_find → 1 uncommon  OR  2 common
- *
- * Level 3-5:
- *   minor_find → 1 uncommon  OR  2 common
- *   major_find → 1 rare  OR  2 uncommon
+ * Level 1-2:   minor → junk/common       major → common/uncommon
+ * Level 3-5:   minor → common/uncommon    major → uncommon/rare
+ * Level 6-8:   minor → uncommon/rare      major → rare/legendary
+ * Level 9-12:  minor → rare/legendary     major → legendary + legendary
+ * Level 13+:   minor → legendary          major → 2 legendary
  */
 export function rollLootDrop(
   levelRange: [number, number],
   outcome: "minor_find" | "major_find"
 ): LootItem[] {
   const avgLevel = (levelRange[0] + levelRange[1]) / 2;
-  const isHighTier = avgLevel >= 3;
 
   if (outcome === "minor_find") {
-    if (isHighTier) {
-      // Level 3-5: 1 uncommon or 2 common
-      return coinFlip()
-        ? [pickLoot("uncommon")]
-        : [pickLoot("common"), pickLoot("common")];
-    } else {
-      // Level 1-3: 1 common or 2 junk
-      return coinFlip()
-        ? [pickLoot("common")]
-        : [pickLoot("junk"), pickLoot("junk")];
-    }
+    if (avgLevel >= 13) return [pickLoot("legendary")];
+    if (avgLevel >= 9)  return coinFlip() ? [pickLoot("legendary")] : [pickLoot("rare"), pickLoot("rare")];
+    if (avgLevel >= 6)  return coinFlip() ? [pickLoot("rare")] : [pickLoot("uncommon"), pickLoot("uncommon")];
+    if (avgLevel >= 3)  return coinFlip() ? [pickLoot("uncommon")] : [pickLoot("common"), pickLoot("common")];
+    return coinFlip() ? [pickLoot("common")] : [pickLoot("junk"), pickLoot("junk")];
   } else {
     // major_find
-    if (isHighTier) {
-      // Level 3-5: 1 rare or 2 uncommon
-      return coinFlip()
-        ? [pickLoot("rare")]
-        : [pickLoot("uncommon"), pickLoot("uncommon")];
-    } else {
-      // Level 1-3: 1 uncommon or 2 common
-      return coinFlip()
-        ? [pickLoot("uncommon")]
-        : [pickLoot("common"), pickLoot("common")];
-    }
+    if (avgLevel >= 13) return [pickLoot("legendary"), pickLoot("legendary")];
+    if (avgLevel >= 9)  return coinFlip() ? [pickLoot("legendary"), pickLoot("rare")] : [pickLoot("legendary")];
+    if (avgLevel >= 6)  return coinFlip() ? [pickLoot("legendary")] : [pickLoot("rare"), pickLoot("rare")];
+    if (avgLevel >= 3)  return coinFlip() ? [pickLoot("rare")] : [pickLoot("uncommon"), pickLoot("uncommon")];
+    return coinFlip() ? [pickLoot("uncommon")] : [pickLoot("common"), pickLoot("common")];
   }
 }
 
@@ -1474,11 +2502,13 @@ function getLootTable(tier: LootTier): LootItem[] {
       return UNCOMMON_LOOT;
     case "rare":
       return RARE_LOOT;
+    case "legendary":
+      return LEGENDARY_LOOT;
   }
 }
 
 /** Look up a loot item by ID across all tiers */
-const ALL_LOOT = [...JUNK_LOOT, ...COMMON_LOOT, ...UNCOMMON_LOOT, ...RARE_LOOT];
+const ALL_LOOT = [...JUNK_LOOT, ...COMMON_LOOT, ...UNCOMMON_LOOT, ...RARE_LOOT, ...LEGENDARY_LOOT];
 const LOOT_MAP = new Map(ALL_LOOT.map(i => [i.id, i]));
 export function getItemById(id: string): LootItem | undefined {
   return LOOT_MAP.get(id);

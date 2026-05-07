@@ -1,0 +1,22 @@
+{
+  "accountAssociation": {
+    "header": "SIGN_THIS_AT_BASE_DEV",
+    "payload": "SIGN_THIS_AT_BASE_DEV",
+    "signature": "SIGN_THIS_AT_BASE_DEV"
+  },
+  "frame": {
+    "version": "1",
+    "name": "Baselings",
+    "subtitle": "Raise onchain pets",
+    "description": "Tamagotchi-style pet game on Base. Buy eggs, feed your baseling, earn POOP.",
+    "primaryCategory": "games",
+    "iconUrl": "https://baselings.vercel.app/baselings-icon.png",
+    "homeUrl": "https://baselings.vercel.app",
+    "imageUrl": "https://baselings.vercel.app/sprites/egg-store.png",
+    "buttonTitle": "Play Baselings",
+    "splashImageUrl": "https://baselings.vercel.app/baselings-splash.png",
+    "splashBackgroundColor": "#0a0608",
+    "tags": ["game", "tamagotchi", "pets", "defi", "nft"],
+    "requiredChains": ["eip155:8453"]
+  }
+}

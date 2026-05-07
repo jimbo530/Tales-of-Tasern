@@ -1,0 +1,16 @@
+[2026-04-29T01:38:22] Charity Reactor Keeper started
+[2026-04-29T01:38:22] Wallet: 0x08b0c030691343976B1be67F9557FBb0D59f6971
+[2026-04-29T01:38:22] Reactors: PR24, PR25, fJLT-F24, TB01
+[2026-04-29T01:38:22] Schedule: one reactor every 6 hours (full cycle = 24 hours)
+[2026-04-29T01:38:22] POL: 13.22
+[2026-04-29T01:38:22] 
+[2026-04-29T01:38:22] --- Firing PR24 ---
+[2026-04-29T01:38:22] PR24: cooldown 86 min remaining, skip
+[2026-04-29T01:38:22] Next charity reactor in 6 hours...
+[2026-04-29T07:38:22] 
+[2026-04-29T07:38:22] --- Firing PR25 ---
+[2026-04-29T07:38:28] PR25: FIRED | burned=0.01 | bought=0.00 | gas=1508023
+[2026-04-29T07:38:28] Next charity reactor in 6 hours...
+[2026-04-29T13:38:28] 
+[2026-04-29T13:38:28] --- Firing fJLT-F24 ---
+Fatal: server response 503 Service Unavailable

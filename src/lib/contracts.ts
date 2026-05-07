@@ -324,6 +324,7 @@ export const KNOWN_LP_PAIRS = {
     "0x46b7b31cac35586673f1791025032e6ee0e2e72b", // PR25 / OGC
     "0xd548854d8e850011bd12d0f14b326a931d8fd4c7", // PR25 / DHG
     "0x62317508308b68bd36d6e5f17e1c4055fbf99351", // OGC / PKT
+    "0x0aa47ed14bd86c114bb4e88553251414d22e3955", // DDD / USDC
   ] as `0x${string}`[],
 };
 // @sync-end:KNOWN_LP_PAIRS

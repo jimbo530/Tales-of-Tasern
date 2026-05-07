@@ -1,0 +1,13 @@
+{
+  "name": "baseling-keeper",
+  "version": "1.0.0",
+  "description": "Keeper bot that monitors BaselingNFT and auto-converts egg seeds to LP",
+  "main": "keeper.js",
+  "scripts": {
+    "start": "node keeper.js"
+  },
+  "dependencies": {
+    "ethers": "^6.13.0",
+    "dotenv": "^16.4.0"
+  }
+}

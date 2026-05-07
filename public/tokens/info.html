@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title id="pageTitle">Token Info</title>
+    <meta name="description" id="pageMeta" content="Token information and on-chain data from the MfT ecosystem.">
+    <style>
+        *{margin:0;padding:0;box-sizing:border-box}
+        :root{
+            --accent:#3fb950;--accent-dim:rgba(63,185,80,.15);--accent-glow:rgba(63,185,80,.25);
+            --card:rgba(21,26,33,.82);--border:rgba(55,65,81,.5);
+            --text:#c9d1d9;--dim:#8b949e;--bright:#e6edf3;
+            --mono:'SF Mono','Cascadia Code','Fira Code',monospace;
+        }
+        body{
+            margin:0;color:var(--text);
+            font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;
+            line-height:1.6;min-height:100vh;background:#0b0e11;
+        }
+        body::before{
+            content:'';position:fixed;inset:0;z-index:-2;
+            background:url('/mft/bg.jpg') center/cover no-repeat;
+        }
+        body::after{
+            content:'';position:fixed;inset:0;z-index:-1;
+            background:linear-gradient(180deg,rgba(5,10,5,.68) 0%,rgba(8,14,8,.85) 40%,rgba(5,10,5,.94) 100%);
+        }
+        .wrap{max-width:800px;margin:0 auto;padding:2rem 1.5rem;position:relative;z-index:1}
+
+        /* Glass */
+        .glass{background:var(--card);border:1px solid var(--border);border-radius:12px;
+            backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px)}
+
+        /* Header */
+        header{text-align:center;margin-bottom:2rem}
+        .token-emoji{font-size:4.5rem;margin-bottom:.25rem}
+        header h1{font-size:2.6rem;color:var(--bright);letter-spacing:.08em;margin-bottom:.25rem;
+            text-shadow:0 0 40px var(--accent-glow),0 2px 8px rgba(0,0,0,.6)}
+        .tagline{font-size:1rem;color:var(--accent);font-weight:500;margin-bottom:.75rem;
+            text-shadow:0 1px 6px rgba(0,0,0,.5)}
+        .cat-badge{font-size:.7rem;text-transform:uppercase;letter-spacing:.12em;
+            padding:.25rem .75rem;border-radius:99px;font-weight:600;display:inline-block;
+            background:var(--accent-dim);color:var(--accent)}
+
+        /* Address bar */
+        .addr-bar{margin:1.25rem auto 0;max-width:500px}
+        .addr{font-family:var(--mono);font-size:.82rem;color:var(--dim);
+            background:var(--card);padding:.55rem 1.1rem;border-radius:8px;
+            display:inline-block;cursor:pointer;position:relative;
+            border:1px solid var(--border);backdrop-filter:blur(12px);
+            transition:color .2s,border-color .2s;word-break:break-all}
+        .addr:hover{color:var(--accent);border-color:var(--accent)}
+        .copied{position:absolute;top:-1.8rem;left:50%;transform:translateX(-50%);
+            font-size:.7rem;color:var(--accent);opacity:0;transition:opacity .3s}
+        .copied.show{opacity:1}
+        .chain-info{font-size:.78rem;color:var(--dim);margin-top:.5rem}
+
+        /* Sections */
+        .section{padding:1.5rem;margin-bottom:1.5rem}
+        .section h2{font-size:1rem;color:var(--bright);margin-bottom:1rem;padding-bottom:.75rem;
+            border-bottom:1px solid var(--border)}
+        .section p{font-size:.92rem;line-height:1.7;color:var(--text)}
+
+        /* Mechanics list */
+        .mech{list-style:none;padding:0}
+        .mech li{padding:.45rem 0 .45rem 1.6rem;position:relative;font-size:.9rem}
+        .mech li::before{content:'\2192';position:absolute;left:0;color:var(--accent)}
+
+        /* Role box */
+        .role-box{background:rgba(63,185,80,.06);border:1px solid rgba(63,185,80,.15);
+            border-radius:8px;padding:1rem 1.25rem;margin-top:1rem;font-size:.9rem;color:var(--text)}
+
+        /* Links section */
+        .links{display:flex;flex-wrap:wrap;gap:.75rem;margin-top:1.25rem}
+        .link-btn{display:inline-block;padding:.55rem 1.25rem;border-radius:8px;font-size:.85rem;
+            text-decoration:none;border:1px solid var(--border);color:var(--text);
+            background:var(--card);backdrop-filter:blur(12px);transition:all .2s}
+        .link-btn:hover{border-color:var(--accent);color:var(--accent);text-decoration:none}
+        .link-btn.primary{background:rgba(63,185,80,.12);border-color:rgba(63,185,80,.3);color:var(--accent)}
+        .link-btn.primary:hover{background:rgba(63,185,80,.2)}
+
+        /* Footer */
+        footer{text-align:center;padding:2rem 0;color:var(--dim);font-size:.85rem}
+        footer a{color:var(--accent);text-decoration:none}
+        footer a:hover{text-decoration:underline}
+
+        /* Loading / Error */
+        .loading{text-align:center;padding:4rem 2rem;color:var(--dim);font-size:1.1rem}
+        .error{text-align:center;padding:4rem 2rem;color:#f85149;font-size:1.1rem}
+
+        /* Game-category theming */
+        body.cat-game{
+            --accent:#d29922;--accent-dim:rgba(210,153,34,.15);--accent-glow:rgba(210,153,34,.25);
+        }
+        body.cat-impact{
+            --accent:#a371f7;--accent-dim:rgba(163,113,247,.15);--accent-glow:rgba(163,113,247,.25);
+        }
+
+        @media(max-width:600px){
+            header h1{font-size:2rem}
+            .wrap{padding:1.5rem 1rem}
+            .token-emoji{font-size:3.5rem}
+            .addr{font-size:.7rem}
+            .links{flex-direction:column}
+        }
+    </style>
+</head>
+<body>
+<div class="wrap" id="content">
+    <div class="loading" id="loadingMsg">Loading token data&hellip;</div>
+</div>
+
+<script>
+const params = new URLSearchParams(window.location.search);
+const tokenKey = (params.get('token') || '').toLowerCase();
+
+if (!tokenKey) {
+    document.getElementById('loadingMsg').className = 'error';
+    document.getElementById('loadingMsg').textContent = 'No token specified. Go to the token directory.';
+} else {
+    fetch('tokens.json').then(r => r.json()).then(data => {
+        const t = data[tokenKey];
+        if (!t) {
+            document.getElementById('loadingMsg').className = 'error';
+            document.getElementById('loadingMsg').innerHTML = 'Token "' + tokenKey + '" not found. <a href="/tokens/" style="color:var(--accent)">Back to directory</a>';
+            return;
+        }
+
+        // Redirect for tokens with dedicated pages
+        if (t.redirect) {
+            window.location.href = t.redirect;
+            return;
+        }
+
+        // Set category theme
+        if (t.category === 'game') document.body.classList.add('cat-game');
+        if (t.category === 'impact') document.body.classList.add('cat-impact');
+
+        // Page title
+        document.title = t.symbol + ' \u2014 ' + t.name + ' \u00b7 MfT Ecosystem';
+        const meta = document.getElementById('pageMeta');
+        if (meta) meta.content = t.description;
+
+        // Build page
+        const wrap = document.getElementById('content');
+        const catLabel = t.category === 'ecosystem' ? 'ecosystem' : t.category === 'game' ? 'game' : 'impact';
+        const scanDomain = t.chain === 'Base' ? 'basescan.org' : 'polygonscan.com';
+        const fAddr = a => a.slice(0,6) + '...' + a.slice(-4);
+
+        let linksHtml = '<a class="link-btn primary" href="' + t.scannerUrl + '" target="_blank" rel="noopener">View on ' + scanDomain + '</a>';
+        if (t.uniswapUrl) linksHtml += '<a class="link-btn" href="' + t.uniswapUrl + '" target="_blank" rel="noopener">Trade on Uniswap</a>';
+        if (t.quickswapUrl) linksHtml += '<a class="link-btn" href="' + t.quickswapUrl + '" target="_blank" rel="noopener">Trade on QuickSwap</a>';
+
+        let mechHtml = '';
+        if (t.mechanics && t.mechanics.length) {
+            mechHtml = '<div class="section glass"><h2>Key Mechanics</h2><ul class="mech">';
+            for (const m of t.mechanics) mechHtml += '<li>' + m + '</li>';
+            mechHtml += '</ul></div>';
+        }
+
+        wrap.innerHTML = ''
+            + '<header>'
+            + '<div class="token-emoji">' + t.emoji + '</div>'
+            + '<h1>' + t.symbol + '</h1>'
+            + '<div class="tagline">' + t.tagline + '</div>'
+            + '<span class="cat-badge">' + catLabel + '</span>'
+            + '<div class="addr-bar">'
+            + '<div class="addr" id="addrCopy" title="Click to copy">'
+            + '<span class="copied" id="copiedTip">Copied</span>'
+            + t.address
+            + '</div>'
+            + '<div class="chain-info">' + t.chain + ' (' + t.chainId + ') &middot; ERC20 &middot; ' + t.decimals + ' decimals</div>'
+            + '</div>'
+            + '</header>'
+
+            + '<div class="section glass">'
+            + '<h2>About ' + t.symbol + '</h2>'
+            + '<p>' + t.description + '</p>'
+            + '<div class="role-box"><strong>Ecosystem role:</strong> ' + t.role + '</div>'
+            + '</div>'
+
+            + mechHtml
+
+            + '<div class="section glass">'
+            + '<h2>Links</h2>'
+            + '<div class="links">' + linksHtml + '</div>'
+            + '</div>'
+
+            + '<footer>'
+            + '<a href="/tokens/">&larr; Token Directory</a>'
+            + ' &middot; '
+            + '<a href="/mft/">MfT Burns</a>'
+            + ' &middot; '
+            + '<a href="/poop/">POOP Data</a>'
+            + ' &middot; '
+            + '<a href="/earth/">EARTH Data</a>'
+            + ' &middot; '
+            + '<a href="/">Home</a>'
+            + '</footer>';
+
+        // Copy address
+        document.getElementById('addrCopy').onclick = function() {
+            navigator.clipboard.writeText(t.address);
+            var tip = document.getElementById('copiedTip');
+            tip.classList.add('show');
+            setTimeout(function(){ tip.classList.remove('show'); }, 1200);
+        };
+    }).catch(function(err) {
+        console.error('Failed to load tokens:', err);
+        document.getElementById('loadingMsg').className = 'error';
+        document.getElementById('loadingMsg').textContent = 'Failed to load token data.';
+    });
+}
+</script>
+</body>
+</html>
