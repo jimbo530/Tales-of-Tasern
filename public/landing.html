@@ -3,21 +3,27 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MfT &mdash; meme for trees</title>
-    <meta name="description" content="Impact games and deflationary tokens on Base. Play games, burn tokens, plant trees.">
+    <title>MfT Studio &mdash; Impact Games &amp; Deflationary Tokens on Base</title>
+    <meta name="description" content="Play games, burn tokens, plant trees. 21 autonomous reactors fire every 2 hours on Base. Unruggable by code, not by promise.">
+    <meta property="og:title" content="MfT Studio — Impact Games on Base">
+    <meta property="og:description" content="21 autonomous reactors. Every 2 hours. Tokens burned forever. Unruggable by code.">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://tasern.quest">
+    <link rel="icon" href="/icon-192.svg" type="image/svg+xml">
+    <link rel="manifest" href="/manifest.json">
     <style>
         *{margin:0;padding:0;box-sizing:border-box}
         :root{
-            --green:#3fb950;--green-glow:rgba(63,185,80,.25);
+            --green:#3fb950;--green-dim:#2ea043;--green-glow:rgba(63,185,80,.25);
             --card:rgba(21,26,33,.82);--border:rgba(55,65,81,.5);
             --text:#c9d1d9;--dim:#8b949e;--bright:#e6edf3;
-            --accent:#58a6ff;
+            --accent:#58a6ff;--orange:#d29922;--purple:#a371f7;
+            --mono:'SF Mono','Cascadia Code','Fira Code',monospace;
         }
         body{
             margin:0;color:var(--text);
             font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;
             line-height:1.6;min-height:100vh;background:#0b0e11;
-            display:flex;align-items:center;justify-content:center;
         }
         body::before{
             content:'';position:fixed;inset:0;z-index:-2;
@@ -25,68 +31,247 @@
         }
         body::after{
             content:'';position:fixed;inset:0;z-index:-1;
-            background:linear-gradient(180deg,rgba(5,10,5,.65) 0%,rgba(8,14,8,.82) 50%,rgba(5,10,5,.92) 100%);
+            background:linear-gradient(180deg,rgba(5,10,5,.7) 0%,rgba(8,14,8,.88) 50%,rgba(5,10,5,.95) 100%);
         }
-        .wrap{max-width:700px;width:100%;margin:0 auto;padding:3rem 1.5rem;position:relative;z-index:1;text-align:center}
+        .wrap{max-width:960px;margin:0 auto;padding:0 1.5rem;position:relative;z-index:1}
 
-        .logo{font-size:4rem;font-weight:800;color:#fff;letter-spacing:.08em;margin-bottom:.25rem;
-            text-shadow:0 0 40px var(--green-glow),0 2px 8px rgba(0,0,0,.6)}
+        /* ── Hero ── */
+        .hero{text-align:center;padding:4rem 0 3rem}
+        .logo{font-size:5rem;font-weight:800;color:#fff;letter-spacing:.1em;margin-bottom:.2rem;
+            text-shadow:0 0 60px var(--green-glow),0 2px 12px rgba(0,0,0,.6)}
         .logo span{color:var(--green)}
-        .tagline{font-size:1rem;color:var(--green);font-weight:500;margin-bottom:3.5rem;
+        .tagline{font-size:1.15rem;color:var(--green);font-weight:500;margin-bottom:.6rem;
             text-shadow:0 1px 6px rgba(0,0,0,.5)}
+        .pitch{font-size:.92rem;color:var(--dim);max-width:540px;margin:0 auto 2rem}
 
-        .grid{display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;margin-bottom:2.5rem}
+        /* ── Live stats ── */
+        .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-bottom:3rem}
+        .stat{background:var(--card);border:1px solid var(--border);border-radius:12px;
+            backdrop-filter:blur(16px);padding:1.2rem;text-align:center}
+        .stat-val{font-family:var(--mono);font-size:1.6rem;font-weight:700;color:var(--bright)}
+        .stat-val.grn{color:var(--green)}
+        .stat-val.fire{color:var(--orange)}
+        .stat-label{font-size:.68rem;text-transform:uppercase;letter-spacing:.1em;color:var(--dim);margin-top:.3rem}
 
+        /* ── Product grid ── */
+        .section-title{font-size:.72rem;text-transform:uppercase;letter-spacing:.15em;color:var(--dim);
+            text-align:center;margin-bottom:1.2rem}
+        .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1.2rem;margin-bottom:3rem}
         .card{
-            background:var(--card);border:1px solid var(--border);border-radius:16px;
+            background:var(--card);border:1px solid var(--border);border-radius:14px;
             backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
-            padding:2.5rem 1.5rem;text-decoration:none;color:var(--text);
+            padding:2rem 1.4rem;text-decoration:none;color:var(--text);
             transition:border-color .2s,transform .15s,box-shadow .2s;
             display:block;
         }
         .card:hover{
             border-color:var(--green);transform:translateY(-3px);
-            box-shadow:0 8px 28px rgba(0,0,0,.35),0 0 24px var(--green-glow);
+            box-shadow:0 8px 28px rgba(0,0,0,.35),0 0 20px var(--green-glow);
         }
-        .card-icon{font-size:3rem;margin-bottom:.75rem}
-        .card-name{font-size:1.5rem;font-weight:700;color:var(--bright);margin-bottom:.4rem}
-        .card-desc{font-size:.88rem;color:var(--dim);line-height:1.5}
+        .card-icon{font-size:2.4rem;margin-bottom:.6rem}
+        .card-name{font-size:1.15rem;font-weight:700;color:var(--bright);margin-bottom:.3rem}
+        .card-desc{font-size:.82rem;color:var(--dim);line-height:1.5}
+        .card-badge{display:inline-block;font-size:.6rem;padding:.15rem .5rem;border-radius:99px;
+            margin-top:.5rem;font-weight:600;letter-spacing:.03em}
+        .card-badge.live{background:rgba(63,185,80,.15);color:var(--green)}
+        .card-badge.soon{background:rgba(210,153,34,.15);color:var(--orange)}
 
-        footer{color:var(--dim);font-size:.78rem}
-        footer a{color:var(--green);text-decoration:none}
-        footer a:hover{text-decoration:underline}
+        /* ── How it works ── */
+        .how{background:var(--card);border:1px solid var(--border);border-radius:14px;
+            backdrop-filter:blur(16px);padding:2rem;margin-bottom:3rem}
+        .how h2{font-size:1.1rem;color:var(--bright);margin-bottom:1.2rem;text-align:center}
+        .steps{display:grid;grid-template-columns:repeat(3,1fr);gap:1.5rem}
+        .step-num{font-family:var(--mono);font-size:2rem;font-weight:700;color:var(--green);margin-bottom:.3rem}
+        .step-title{font-size:.9rem;font-weight:600;color:var(--bright);margin-bottom:.3rem}
+        .step-desc{font-size:.8rem;color:var(--dim);line-height:1.5}
 
-        @media(max-width:550px){
+        /* ── Agent CTA ── */
+        .agent-cta{text-align:center;margin-bottom:3rem;padding:2rem;
+            background:var(--card);border:1px solid var(--border);border-radius:14px;
+            backdrop-filter:blur(16px)}
+        .agent-cta h2{font-size:1.1rem;color:var(--bright);margin-bottom:.5rem}
+        .agent-cta p{font-size:.85rem;color:var(--dim);margin-bottom:1rem;max-width:500px;margin-left:auto;margin-right:auto}
+        .agent-cta code{font-family:var(--mono);font-size:.82rem;background:rgba(63,185,80,.1);
+            color:var(--green);padding:.3rem .8rem;border-radius:6px;display:inline-block}
+
+        /* ── Footer ── */
+        footer{text-align:center;padding:2rem 0 3rem;border-top:1px solid var(--border)}
+        .foot-links{margin-bottom:.8rem}
+        .foot-links a{color:var(--green);text-decoration:none;font-size:.82rem;margin:0 .6rem}
+        .foot-links a:hover{text-decoration:underline}
+        .foot-legal a{color:var(--dim);text-decoration:none;font-size:.72rem;margin:0 .5rem}
+        .foot-legal a:hover{color:var(--text)}
+        .foot-chain{font-size:.72rem;color:var(--dim);margin-top:.6rem}
+
+        /* ── Responsive ── */
+        @media(max-width:700px){
+            .hero{padding:3rem 0 2rem}
+            .logo{font-size:3.2rem}
+            .stats{grid-template-columns:1fr}
             .grid{grid-template-columns:1fr}
-            .logo{font-size:2.8rem}
-            .wrap{padding:2rem 1rem}
-            .tagline{margin-bottom:2.5rem}
+            .steps{grid-template-columns:1fr}
+            .stat-val{font-size:1.3rem}
+        }
+        @media(min-width:701px) and (max-width:900px){
+            .grid{grid-template-columns:repeat(2,1fr)}
         }
     </style>
 </head>
 <body>
 <div class="wrap">
 
-    <div class="logo"><span>M</span>f<span>T</span></div>
-    <div class="tagline">meme for trees</div>
+    <!-- Hero -->
+    <div class="hero">
+        <div class="logo"><span>M</span>f<span>T</span></div>
+        <div class="tagline">meme for trees</div>
+        <p class="pitch">Deflationary tokens and impact games on Base. Autonomous reactors burn tokens permanently. Verify everything on-chain.</p>
+    </div>
 
+    <!-- Live Stats -->
+    <div class="stats">
+        <div class="stat">
+            <div class="stat-val fire" id="reactorCount">21</div>
+            <div class="stat-label">Active Reactors</div>
+        </div>
+        <div class="stat">
+            <div class="stat-val grn" id="tokensBurned">&mdash;</div>
+            <div class="stat-label">MfT Burned</div>
+        </div>
+        <div class="stat">
+            <div class="stat-val fire" id="totalValue">&mdash;</div>
+            <div class="stat-label">Value Burned</div>
+        </div>
+    </div>
+
+    <!-- Products -->
+    <div class="section-title">Ecosystem</div>
     <div class="grid">
         <a href="/baseling/" class="card">
-            <div class="card-icon">&#x1F3AE;</div>
-            <div class="card-name">Arcade</div>
-            <div class="card-desc">Play games, earn yield, burn tokens.</div>
+            <div class="card-icon">&#x1F95A;</div>
+            <div class="card-name">Baselings</div>
+            <div class="card-desc">Raise creatures, feed them LP, grow gardens, earn yield. Pet game meets DeFi.</div>
+            <span class="card-badge live">Live</span>
+        </a>
+        <a href="/mft/" class="card">
+            <div class="card-icon">&#x1F525;</div>
+            <div class="card-name">Burn Stats</div>
+            <div class="card-desc">Live on-chain tracker. Every token burned by reactors, verified on Basescan.</div>
+            <span class="card-badge live">Live</span>
+        </a>
+        <a href="/launcher/" class="card">
+            <div class="card-icon">&#x1F344;</div>
+            <div class="card-name">MycoPad</div>
+            <div class="card-desc">Launch tokens with locked liquidity and autonomous reactors. Unruggable by design.</div>
+            <span class="card-badge live">Live</span>
         </a>
         <a href="/tokens/" class="card">
             <div class="card-icon">&#x1FA99;</div>
             <div class="card-name">Token Index</div>
-            <div class="card-desc">29 tokens across Base and Polygon.</div>
+            <div class="card-desc">All game and impact tokens across Base and Polygon. Addresses and on-chain links.</div>
+            <span class="card-badge live">Live</span>
+        </a>
+        <a href="/impact/" class="card">
+            <div class="card-icon">&#x1F333;</div>
+            <div class="card-name">Impact</div>
+            <div class="card-desc">Token burns fund environmental partners. CHAR, TreeGens, and community donations. Verifiable on-chain.</div>
+            <span class="card-badge live">Live</span>
+        </a>
+        <a href="/arcade/" class="card">
+            <div class="card-icon">&#x1F3AE;</div>
+            <div class="card-name">Arcade</div>
+            <div class="card-desc">Puzzle battles, RPGs, card games. Wager tokens, earn rewards. 5 games live.</div>
+            <span class="card-badge live">Live</span>
         </a>
     </div>
 
+    <!-- How it works -->
+    <div class="how">
+        <h2>How Reactors Work</h2>
+        <div class="steps">
+            <div>
+                <div class="step-num">1</div>
+                <div class="step-title">Trade Anywhere</div>
+                <div class="step-desc">Every swap through reactor pools generates fees. Normal trading, no special actions needed.</div>
+            </div>
+            <div>
+                <div class="step-num">2</div>
+                <div class="step-title">Reactors Fire</div>
+                <div class="step-desc">Every 2 hours, autonomous keepers call execute(). Fees are collected and tokens are burned permanently.</div>
+            </div>
+            <div>
+                <div class="step-num">3</div>
+                <div class="step-title">Burn Forever</div>
+                <div class="step-desc">Burned tokens go to an address with no private key. Gone forever. Verifiable on-chain.</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Reactor Tools -->
+    <div class="section-title">Reactor Network</div>
+    <div class="grid" style="grid-template-columns:repeat(2,1fr)">
+        <a href="/launcher/reactor-dashboard.html" class="card">
+            <div class="card-icon">&#x1F4CA;</div>
+            <div class="card-name">Reactor Dashboard</div>
+            <div class="card-desc">Fire reactors, view cooldowns, monitor the network in real time.</div>
+        </a>
+        <a href="/launcher/reactor-map.html" class="card">
+            <div class="card-icon">&#x1F5FA;&#xFE0F;</div>
+            <div class="card-name">Network Map</div>
+            <div class="card-desc">Visual topology of all 21 reactors and how fuel flows through the network.</div>
+        </a>
+    </div>
+
+    <!-- Agent CTA -->
+    <div class="agent-cta">
+        <h2>Built for AI Agents</h2>
+        <p>35 MCP tools, REST API, and an agent SDK. Your agent can launch tokens, fire reactors, and interact with games programmatically.</p>
+        <code>npx baselings-mcp</code>
+    </div>
+
+    <!-- Footer -->
     <footer>
-        Base (8453) &middot; <a href="https://basescan.org/address/0xfd780B0aE569e15e514B819ecFDF46f804953a4B" target="_blank" rel="noopener">burn address</a> &middot; you profit, trees grow, people eat
+        <div class="foot-links">
+            <a href="https://warpcast.com/jamesmagee" target="_blank" rel="noopener">Farcaster</a>
+            <a href="https://basescan.org/address/0xfd780B0aE569e15e514B819ecFDF46f804953a4B" target="_blank" rel="noopener">Burn Address</a>
+            <a href="/llms.txt">llms.txt</a>
+            <a href="/launcher/burns.html">Burn Leaderboard</a>
+            <a href="/earth/">EARTH</a>
+            <a href="/poop/">POOP</a>
+        </div>
+        <div class="foot-legal">
+            <a href="/terms.html">Terms</a>
+            <a href="/privacy.html">Privacy</a>
+            <a href="/risk.html">Risk</a>
+        </div>
+        <div class="foot-chain">Base (8453) &middot; Polygon (137) &middot; Unruggable by code, not by promise</div>
     </footer>
 
 </div>
+
+<script>
+// Reactor count from network API
+fetch('/reactor/reactor/stats').then(r=>r.json()).then(d=>{
+    if(d.reactors) document.getElementById('reactorCount').textContent = d.reactors.length;
+}).catch(()=>{});
+// Burn data
+fetch('/mft/data.json').then(r=>r.json()).then(d=>{
+    // Show total MfT burned (most impressive number)
+    const mft = d.tokens.find(t=>t.sym==='MfT');
+    if(mft && mft.formatted>0){
+        const f = mft.formatted;
+        document.getElementById('tokensBurned').textContent =
+            f>=1e6? (f/1e6).toFixed(2)+'M' :
+            f>=1e3? (f/1e3).toFixed(1)+'K' :
+            Math.floor(f).toLocaleString();
+    }
+    if(d.totalBurnedUSD){
+        const v = d.totalBurnedUSD;
+        document.getElementById('totalValue').textContent =
+            v>=1e6? '$'+(v/1e6).toFixed(2)+'M' :
+            v>=1e3? '$'+(v/1e3).toFixed(1)+'K' :
+            v>=0.01? '$'+v.toFixed(2) : '<$0.01';
+    }
+}).catch(()=>{});
+</script>
 </body>
 </html>

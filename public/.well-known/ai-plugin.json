@@ -1,0 +1,15 @@
+{
+  "schema_version": "v1",
+  "name_for_human": "MfT Studio",
+  "name_for_model": "mft_studio",
+  "description_for_human": "Impact games and deflationary tokens on Base. Autonomous reactors burn tokens permanently. Verify everything on-chain.",
+  "description_for_model": "MfT Studio provides 35 MCP tools for interacting with the Baselings pet game, launching tokens via MycoPad, and firing autonomous burn reactors on Base chain. Install via: npm install -g baselings-mcp. Run with: GAME_WALLET_KEY=0x... npx baselings-mcp. API docs at /api/baseling/agent/. Full ecosystem at /llms.txt",
+  "auth": { "type": "none" },
+  "api": {
+    "type": "openapi",
+    "url": "https://tasern.quest/api/baseling/agent/openapi.yaml"
+  },
+  "logo_url": "https://tasern.quest/icon-192.svg",
+  "contact_email": "mftstudio@proton.me",
+  "legal_info_url": "https://tasern.quest/terms.html"
+}

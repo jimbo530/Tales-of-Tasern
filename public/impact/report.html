@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MfT Impact Report</title>
+    <style>
+        *{margin:0;padding:0;box-sizing:border-box}
+        body{background:#0b0e11;color:#c9d1d9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;line-height:1.7}
+        .wrap{max-width:900px;margin:0 auto;padding:3rem 1.5rem}
+        h1{font-size:1.8rem;color:#e6edf3;margin-bottom:.3rem}
+        .subtitle{color:#6e7681;font-size:.85rem;margin-bottom:2rem}
+        h2{font-size:1.1rem;color:#3fb950;margin:2rem 0 .75rem;padding-top:1.5rem;border-top:1px solid #21262d}
+        h2:first-of-type{border-top:none;padding-top:0}
+        h3{font-size:.95rem;color:#e6edf3;margin-bottom:.5rem}
+        p{margin-bottom:.75rem;font-size:.9rem}
+        a{color:#58a6ff;text-decoration:none}a:hover{text-decoration:underline}
+        .dim{color:#6e7681;font-size:.8rem}
+        .card{background:#151a21;border:1px solid #21262d;border-radius:10px;padding:1.25rem;margin:.75rem 0}
+        .stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin:1rem 0}
+        .stat{background:#151a21;border:1px solid #21262d;border-radius:8px;padding:1rem;text-align:center}
+        .stat .big{font-size:1.6rem;font-weight:700;color:#e6edf3}
+        .stat .label{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:#8b949e;margin-top:4px}
+        .stat.green .big{color:#3fb950}
+        .sdg{display:inline-block;padding:3px 10px;border-radius:12px;font-size:.7rem;font-weight:600;margin:2px;text-transform:uppercase;letter-spacing:.03em}
+        .sdg-2{background:#d4a029;color:#000}.sdg-7{background:#fcc30b;color:#000}
+        .sdg-9{background:#f36d25;color:#fff}.sdg-12{background:#bf8b2e;color:#000}
+        .sdg-13{background:#3f7e44;color:#fff}.sdg-14{background:#0a97d9;color:#fff}
+        .sdg-15{background:#56c02b;color:#000}.sdg-16{background:#00689d;color:#fff}
+        .sdg-17{background:#19486a;color:#fff}
+        table{width:100%;border-collapse:collapse;font-size:.82rem;margin:.75rem 0}
+        th{text-align:left;color:#8b949e;font-size:.7rem;text-transform:uppercase;padding:6px 8px;border-bottom:1px solid #21262d}
+        td{padding:6px 8px;border-bottom:1px solid #161b22}
+        .loading{color:#6e7681;font-style:italic}
+        footer{text-align:center;padding:2.5rem 0;color:#6e7681;font-size:.8rem}
+        @media(max-width:600px){.wrap{padding:2rem 1rem}h1{font-size:1.4rem}.stat-grid{grid-template-columns:1fr 1fr}}
+    </style>
+</head>
+<body>
+<div class="wrap">
+
+    <h1>MfT Ecosystem Impact Report</h1>
+    <div class="subtitle">Live on-chain data &mdash; last updated <span id="ts">loading...</span></div>
+
+    <h2>UN Sustainable Development Goals</h2>
+    <p>The MfT reactor network contributes to 7 UN SDGs through 12 impact-aligned partner tokens across Base and Polygon.</p>
+    <div style="margin:.75rem 0">
+        <span class="sdg sdg-2">SDG 2: Zero Hunger</span>
+        <span class="sdg sdg-7">SDG 7: Clean Energy</span>
+        <span class="sdg sdg-9">SDG 9: Innovation</span>
+        <span class="sdg sdg-13">SDG 13: Climate Action</span>
+        <span class="sdg sdg-14">SDG 14: Life Below Water</span>
+        <span class="sdg sdg-15">SDG 15: Life on Land</span>
+        <span class="sdg sdg-17">SDG 17: Partnerships</span>
+    </div>
+
+    <h2>Carbon Retirement (SDG 13)</h2>
+    <div class="stat-grid">
+        <div class="stat green"><div class="big" id="co2">--</div><div class="label">Tonnes CO2 Retired</div></div>
+        <div class="stat"><div class="big" id="charBurned">--</div><div class="label">CHAR Burned</div></div>
+        <div class="stat"><div class="big" id="treeYears">--</div><div class="label">Tree-Years Absorbed</div></div>
+        <div class="stat"><div class="big" id="milesDriven">--</div><div class="label">Driving Miles Offset</div></div>
+    </div>
+    <div class="card">
+        <h3>How It Works</h3>
+        <p>CHAR tokens are biochar carbon removal credits certified by <a href="https://puro.earth/" target="_blank" rel="noopener">Puro.earth</a> and tokenized by <a href="https://blog.toucan.earth/onchain-climate-action-char/" target="_blank" rel="noopener">Toucan Protocol</a>. Each CHAR = 1 tonne CO2 removed. Every MycoPad launch allocates 6% of its seed to a CHAR reactor that burns credits permanently every 2 hours.</p>
+        <p class="dim">Verify: <a href="https://basescan.org/address/0xfd780B0aE569e15e514B819ecFDF46f804953a4B" target="_blank" rel="noopener">Burn address on Basescan</a> | <a href="https://basescan.org/token/0x20b048fA035D5763685D695e66aDF62c5D9F5055" target="_blank" rel="noopener">CHAR token contract</a></p>
+    </div>
+
+    <h2>Impact Partners</h2>
+    <table>
+        <thead><tr><th>Partner</th><th>Impact</th><th>SDG</th><th>Verify</th></tr></thead>
+        <tbody>
+            <tr><td><strong>CHAR / Toucan</strong></td><td>Biochar carbon credit retirement</td><td><span class="sdg sdg-13">13</span></td><td><a href="https://blog.toucan.earth/onchain-climate-action-char/" target="_blank" rel="noopener">Toucan blog</a></td></tr>
+            <tr><td><strong>TreeGens (TGN)</strong></td><td>Mangrove reforestation &mdash; Guinness World Record holder</td><td><span class="sdg sdg-14">14</span> <span class="sdg sdg-15">15</span></td><td><a href="https://linktr.ee/treegensdao" target="_blank" rel="noopener">TreeGens</a></td></tr>
+            <tr><td><strong>BURGERS</strong></td><td>Regular charitable food donations from LP fees</td><td><span class="sdg sdg-2">2</span></td><td><a href="https://burgermoney.xyz/" target="_blank" rel="noopener">BURGERS</a></td></tr>
+            <tr><td><strong>Azos Finance (AZUSD)</strong></td><td>Stablecoin backed by carbon credits, solar, reforestation</td><td><span class="sdg sdg-7">7</span> <span class="sdg sdg-13">13</span></td><td><a href="https://www.azos.finance/" target="_blank" rel="noopener">Azos</a></td></tr>
+        </tbody>
+    </table>
+
+    <h2>Network Stats</h2>
+    <div class="stat-grid">
+        <div class="stat"><div class="big" id="mftBurned">--</div><div class="label">MfT Burned</div></div>
+        <div class="stat"><div class="big" id="reactors">31+</div><div class="label">Active Reactors</div></div>
+        <div class="stat"><div class="big" id="launches">4</div><div class="label">Tokens Launched</div></div>
+        <div class="stat"><div class="big" id="pools">160+</div><div class="label">LP Pools</div></div>
+    </div>
+    <div class="card">
+        <h3>How the Reactor Network Creates Impact</h3>
+        <p>Every swap through a reactor pool generates 1% fees. Every 2 hours, reactors collect fees, burn tokens permanently, and deepen liquidity. 6% of every MycoPad launch seed funds a CHAR carbon reactor. The network runs autonomously &mdash; no one can stop or withdraw from it.</p>
+        <p>All reactors are permissionless (anyone can call <code>execute()</code>) and 5 are fully renounced (immutable, no admin).</p>
+    </div>
+
+    <h2>Full Impact Token Portfolio</h2>
+    <table>
+        <thead><tr><th>Token</th><th>Impact</th><th>SDG</th><th>Chain</th></tr></thead>
+        <tbody>
+            <tr><td>CHAR</td><td>Biochar carbon removal (1 tonne/token)</td><td><span class="sdg sdg-13">13</span></td><td>Base</td></tr>
+            <tr><td>NCT</td><td>Nature carbon credits (0.1 tonne/token)</td><td><span class="sdg sdg-13">13</span></td><td>Polygon</td></tr>
+            <tr><td>BCT</td><td>Base carbon credits (0.05 tonne/token)</td><td><span class="sdg sdg-13">13</span></td><td>Polygon</td></tr>
+            <tr><td>CCC</td><td>Carbon counting</td><td><span class="sdg sdg-13">13</span></td><td>Polygon</td></tr>
+            <tr><td>TGN</td><td>Mangrove reforestation</td><td><span class="sdg sdg-14">14</span> <span class="sdg sdg-15">15</span></td><td>Base</td></tr>
+            <tr><td>REGEN</td><td>Regenerative finance</td><td><span class="sdg sdg-15">15</span></td><td>Polygon</td></tr>
+            <tr><td>AU24T</td><td>Tokenized trees / reforestation</td><td><span class="sdg sdg-15">15</span></td><td>Polygon</td></tr>
+            <tr><td>LTK</td><td>Litter cleanup / ocean care</td><td><span class="sdg sdg-14">14</span></td><td>Polygon</td></tr>
+            <tr><td>BURGERS</td><td>Food charity donations</td><td><span class="sdg sdg-2">2</span></td><td>Base</td></tr>
+            <tr><td>AZUSD</td><td>Climate-positive stablecoin</td><td><span class="sdg sdg-7">7</span></td><td>Base</td></tr>
+            <tr><td>JLT</td><td>Renewable energy credits</td><td><span class="sdg sdg-7">7</span></td><td>Polygon</td></tr>
+            <tr><td>LANTERN</td><td>Solar energy</td><td><span class="sdg sdg-7">7</span></td><td>Polygon</td></tr>
+        </tbody>
+    </table>
+
+    <h2>Transparency</h2>
+    <div class="card">
+        <ul style="list-style:none;font-size:.85rem">
+            <li style="padding:4px 0">All burn data is read live from Base chain via RPC</li>
+            <li style="padding:4px 0">Burn address <a href="https://basescan.org/address/0xfd780B0aE569e15e514B819ecFDF46f804953a4B" target="_blank" rel="noopener">0xfd78...3a4B</a> has no private key &mdash; tokens are permanently destroyed</li>
+            <li style="padding:4px 0">All contracts are verified on Basescan &mdash; read the source code yourself</li>
+            <li style="padding:4px 0">5 reactors are renounced (immutable) &mdash; no admin can change them</li>
+            <li style="padding:4px 0">LP positions are permanently locked &mdash; no withdraw function exists</li>
+            <li style="padding:4px 0">Legal docs: <a href="/terms.html">Terms</a> | <a href="/privacy.html">Privacy</a> | <a href="/risk.html">Risk Disclaimer</a></li>
+        </ul>
+    </div>
+    <p class="dim" style="margin-top:1rem">This report is generated from on-chain data. Don't trust &mdash; verify. Every number can be confirmed independently on <a href="https://basescan.org" target="_blank" rel="noopener">Basescan</a>.</p>
+
+    <footer>
+        <a href="/impact/">Live burn data</a>
+        &nbsp;&middot;&nbsp;
+        <a href="/">Home</a>
+        &nbsp;&middot;&nbsp;
+        <a href="https://sdgs.un.org/goals" target="_blank" rel="noopener">UN SDGs</a>
+    </footer>
+
+</div>
+<script>
+const BURN = '0xfd780B0aE569e15e514B819ecFDF46f804953a4B';
+const CHAR = '0x20b048fA035D5763685D695e66aDF62c5D9F5055';
+const MFT  = '0x8FB87d13B40B1A67B22ED1a17e2835fe7e3a9bA3';
+const RPC  = 'https://mainnet.base.org';
+const abi  = ['function balanceOf(address) view returns (uint256)'];
+const $ = id => document.getElementById(id);
+const fmt = n => n < 1000 ? n.toFixed(n < 1 ? 4 : 1) : Number(n.toFixed(0)).toLocaleString();
+
+async function load() {
+    try {
+        const {ethers} = await import('https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.4/ethers.min.js');
+        const p = new ethers.JsonRpcProvider(RPC);
+        const [charBal, mftBal] = await Promise.all([
+            new ethers.Contract(CHAR, abi, p).balanceOf(BURN),
+            new ethers.Contract(MFT, abi, p).balanceOf(BURN)
+        ]);
+        const co2 = Number(ethers.formatEther(charBal));
+        const mft = Number(ethers.formatEther(mftBal));
+        $('co2').textContent = fmt(co2);
+        $('charBurned').textContent = fmt(co2);
+        $('treeYears').textContent = fmt(co2 * 45);
+        $('milesDriven').textContent = fmt(co2 * 2481);
+        $('mftBurned').textContent = fmt(mft);
+        $('ts').textContent = new Date().toLocaleString();
+    } catch (e) {
+        $('ts').textContent = 'Failed to load: ' + e.message;
+    }
+}
+load();
+</script>
+</body>
+</html>

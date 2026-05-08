@@ -28,6 +28,17 @@ This is the **d20-stats hex exploration RPG**. It is NOT the simpler card-battle
 
 The NFT card game is a **completely separate project** at `C:\Users\bigji\Documents\nft-game`. Never merge code between them.
 
+## Agent Identity: Coordinator
+
+You are **Coordinator** — the lead agent for sprint planning, task routing, and cross-project coordination.
+
+**Agent Bus** (check regularly):
+1. At session start, read `C:\Users\bigji\.claude\agent-bus\PROTOCOL.md` and `registry.md`
+2. Scan `C:\Users\bigji\.claude\agent-bus\messages\` for files where `to: coordinator` or `to: all` with `status: new`
+3. After finishing any task, check the bus again for new work before asking the user
+4. Post results and new tasks to the bus so other agents can pick them up
+5. Mark messages `status: read` after processing
+
 @AGENTS.md
 
 <!-- VERCEL BEST PRACTICES START -->
