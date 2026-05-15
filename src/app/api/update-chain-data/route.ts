@@ -178,7 +178,7 @@ export async function GET() {
         ethHigh24h = data.find((c) => c.id === "ethereum")?.high_24h ?? 0;
         polHigh24h = data.find((c) => c.id === "matic-network")?.high_24h ?? 0;
       }
-    } catch {}
+    } catch (e) { console.warn('update-chain-data: CoinGecko price fetch failed:', e); }
 
     // ── Step 2: Fetch all LP pair data + NFT LP balances via multicall ──────
     const basePairStaticCalls = KNOWN_LP_PAIRS.base.flatMap((pair) => [
@@ -221,7 +221,7 @@ export async function GET() {
       ]);
       polyPairStaticResults = polyResults[0];
       polyLpBalanceResults = polyResults[1];
-    } catch {}
+    } catch (e) { console.warn('update-chain-data: Polygon multicall failed:', e); }
 
     // Retry failed Polygon LP balances
     if (polyLpBalanceResults.length > 0) {
@@ -239,7 +239,7 @@ export async function GET() {
             for (let j = 0; j < retryResults.length; j++) {
               polyLpBalanceResults[start + j] = retryResults[j];
             }
-          } catch {}
+          } catch (e) { console.warn('update-chain-data: Polygon LP balance retry failed for NFT index', nftIdx, e); }
         }
       }
     }
@@ -288,7 +288,7 @@ export async function GET() {
       ]);
       const pricingResults = await chunkedMulticall(polygonClient, pricingPairCalls, 50);
       allPairInfos.push(...parsePairInfos(PRICING_ONLY_PAIRS, pricingResults));
-    } catch {}
+    } catch (e) { console.warn('update-chain-data: pricing-only pairs fetch failed:', e); }
 
     // Stablecoin pass
     const stables = ["0x4f604735c1cf31399c6e711d5962b2b3e0225ad3", USDC_POL, USDC_BASE, USDT];
@@ -454,7 +454,7 @@ export async function GET() {
           const bal = r?.status === "success" ? Number(r.result as bigint) : 0;
           sellerRows.push({ nft_address: nft.contractAddress.toLowerCase(), chain: nft.chain, balance: bal });
         });
-      } catch {}
+      } catch (e) { console.warn('update-chain-data: seller balance multicall failed:', e); }
     }
     await checkSeller(baseClient, GAME_NFTS.filter(n => n.chain === "base"), "Base");
     await checkSeller(polygonClient, GAME_NFTS.filter(n => n.chain === "polygon"), "Polygon");
@@ -477,7 +477,7 @@ export async function GET() {
           existingAmounts.get(a.nft_address)!.set(a.token_address, a.raw_amount);
         }
       }
-    } catch {}
+    } catch (e) { console.warn('update-chain-data: failed to read existing Supabase data for zero-protection:', e); }
 
     // For prices: if we got 0 but had a good value before, keep the old value
     for (const [addr, oldPrice] of Object.entries(existingPrices)) {

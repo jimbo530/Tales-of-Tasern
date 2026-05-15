@@ -13,9 +13,11 @@ import {
   type HexCoord,
 } from "@/lib/hexGrid";
 import { CLASSES, type CharacterClass } from "@/lib/classes";
-import { isCharge, isConscious, isAlive, isDead, isUnconscious, type EnemySpec, type SpellUnitInfo, abilityMod } from "@/lib/hexCombat";
+import { isCharge, isConscious, isAlive, isDead, isUnconscious, createMonsterSpec, type EnemySpec, type SpellUnitInfo, abilityMod } from "@/lib/hexCombat";
 import { getSpell, getSpellSlots, bonusSpells, type Spell } from "@/lib/spells";
 import { getAvailableAbilities, ABILITY_DEFS, type AvailableAbility } from "@/lib/classAbilities";
+import { MONSTERS } from "@/lib/monsters";
+import type { DungeonRoom } from "@/lib/dungeons";
 
 export type QuestEncounter = {
   questId: string;
@@ -30,6 +32,10 @@ export type QuestEncounter = {
   playerKnownSpells?: string[];           // spell IDs known/prepared
   playerSpellSlotsUsed?: number[];        // current slots expended
   playerLevel?: number;                   // character level for caster level
+  dungeon?: {
+    template: import("@/lib/dungeons").DungeonTemplate;
+    roomIndex: number;
+  };
 };
 
 type Props = {
@@ -52,6 +58,34 @@ type Props = {
   onDefeatChoice?: (choice: "perish" | "rescue") => void;  // death penalty choice
   playerUseRopeBonus?: number;  // Use Rope skill ranks + DEX mod for binding prisoners
 };
+
+function dungeonRoomToSpecs(room: DungeonRoom, playerLevel: number): EnemySpec[] {
+  const specs: EnemySpec[] = [];
+  for (const def of room.enemies) {
+    if (def.type === "monster") {
+      const monster = MONSTERS.find(m => m.id === def.monsterId);
+      if (!monster) continue;
+      const count = def.count === "scale"
+        ? Math.floor(Math.random() * 3) + 2 + Math.floor(playerLevel / 2)
+        : def.count;
+      for (let i = 0; i < count; i++) {
+        const spec = createMonsterSpec(monster, def.emoji);
+        if (def.nameOverride) spec.name = def.nameOverride;
+        if (def.hpBoost) spec.hpOverride = (spec.hpOverride ?? monster.hp) + def.hpBoost;
+        specs.push(spec);
+      }
+    } else {
+      specs.push({
+        name: def.name,
+        imageEmoji: def.emoji,
+        stats: def.stats as EnemySpec["stats"],
+        subtypes: def.subtypes,
+        hpOverride: def.hpOverride,
+      });
+    }
+  }
+  return specs;
+}
 
 // ── D20 Roll Animation ──────────────────────────────────────────────────────
 
@@ -123,6 +157,7 @@ function phaseLabel(phase: BattlePhase): string {
     case "enemyTurn": return "Enemy Turn";
     case "victory": return "Victory!";
     case "defeat": return "Defeat!";
+    case "room_cleared": return "Room Cleared";
     default: return "";
   }
 }
@@ -147,7 +182,7 @@ export function HexBattle({ characters, questEncounter, playerFeats, playerWeapo
   const questStarted = useRef(false);
   const [damagePopups, setDamagePopups] = useState<Array<{ id: string; x: number; y: number; text: string; type: 'damage' | 'heal' | 'miss'; timestamp: number }>>([]);
 
-  const { state, activeUnit, isPlayerTurn, startBattle, startQuestBattle, clickHex, playerRoll, skipMove, readyAttack, endTurn, castSpell, useAbility, attemptRetreat, takeAoO, passAoO } = useHexBattle();
+  const { state, activeUnit, isPlayerTurn, startBattle, startQuestBattle, clickHex, playerRoll, skipMove, readyAttack, endTurn, castSpell, useAbility, attemptRetreat, takeAoO, passAoO, isDungeon, dungeonRoomIndex, dungeonTotalRooms, dungeonName, dungeonRoomCleared, canDungeonRest, advanceRoom, dungeonShortRest, dungeonRetreat } = useHexBattle();
 
   /** Build SpellUnitInfo from props + selected class */
   const buildSpellInfo = useCallback((char: NftCharacter, cls: CharacterClass): SpellUnitInfo | undefined => {
@@ -243,10 +278,41 @@ export function HexBattle({ characters, questEncounter, playerFeats, playerWeapo
       if (char && cls) {
         questStarted.current = true;
         const si = buildSpellInfo(char, cls);
-        startQuestBattle(char, questEncounter.enemies, cls, questEncounter.playerFeats ?? playerFeats, questEncounter.playerWeapon ?? playerWeapon, si, playerCurrentHp, playerFollowers, playerProgression, extraHeroes, playerArmorEffect, playerShieldEffect);
+        const dungeonParam = questEncounter.dungeon ? {
+          dungeonId: questEncounter.dungeon.template.id,
+          dungeonName: questEncounter.dungeon.template.name,
+          dungeonRoomIndex: questEncounter.dungeon.roomIndex,
+          dungeonTotalRooms: questEncounter.dungeon.template.rooms.length,
+          dungeonCanRest: questEncounter.dungeon.template.rooms[questEncounter.dungeon.roomIndex]?.canRest,
+        } : undefined;
+        startQuestBattle(char, questEncounter.enemies, cls, questEncounter.playerFeats ?? playerFeats, questEncounter.playerWeapon ?? playerWeapon, si, playerCurrentHp, playerFollowers, playerProgression, extraHeroes, playerArmorEffect, playerShieldEffect, dungeonParam);
       }
     }
   }, [questEncounter, selectedChar, selectedClass, state.phase, startQuestBattle, buildSpellInfo]);
+
+  // Dungeon room transition: when useHexBattle sets phase to "setup" after DUNGEON_NEXT_ROOM,
+  // load the next room's enemies and re-start the battle with current player HP.
+  useEffect(() => {
+    if (!questEncounter?.dungeon || state.phase !== "setup" || !questStarted.current) return;
+    if (!isDungeon || dungeonRoomIndex === 0) return;
+    const template = questEncounter.dungeon.template;
+    const room = template.rooms[dungeonRoomIndex];
+    if (!room) return;
+    const char = questEncounter.playerChar ?? selectedChar;
+    const cls = questEncounter.playerClass ?? selectedClass;
+    if (!char || !cls) return;
+    const si = buildSpellInfo(char, cls);
+    const roomEnemies = dungeonRoomToSpecs(room, questEncounter.playerLevel ?? 1);
+    const survivingPlayer = state.units.find(u => u.id === "player");
+    const currentPlayerHp = survivingPlayer ? survivingPlayer.currentHp : undefined;
+    startQuestBattle(char, roomEnemies, cls, questEncounter.playerFeats ?? playerFeats, questEncounter.playerWeapon ?? playerWeapon, si, currentPlayerHp ?? playerCurrentHp, playerFollowers, playerProgression, extraHeroes, playerArmorEffect, playerShieldEffect, {
+      dungeonId: template.id,
+      dungeonName: template.name,
+      dungeonRoomIndex: dungeonRoomIndex,
+      dungeonTotalRooms: template.rooms.length,
+      dungeonCanRest: room.canRest,
+    });
+  }, [state.phase, isDungeon, dungeonRoomIndex]);
 
   // Normal battle: start when all selections made
   useEffect(() => {
@@ -608,7 +674,7 @@ export function HexBattle({ characters, questEncounter, playerFeats, playerWeapo
           <div style={{ width: 70 }} />
         )}
         <span className="text-sm font-black tracking-widest uppercase" style={{ color: "#f0d070", fontFamily: "'Cinzel Decorative', 'Cinzel', serif" }}>
-          {questEncounter ? questEncounter.questName : selectedClass!.emoji} — Round {state.round} — {phaseLabel(state.phase)}
+          {isDungeon ? `${dungeonName} ${dungeonRoomIndex + 1}/${dungeonTotalRooms}` : questEncounter ? questEncounter.questName : selectedClass!.emoji} — Round {state.round} — {phaseLabel(state.phase)}
         </span>
         {isPlayerTurn && state.phase === "playerTurn" && (
           <button onClick={endTurn} className="px-3 py-1 rounded text-xs font-bold uppercase tracking-widest"
@@ -1035,12 +1101,62 @@ export function HexBattle({ characters, questEncounter, playerFeats, playerWeapo
             </div>
           )}
 
+          {/* Dungeon Room Cleared */}
+          {dungeonRoomCleared && questEncounter?.dungeon && (() => {
+            const template = questEncounter.dungeon.template;
+            const room = template.rooms[dungeonRoomIndex];
+            const nextRoom = template.rooms[dungeonRoomIndex + 1];
+            return (
+              <div className="flex flex-col items-center gap-3 px-4 py-5 rounded-lg" style={{ background: "rgba(168,85,247,0.1)", border: "1px solid rgba(168,85,247,0.4)" }}>
+                <span className="text-lg font-black tracking-widest uppercase" style={{ color: "rgba(168,85,247,0.9)", fontFamily: "'Cinzel Decorative', 'Cinzel', serif" }}>
+                  Room Cleared
+                </span>
+                <span className="text-xs font-bold text-center" style={{ color: "rgba(232,213,176,0.8)" }}>
+                  {room?.name ?? `Room ${dungeonRoomIndex + 1}`} of {dungeonTotalRooms}
+                </span>
+                {nextRoom && (
+                  <p className="text-xs text-center max-w-xs" style={{ color: "rgba(232,213,176,0.6)" }}>
+                    {nextRoom.description.length > 200 ? nextRoom.description.slice(0, 200) + "..." : nextRoom.description}
+                  </p>
+                )}
+                <div className="flex gap-2 flex-wrap justify-center">
+                  <button onClick={advanceRoom}
+                    className="px-4 py-2 rounded text-xs font-bold uppercase tracking-widest transition-all hover:scale-105"
+                    style={{ background: "rgba(168,85,247,0.2)", color: "rgba(168,85,247,0.9)", border: "1px solid rgba(168,85,247,0.5)" }}>
+                    Next Room
+                  </button>
+                  {canDungeonRest && (
+                    <button onClick={dungeonShortRest}
+                      className="px-4 py-2 rounded text-xs font-bold uppercase tracking-widest transition-all hover:scale-105"
+                      style={{ background: "rgba(74,222,128,0.15)", color: "rgba(74,222,128,0.8)", border: "1px solid rgba(74,222,128,0.4)" }}>
+                      Short Rest
+                    </button>
+                  )}
+                  <button onClick={dungeonRetreat}
+                    className="px-4 py-2 rounded text-xs font-bold uppercase tracking-widest transition-all hover:scale-105"
+                    style={{ background: "rgba(251,191,36,0.1)", color: "rgba(251,191,36,0.7)", border: "1px solid rgba(251,191,36,0.3)" }}>
+                    Retreat
+                  </button>
+                </div>
+                <span style={{ fontSize: "0.5rem", color: "rgba(232,213,176,0.4)" }}>
+                  {dungeonName} — Room {dungeonRoomIndex + 1}/{dungeonTotalRooms}
+                  {canDungeonRest ? " — Safe to rest here" : ""}
+                </span>
+              </div>
+            );
+          })()}
+
           {/* Victory / Defeat */}
           {state.phase === "victory" && (
             <div className="flex flex-col items-center gap-3 px-4 py-6 rounded-lg" style={{ background: "rgba(74,222,128,0.1)", border: "1px solid rgba(74,222,128,0.4)" }}>
               <span className="text-2xl font-black tracking-widest uppercase" style={{ color: "rgba(74,222,128,0.9)", fontFamily: "'Cinzel Decorative', 'Cinzel', serif" }}>
-                Victory!
+                {isDungeon ? "Dungeon Complete!" : "Victory!"}
               </span>
+              {isDungeon && questEncounter?.dungeon && (
+                <p className="text-xs text-center max-w-xs" style={{ color: "rgba(232,213,176,0.7)" }}>
+                  {questEncounter.dungeon.template.completionText}
+                </p>
+              )}
 
               {/* Prisoner binding — unconscious enemies can be tied up */}
               {(() => {

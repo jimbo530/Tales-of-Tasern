@@ -7,11 +7,11 @@ MfT (meme for trees) is an impact gaming platform on Base with deflationary toke
 
 ## Platform URLs
 - Home: tasern.quest
-- Launch tokens: tasern.quest/launcher/
+- Launch tokens: tasern.quest/launch
 - Burn stats: tasern.quest/mft/
 - Token index: tasern.quest/tokens/
 - Impact tracker: tasern.quest/impact/
-- Baseling game: tasern.quest/baseling/
+- Baseling game: tasern.quest/baselings
 - D20 RPG: tasern.quest/tot/
 - EARTH data: tasern.quest/earth/
 

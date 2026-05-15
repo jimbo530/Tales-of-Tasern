@@ -1470,6 +1470,251 @@ const DEMONIC_2: DungeonTemplate = {
 };
 
 // ---------------------------------------------------------------------------
+// FOREST theme — spiders, fey, beasts, overgrown ruins (levels 2-6)
+// ---------------------------------------------------------------------------
+
+const FOREST_1: DungeonTemplate = {
+  id: "forest_1",
+  name: "The Webwood Hollow",
+  theme: "forest",
+  minLevel: 2,
+  maxLevel: 5,
+  rooms: [
+    {
+      roomId: "forest_1_r1",
+      name: "Overgrown Entrance",
+      description:
+        "A cleft in the hillside choked with hanging moss and silk strands thick as rope. Broken branches and animal bones litter the threshold. The webs vibrate faintly with each step you take, sending signals deeper into the dark. Something is home, and it knows you are here.",
+      enemies: [
+        { type: "monster", monsterId: "small_spider", emoji: "\uD83D\uDD77\uFE0F", count: "scale" },
+      ],
+      lootChance: 0.2,
+      lootTier: "minor",
+      canRest: true,
+      isBossRoom: false,
+    },
+    {
+      roomId: "forest_1_r2",
+      name: "Cocoon Chamber",
+      description:
+        "The passage widens into a natural cavern carpeted in pale silk. Dozens of cocoons hang from the ceiling, some still twitching. An ettercap crouches in the center, methodically wrapping a deer carcass while spiders the size of dogs patrol the perimeter. The air is thick with the sweet-rot smell of venom-dissolved prey.",
+      enemies: [
+        { type: "monster", monsterId: "ettercap", emoji: "\uD83D\uDD77\uFE0F", count: 1 },
+        { type: "monster", monsterId: "medium_spider", emoji: "\uD83D\uDD77\uFE0F", count: "scale" },
+      ],
+      lootChance: 0.4,
+      lootTier: "minor",
+      canRest: false,
+      isBossRoom: false,
+    },
+    {
+      roomId: "forest_1_r3",
+      name: "The Broodmother's Den",
+      description:
+        "A vast underground grotto lit by bioluminescent fungi. In its center squats an enormous spider, her abdomen pulsing with egg sacs. Webs connect every surface in a three-dimensional lattice that trembles with the weight of her brood. She raises her forelegs and hisses — a sound like water on hot iron.",
+      enemies: [
+        {
+          type: "custom",
+          name: "Broodmother Spider",
+          emoji: "\uD83D\uDD77\uFE0F",
+          stats: {
+            str: 7, dex: 7, con: 6, int: 1, wis: 3, cha: 1,
+            ac: 16, naturalArmor: 3, atk: 5, speed: 30,
+            lightningDmg: 0, fireDmg: 0,
+            ...DEFAULT_BOON_FIELDS,
+          },
+          subtypes: ["vermin", "boss"],
+          hpOverride: 36,
+        },
+        { type: "monster", monsterId: "small_spider", emoji: "\uD83D\uDD77\uFE0F", count: 4 },
+      ],
+      lootChance: 0.7,
+      lootTier: "major",
+      canRest: false,
+      isBossRoom: true,
+    },
+  ],
+  completionText:
+    "The Broodmother curls inward as her legs give way, ichor pooling beneath her massive body. The web network sags and tears, dropping cocoons that split open to reveal only desiccated husks — her victims, not her young. The egg sacs are cold and still. Whatever drove her to nest here, her line ends today. Among the wrapped remains of past adventurers you find gear that still has life in it.",
+};
+
+const FOREST_2: DungeonTemplate = {
+  id: "forest_2",
+  name: "The Green Hag's Grove",
+  theme: "forest",
+  minLevel: 4,
+  maxLevel: 7,
+  rooms: [
+    {
+      roomId: "forest_2_r1",
+      name: "Thornwall Gate",
+      description:
+        "A ring of blackthorn hedge twenty feet high encircles a clearing where no birds sing. The thorns are wrong — too long, too sharp, and some of them are bone. Wolves with matted, bark-like fur pace inside the hedge, their eyes reflecting green light that has no source. They do not growl. They wait.",
+      enemies: [
+        { type: "monster", monsterId: "dire_wolf", emoji: "\uD83D\uDC3A", count: 2 },
+        { type: "monster", monsterId: "wolf", emoji: "\uD83D\uDC3A", count: "scale" },
+      ],
+      lootChance: 0.2,
+      lootTier: "minor",
+      canRest: false,
+      isBossRoom: false,
+    },
+    {
+      roomId: "forest_2_r2",
+      name: "The Rotting Garden",
+      description:
+        "Past the hedge, a garden grows in defiance of season and sense. Black roses bloom beside white mushrooms the size of chairs. A shambling mound of animated compost patrols the rows, tending the garden with appendages that were once human arms. The vegetables here have teeth.",
+      enemies: [
+        { type: "monster", monsterId: "shambling_mound", emoji: "\uD83C\uDF3F", count: 1 },
+        { type: "monster", monsterId: "assassin_vine", emoji: "\uD83C\uDF3F", count: 2 },
+      ],
+      lootChance: 0.4,
+      lootTier: "moderate",
+      canRest: false,
+      isBossRoom: false,
+    },
+    {
+      roomId: "forest_2_r3",
+      name: "The Hag's Cottage",
+      description:
+        "A cottage that should not exist grows from a living oak, its walls of woven branches, its chimney a hollow trunk belching green smoke. Inside, a green hag stirs a cauldron of something that screams when she pokes it. She looks up with yellow eyes and smiles with a mouth full of iron teeth. 'Company,' she says. 'How thoughtful. I was just running low on ingredients.'",
+      enemies: [
+        { type: "monster", monsterId: "green_hag", emoji: "\uD83E\uDDD9\u200D\u2640\uFE0F", count: 1 },
+        { type: "monster", monsterId: "worg", emoji: "\uD83D\uDC3A", count: 2, nameOverride: "Hag's Worg" },
+      ],
+      lootChance: 0.8,
+      lootTier: "major",
+      canRest: false,
+      isBossRoom: true,
+    },
+  ],
+  completionText:
+    "The hag shrieks as your final blow connects, her illusions peeling away to reveal the true cottage — a rotting hollow stump full of stolen children's shoes and jars of pickled eyes. Her cauldron cracks and spills, the green fire dying to mundane smoke. The thorns around the grove are already withering, and somewhere beyond them, birds begin to sing again. In her hoard you find things taken from better folk.",
+};
+
+// ---------------------------------------------------------------------------
+// COASTAL theme — smugglers, pirates, sea creatures (levels 3-7)
+// ---------------------------------------------------------------------------
+
+const COASTAL_1: DungeonTemplate = {
+  id: "coastal_1",
+  name: "The Smuggler's Caves",
+  theme: "coastal",
+  minLevel: 3,
+  maxLevel: 6,
+  rooms: [
+    {
+      roomId: "coastal_1_r1",
+      name: "Tidal Entrance",
+      description:
+        "A sea cave accessible only at low tide, the entrance crusted with barnacles and the floor slick with kelp. Crates stamped with foreign ports are stacked against the walls, their contents half-unloaded. The smugglers left in a hurry — but not all of them left. Figures with drawn cutlasses emerge from behind the cargo, and they do not look interested in negotiation.",
+      enemies: [
+        { type: "monster", monsterId: "hobgoblin", emoji: "\u2694\uFE0F", count: "scale", nameOverride: "Smuggler" },
+      ],
+      lootChance: 0.35,
+      lootTier: "minor",
+      canRest: true,
+      isBossRoom: false,
+    },
+    {
+      roomId: "coastal_1_r2",
+      name: "Flooded Passage",
+      description:
+        "The cave descends into knee-deep salt water that surges with each distant wave. Phosphorescent algae paints the walls in shifting blue-green light. Sahuagin — fish-folk with tridents and dead black eyes — rise from the water without a ripple. They were using the smugglers' tunnel long before the smugglers found it.",
+      enemies: [
+        { type: "monster", monsterId: "sahuagin", emoji: "\uD83D\uDC1F", count: "scale" },
+      ],
+      lootChance: 0.3,
+      lootTier: "minor",
+      canRest: false,
+      isBossRoom: false,
+    },
+    {
+      roomId: "coastal_1_r3",
+      name: "The Captain's Grotto",
+      description:
+        "A natural cavern converted into a smuggler's throne room. Stolen tapestries hang on the damp walls, a mahogany desk sits on a raised stone platform, and a brass-bound chest overflows with coin. The smuggler captain stands behind the desk with a brace of pistols and a smile that doesn't reach his eyes. His pet crocodile basks in the shallows beside him, one eye open.",
+      enemies: [
+        {
+          type: "custom",
+          name: "Captain Blacktide",
+          emoji: "\uD83C\uDFF4\u200D\u2620\uFE0F",
+          stats: {
+            str: 6, dex: 8, con: 5, int: 5, wis: 4, cha: 6,
+            ac: 17, naturalArmor: 2, atk: 6, speed: 30,
+            lightningDmg: 0, fireDmg: 0,
+            ...DEFAULT_BOON_FIELDS,
+          },
+          subtypes: ["humanoid", "boss"],
+          hpOverride: 42,
+        },
+        { type: "monster", monsterId: "crocodile", emoji: "\uD83D\uDC0A", count: 1 },
+        { type: "monster", monsterId: "hobgoblin", emoji: "\u2694\uFE0F", count: 2, nameOverride: "First Mate" },
+      ],
+      lootChance: 0.85,
+      lootTier: "major",
+      canRest: false,
+      isBossRoom: true,
+    },
+  ],
+  completionText:
+    "Captain Blacktide falls against his own desk, knocking the brass chest to the floor in a cascade of stolen gold. His crocodile, sensing the shift in power, slides into the water and vanishes into a flooded tunnel. The surviving crew throw down their weapons. The cave is yours — and with it, the captain's ledger documenting every bribed harbormaster and corrupt customs official on the Iron Coast.",
+};
+
+const COASTAL_2: DungeonTemplate = {
+  id: "coastal_2",
+  name: "The Drowned Temple",
+  theme: "coastal",
+  minLevel: 5,
+  maxLevel: 8,
+  rooms: [
+    {
+      roomId: "coastal_2_r1",
+      name: "Sunken Narthex",
+      description:
+        "Stone steps descend into a flooded temple half-swallowed by the sea. Saltwater laps at carved pillars depicting storm gods whose names were old when Kardov's Gate was mud huts. The ceiling drips with mineral deposits like frozen rain. In the murky water, shapes circle — too large for fish, too deliberate for debris.",
+      enemies: [
+        { type: "monster", monsterId: "sahuagin", emoji: "\uD83D\uDC1F", count: "scale", nameOverride: "Temple Guard" },
+        { type: "monster", monsterId: "giant_constrictor", emoji: "\uD83D\uDC0D", count: 1, nameOverride: "Sea Serpent" },
+      ],
+      lootChance: 0.3,
+      lootTier: "minor",
+      canRest: false,
+      isBossRoom: false,
+    },
+    {
+      roomId: "coastal_2_r2",
+      name: "Hall of Tides",
+      description:
+        "A vast hall where the tide rushes in through broken walls on a schedule older than memory. The floor is a mosaic depicting a kraken embracing the world, its tiles worn smooth by centuries of salt water. Giant scorpions have nested in the dry alcoves, their carapaces encrusted with coral. They click and hiss as the water rises around their legs.",
+      enemies: [
+        { type: "monster", monsterId: "monstrous_scorpion_lg", emoji: "\uD83E\uDD82", count: 2, nameOverride: "Reef Scorpion" },
+        { type: "monster", monsterId: "sahuagin", emoji: "\uD83D\uDC1F", count: 3, nameOverride: "Sahuagin Raider" },
+      ],
+      lootChance: 0.4,
+      lootTier: "moderate",
+      canRest: false,
+      isBossRoom: false,
+    },
+    {
+      roomId: "coastal_2_r3",
+      name: "The Storm Altar",
+      description:
+        "The innermost sanctum is impossibly dry despite being below the waterline. A wall of force holds the ocean at bay on three sides, revealing the seafloor and the dark water beyond like windows into the abyss. On a basalt altar, a hydra coils — five heads swaying independently, each watching a different approach. Lightning plays across the ceiling in arcs that smell of ozone and old magic. This thing was put here to guard something. It has not moved from this spot in a hundred years, and it is very, very hungry.",
+      enemies: [
+        { type: "monster", monsterId: "hydra_5head", emoji: "\uD83D\uDC32", count: 1, nameOverride: "Storm Hydra", hpBoost: 10 },
+      ],
+      lootChance: 0.9,
+      lootTier: "major",
+      canRest: false,
+      isBossRoom: true,
+    },
+  ],
+  completionText:
+    "The Storm Hydra's last head hits the altar with a crack that splits the basalt. The wall of force flickers — for one heart-stopping moment the ocean presses inward — then stabilizes, holding. Whatever ancient magic powers it will outlast you all. On the altar, beneath the hydra's coils, you find the thing it was guarding: a reliquary of storm-blackened silver, its contents still humming with divine charge after centuries underwater.",
+};
+
+// ---------------------------------------------------------------------------
 // Master Template Array
 // ---------------------------------------------------------------------------
 
@@ -1493,4 +1738,10 @@ export const DUNGEON_TEMPLATES: DungeonTemplate[] = [
   // Demonic (2)
   DEMONIC_1,
   DEMONIC_2,
+  // Forest (2)
+  FOREST_1,
+  FOREST_2,
+  // Coastal (2)
+  COASTAL_1,
+  COASTAL_2,
 ];

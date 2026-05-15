@@ -21,7 +21,7 @@ function getCachedStats(): { data: any; timestamp: number } | null {
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (parsed && parsed.data && parsed.timestamp) return parsed;
-  } catch {}
+  } catch (e) { console.warn('getCachedStats: failed to read localStorage cache:', e); }
   return null;
 }
 
@@ -29,7 +29,7 @@ function setCachedStats(data: any) {
   if (typeof window === "undefined") return;
   try {
     localStorage.setItem(STATS_CACHE_KEY, JSON.stringify({ data, timestamp: Date.now() }));
-  } catch {}
+  } catch (e) { console.warn('setCachedStats: failed to write localStorage:', e); }
 }
 
 function getCachedOwnership(wallet: string): { map: Record<string, number>; timestamp: number } | null {
@@ -39,7 +39,7 @@ function getCachedOwnership(wallet: string): { map: Record<string, number>; time
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (parsed && parsed.map && parsed.timestamp) return parsed;
-  } catch {}
+  } catch (e) { console.warn('getCachedOwnership: failed to read localStorage cache:', e); }
   return null;
 }
 
@@ -49,7 +49,7 @@ function setCachedOwnership(wallet: string, map: Map<string, number>) {
     const obj: Record<string, number> = {};
     map.forEach((v, k) => { obj[k] = v; });
     localStorage.setItem(`${OWNERSHIP_CACHE_KEY}-${wallet.toLowerCase()}`, JSON.stringify({ map: obj, timestamp: Date.now() }));
-  } catch {}
+  } catch (e) { console.warn('setCachedOwnership: failed to write localStorage:', e); }
 }
 
 /** Fetch chain data from nft_backing, compute D20 stats client-side */
@@ -166,7 +166,7 @@ export function useNftStats() {
             fetched = true;
             console.log("[ToT] Loaded from Supabase:", data.characters.length, "NFTs");
           }
-        } catch {}
+        } catch (e) { console.warn('useNftStats: Supabase fetch failed:', e); }
 
         // Priority 2: In dev mode, try local file (npm run refresh-stats)
         if (!fetched && process.env.NODE_ENV === "development") {
@@ -177,7 +177,7 @@ export function useNftStats() {
               fetched = true;
               console.log("[ToT] Loaded from local file (dev mode):", data.characters?.length, "NFTs");
             }
-          } catch {}
+          } catch (e) { console.warn('useNftStats: dev local file fetch failed:', e); }
         }
 
         // Priority 3: localStorage cache
@@ -199,7 +199,7 @@ export function useNftStats() {
               fetched = true;
               console.log("[ToT] Loaded from local file cache");
             }
-          } catch {}
+          } catch (e) { console.warn('useNftStats: local file cache fetch failed:', e); }
         }
 
         // Last resort: API
@@ -396,7 +396,7 @@ export function useNftStats() {
             const r = results[i];
             ownershipMap.set(nft.contractAddress.toLowerCase(), r.status === "success" ? Number(r.result as bigint) : 0);
           });
-        } catch {}
+        } catch (e) { console.warn('useNftStats: ownership multicall failed:', e); }
       }
       if (isConnected && address) {
         await checkOwnership(baseClient, GAME_NFTS.filter(n => n.chain === "base"), "Base");

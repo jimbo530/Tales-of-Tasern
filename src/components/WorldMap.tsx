@@ -19,6 +19,7 @@ import { getItemInfo, getItemWeight } from "@/lib/itemRegistry";
 import { ALL_SHIPS, shipsForSale, getShip, purchaseShip, effectiveShipSpeed, hoursPerWaterHex, repairCostGp, type OwnedShip, type Ship as ShipData } from "@/lib/ships";
 import { rollFarmDrop, rollWildernessFoodDrop, rollHuntedFood, type FoodItem, type FreshFoodItem } from "@/lib/foodItems";
 import { ARTIFACT_QUESTS, GONE_ARTIFACT_RUMORS, type ArtifactQuestLeg, type ArtifactEnemyDef } from "@/lib/artifactQuests";
+import { pickDungeon } from "@/lib/dungeons";
 import type { QuestEncounter } from "@/components/HexBattle";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -242,6 +243,51 @@ const FIND_DUNGEON_DESC: Record<HexType, string[]> = {
 };
 
 function pick<T>(arr: T[]): T { return arr[Math.floor(Math.random() * arr.length)]; }
+
+const TERRAIN_TO_DUNGEON_THEME: Record<HexType, string[]> = {
+  forest:   ["forest", "cave"],
+  jungle:   ["forest", "demonic"],
+  swamp:    ["sewer", "demonic"],
+  mountain: ["cave", "dwarven"],
+  desert:   ["crypt", "tower"],
+  plains:   ["crypt", "cave"],
+  town:     ["sewer", "crypt"],
+  coast:    ["coastal"],
+  water:    ["coastal"],
+};
+
+function pickDungeonTheme(hexType: HexType): string {
+  const themes = TERRAIN_TO_DUNGEON_THEME[hexType] ?? ["cave"];
+  return themes[Math.floor(Math.random() * themes.length)];
+}
+
+function dungeonRoomToEnemySpecs(room: import("@/lib/dungeons").DungeonRoom, playerLevel: number): EnemySpec[] {
+  const specs: EnemySpec[] = [];
+  for (const def of room.enemies) {
+    if (def.type === "monster") {
+      const monster = MONSTERS.find(m => m.id === def.monsterId);
+      if (!monster) continue;
+      const count = def.count === "scale"
+        ? Math.floor(Math.random() * 3) + 2 + Math.floor(playerLevel / 2)
+        : def.count;
+      for (let i = 0; i < count; i++) {
+        const spec = createMonsterSpec(monster, def.emoji);
+        if (def.nameOverride) spec.name = def.nameOverride;
+        if (def.hpBoost) spec.hpOverride = (spec.hpOverride ?? monster.hp) + def.hpBoost;
+        specs.push(spec);
+      }
+    } else {
+      specs.push({
+        name: def.name,
+        imageEmoji: def.emoji,
+        stats: def.stats as EnemySpec["stats"],
+        subtypes: def.subtypes,
+        hpOverride: def.hpOverride,
+      });
+    }
+  }
+  return specs;
+}
 
 export function rollWorldLuck(
   hex: MapHex,
@@ -2575,6 +2621,28 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
           questName: "Encounter",
           enemies,
           difficulty: lastAction.difficulty ?? "easy",
+        });
+        return;
+      }
+    }
+
+    // ── Dungeon discovery — pick a template and build room-1 enemies ──
+    if (lastAction.outcome === "find_dungeon") {
+      const hex = ALL_HEXES.find(h => h.q === activeMapHex.q && h.r === activeMapHex.r);
+      const theme = pickDungeonTheme(hex?.type ?? "plains");
+      const template = pickDungeon(theme, save.level);
+      if (template && template.rooms.length > 0) {
+        const room = template.rooms[0];
+        const enemies = dungeonRoomToEnemySpecs(room, save.level);
+        setPendingQuest({
+          questId: `dungeon_${template.id}`,
+          questName: template.name,
+          enemies,
+          difficulty: template.maxLevel >= 7 ? "hard" : template.maxLevel >= 5 ? "medium" : "easy",
+          dungeon: {
+            template,
+            roomIndex: 0,
+          },
         });
         return;
       }
@@ -5156,6 +5224,13 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
                     className="shrink-0 px-2 py-1 rounded text-xs font-bold uppercase"
                     style={{ background: "rgba(220,38,38,0.15)", color: "rgba(220,38,38,0.9)", border: "1px solid rgba(220,38,38,0.4)", fontSize: "0.45rem" }}>
                     Fight!
+                  </button>
+                )}
+                {idx === 0 && isDungeon && pendingQuest && (
+                  <button onClick={() => onQuestBattle(pendingQuest)}
+                    className="shrink-0 px-2 py-1 rounded text-xs font-bold uppercase"
+                    style={{ background: "rgba(168,85,247,0.15)", color: "rgba(168,85,247,0.9)", border: "1px solid rgba(168,85,247,0.4)", fontSize: "0.45rem" }}>
+                    Enter Dungeon
                   </button>
                 )}
                 {idx === 0 && entry.outcome === "fight" && pendingQuest && !escapeResult && (() => {

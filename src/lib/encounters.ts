@@ -775,18 +775,291 @@ const ZONE_ENCOUNTER_TABLES: Record<string, ZoneTables> = {
   "gate-road":         { easy: ROAD_EASY,   hard: ROAD_HARD,   good: ROAD_GOOD },
   "goblin-hills":      { easy: HILLS_EASY,  hard: HILLS_HARD,  good: HILLS_GOOD },
   "outer-farmlands":   { easy: FARM_EASY,   hard: FARM_HARD,   good: FARM_GOOD },
-  "salt-water-marsh":  { easy: MARSH_EASY,  hard: MARSH_HARD,  good: MARSH_GOOD },
-  "coral-river":       { easy: RIVER_EASY,  hard: RIVER_HARD,  good: RIVER_GOOD },
+  "salt-water-marsh":  { easy: MARSH_EASY,    hard: MARSH_HARD,    good: MARSH_GOOD },
+  "coral-river":       { easy: RIVER_EASY,   hard: RIVER_HARD,   good: RIVER_GOOD },
 };
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  THORNWOOD — Dark spider-infested forest (Level 3-5)
+// ══════════════════════════════════════════════════════════════════════════════
+
+const THORNWOOD_EASY: EncounterTableEntry[] = [
+  { weight: 4, monsterIds: ["medium_spider"],     count: [2, 3], flavor: "Thorny webs stretch between the trees. The spiders skitter down, fast and silent." },
+  { weight: 3, monsterIds: ["wolf"],               count: [2, 3], flavor: "Wolves prowl the thornwood paths — lean, wary, and hunting in pairs." },
+  { weight: 3, monsterIds: ["giant_ant_worker"],   count: [2, 3], flavor: "Giant ants strip bark from the twisted thorn trees. They turn on you when disturbed." },
+  { weight: 2, monsterIds: ["stirge"],             count: [2, 4], flavor: "Stirges roost in the thorny canopy. They drop like silent darts." },
+  { weight: 2, monsterIds: ["boar"],               count: [1, 2], flavor: "Wild boars root through the brambles. They crash toward you when startled." },
+  { weight: 1, monsterIds: ["worg"],               count: 1,      flavor: "A worg crouches in the undergrowth — bigger and smarter than any wolf." },
+];
+
+const THORNWOOD_HARD: EncounterTableEntry[] = [
+  { weight: 4, monsterIds: ["ettercap"],           count: [1, 2], flavor: "Ettercaps in the canopy! Their webs cover entire clearings. You're walking into a trap." },
+  { weight: 3, monsterIds: ["medium_spider"],     count: [4, 6], flavor: "A spider nest erupts — dozens of webs shake as the colony swarms to defend its territory." },
+  { weight: 3, monsterIds: ["bugbear"],            count: [1, 2], flavor: "Bugbears using the thorns as cover. You don't see them until they're on top of you." },
+  { weight: 2, monsterIds: ["dire_wolf"],          count: [1, 2], flavor: "Dire wolves — their eyes glow in the dim forest light. The pack alpha bares teeth like daggers." },
+  { weight: 2, monsterIds: ["owlbear"],            count: 1,      flavor: "An owlbear crashes through the thorns, oblivious to the scratches. It hoots and charges." },
+  { weight: 1, monsterIds: ["worg"],               count: [2, 3], flavor: "A worg pack — intelligent, coordinated. They cut off your escape routes before attacking." },
+];
+
+const THORNWOOD_GOOD: GoodEncounterEntry[] = [
+  { weight: 4, description: "Blackberries grow thick on the thorns. Painful to pick, but sweet and filling.", foodChange: 2 },
+  { weight: 3, description: "A gap in the canopy reveals a sunlit clearing with medicinal herbs. Comfrey and calendula.", foodChange: 1, hpChange: 1 },
+  { weight: 3, description: "An old woodcutter's trail — the thorns have been cut back. Faster travel today.", xpChange: 5 },
+  { weight: 2, description: "Spider silk strands — gathered carefully, worth good money to weavers.", goldCp: 40 },
+  { weight: 2, description: "A hollow tree with a honeycomb inside. Brave the bees and eat well.", foodChange: 2, hpChange: 1 },
+  { weight: 2, description: "A hunter's snare line — three rabbits already caught. Free meat.", foodChange: 2, xpChange: 3 },
+  { weight: 1, description: "A fairy ring of mushrooms in a moonlit clearing. The edible ones glow faintly blue.", foodChange: 3, xpChange: 5 },
+  { weight: 1, description: "An elven trail marker carved into a thorn tree. It leads to a hidden spring with healing waters.", hpChange: 3, xpChange: 8 },
+];
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  CROSSROADS — Busy trade junction (Level 3-5)
+// ══════════════════════════════════════════════════════════════════════════════
+
+const CROSSROADS_EASY: EncounterTableEntry[] = [
+  { weight: 4, monsterIds: ["goblin"],             count: [3, 4], flavor: "Goblins lurking at the crossroads, hoping to catch a lone traveler. You're not lone enough." },
+  { weight: 3, monsterIds: ["orc"],                count: [1, 2], flavor: "Orc deserters camped at the junction. They're desperate and armed." },
+  { weight: 2, monsterIds: ["hobgoblin"],          count: [2, 3], flavor: "Hobgoblin toll collectors. They demand coin — or blood." },
+  { weight: 2, monsterIds: ["wolf"],               count: [2, 3], flavor: "Wolves drawn to the crossroads by the smell of campfires and food scraps." },
+  { weight: 2, monsterIds: ["kobold"],             count: [3, 5], flavor: "Kobolds have dug pit traps at the junction. One of them springs too early." },
+  { weight: 1, monsterIds: ["bugbear"],            count: 1,      flavor: "A bugbear hiding behind the signpost. It's been picking off stragglers all week." },
+];
+
+const CROSSROADS_HARD: EncounterTableEntry[] = [
+  { weight: 4, monsterIds: ["hobgoblin"],          count: [4, 6], flavor: "A full hobgoblin roadblock. Shield wall, spears, and a commander barking orders." },
+  { weight: 3, monsterIds: ["gnoll"],              count: [3, 4], flavor: "A gnoll raiding party fresh from hitting a caravan. They're blood-drunk and howling." },
+  { weight: 3, monsterIds: ["orc"],                count: [3, 5], flavor: "An orc warband claiming the crossroads. They've piled stones into a crude barricade." },
+  { weight: 2, monsterIds: ["bugbear"],            count: [2, 3], flavor: "Bugbears and goblins working together — the bugbears ambush, the goblins loot the bodies." },
+  { weight: 2, monsterIds: ["worg"],               count: [1, 2], flavor: "Worgs patrolling the crossroads. Their goblin riders were killed, but the beasts stayed." },
+  { weight: 1, monsterIds: ["ogre"],               count: 1,      flavor: "An ogre squatting at the crossroads, using a merchant's wagon as a chair. It wants tribute." },
+];
+
+const CROSSROADS_GOOD: GoodEncounterEntry[] = [
+  { weight: 4, description: "A merchant caravan passes through. They share bread and news from distant cities.", foodChange: 1, xpChange: 5 },
+  { weight: 3, description: "A patrol of soldiers secures the crossroads. The captain tips you for scouting info.", goldCp: 30, xpChange: 3 },
+  { weight: 3, description: "A peddler sells provisions at fair prices. Good to stock up.", foodChange: 2, goldCp: -10 },
+  { weight: 2, description: "A traveling smith offers to repair your gear for free. 'Gotta keep my skills sharp.'", xpChange: 5 },
+  { weight: 2, description: "Signposts point to nearby settlements. Local knowledge that saves time.", xpChange: 8 },
+  { weight: 2, description: "A bounty board at the crossroads. You collect a small reward for goblins you already killed.", goldCp: 50, xpChange: 5, fameChange: 1 },
+  { weight: 1, description: "A merchant's wagon broke down and he's selling everything cheap to lighten the load.", foodChange: 3, goldCp: -20 },
+  { weight: 1, description: "A retired adventurer running a roadside tea stall shares war stories and tactical wisdom.", xpChange: 12, foodChange: 1 },
+];
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  FOREST — Giant Forest, Deep Wood, Thornwood, Mushroom Grove (Level 5-8)
+// ══════════════════════════════════════════════════════════════════════════════
+
+const FOREST_EASY: EncounterTableEntry[] = [
+  { weight: 4, monsterIds: ["wolf"],               count: [2, 3], flavor: "Wolves padding between the massive trunks. They're not starving, just territorial." },
+  { weight: 3, monsterIds: ["medium_spider"],  count: [1, 2], flavor: "Webs strung between the trees at head height. The spiders drop from above." },
+  { weight: 3, monsterIds: ["giant_ant_worker"],    count: [2, 4], flavor: "A column of giant ants hauling leaf cuttings. You're in their highway." },
+  { weight: 2, monsterIds: ["giant_centipede"], count: [1, 2], flavor: "Centipedes coiled in the leaf litter, disturbed by your footsteps." },
+  { weight: 2, monsterIds: ["worg"],      count: 1,      flavor: "A worg crouches between the roots — intelligent, malicious, and far bigger than a wolf." },
+  { weight: 2, monsterIds: ["boar"],           count: [1, 2], flavor: "Boars rooting in a clearing. They charge the moment you break a twig." },
+  { weight: 1, monsterIds: ["stirge"],              count: [3, 5], flavor: "Stirges roosting in a hollow tree. The buzzing intensifies as you pass." },
+];
+
+const FOREST_HARD: EncounterTableEntry[] = [
+  { weight: 4, monsterIds: ["dire_wolf"],           count: [2, 3], flavor: "Dire wolves — each the size of a horse. The alpha's hackles rise and the pack fans out." },
+  { weight: 3, monsterIds: ["owlbear"],             count: 1,      flavor: "An owlbear crashes through the undergrowth, hooting with rage. It's been tracking you." },
+  { weight: 3, monsterIds: ["displacer_beast"],        count: 1,      flavor: "A six-legged panther-like beast shimmer between the trees — a displacer beast! Its image shifts, making it impossible to pinpoint." },
+  { weight: 2, monsterIds: ["troll"],               count: 1,      flavor: "A forest troll steps from behind a tree — lanky, green-skinned, and hungry." },
+  { weight: 2, monsterIds: ["bugbear"],             count: [2, 3], flavor: "Bugbears! They've been shadowing you for an hour, waiting for the perfect ambush." },
+  { weight: 2, monsterIds: ["ettercap"],            count: [1, 2], flavor: "Ettercaps in the canopy — their web-choked territory spans dozens of trees." },
+  { weight: 1, monsterIds: ["shambling_mound"],     count: 1,      flavor: "What you thought was a pile of vegetation stands up. A shambling mound." },
+];
+
+const FOREST_GOOD: GoodEncounterEntry[] = [
+  { weight: 4, description: "Wild berries and mushrooms grow thick on a fallen log. Easy foraging in the shade.", foodChange: 2 },
+  { weight: 3, description: "A hunter's cache hidden in a hollow tree — dried meat, rope, and flint.", foodChange: 1, goldCp: 20 },
+  { weight: 3, description: "A stream of clear water cuts through the forest. You drink deeply and rest a moment.", hpChange: 2, xpChange: 3 },
+  { weight: 2, description: "An ancient trail marker carved into a tree. It points toward a shorter path.", xpChange: 8 },
+  { weight: 2, description: "A woodcutter's abandoned lean-to with a stash of firewood and jerky.", foodChange: 2, hpChange: 1 },
+  { weight: 2, description: "Deer tracks lead to a natural spring. The water is cold and restorative.", hpChange: 2, foodChange: 1 },
+  { weight: 1, description: "A massive fallen tree has uprooted a cache of old coins buried in the soil.", goldCp: 80, xpChange: 5 },
+  { weight: 1, description: "A druid's offering site — dried herbs, clean bandages, and a blessing woven into the bark.", hpChange: 3, foodChange: 2, xpChange: 5 },
+];
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  MOUNTAIN — Iron Crag, West Cliffs, Shoreline Peaks (Level 5-8)
+// ══════════════════════════════════════════════════════════════════════════════
+
+const MOUNTAIN_EASY: EncounterTableEntry[] = [
+  { weight: 4, monsterIds: ["hobgoblin"],           count: [2, 3], flavor: "A hobgoblin patrol on the mountain pass. They form a shield wall and advance." },
+  { weight: 3, monsterIds: ["wolf"],                count: [2, 3], flavor: "Mountain wolves — lean and desperate at this altitude. They block the trail." },
+  { weight: 2, monsterIds: ["giant_centipede"], count: [1, 2], flavor: "Centipedes in the scree. They emerge from the rocks like living cables." },
+  { weight: 2, monsterIds: ["giant_ant_worker"],    count: [2, 3], flavor: "Giant ants mining the cliff face. They defend their tunnel entrances." },
+  { weight: 2, monsterIds: ["boar"],           count: 1,      flavor: "A mountain boar on a narrow ledge. Neither of you can go around." },
+  { weight: 1, monsterIds: ["stirge"],              count: [2, 4], flavor: "Stirges nesting in a cliff cave. They swarm out as you pass below." },
+];
+
+const MOUNTAIN_HARD: EncounterTableEntry[] = [
+  { weight: 4, monsterIds: ["ogre"],                count: [1, 2], flavor: "Ogres blocking the pass! They've been collecting 'tolls' from travelers." },
+  { weight: 3, monsterIds: ["bugbear"],             count: [2, 3], flavor: "Bugbears hurling rocks from above. They've chosen the perfect ambush point." },
+  { weight: 3, monsterIds: ["manticore"],            count: 1,      flavor: "A manticore perches on a high crag, its tail bristling with spines. It launches a volley!" },
+  { weight: 2, monsterIds: ["troll"],               count: 1,      flavor: "A cave troll erupts from a crevasse, reeking of rot. Its regeneration makes it fearless." },
+  { weight: 2, monsterIds: ["dire_wolf"],           count: [2, 3], flavor: "Dire wolves have cornered you on a narrow ridge. Nowhere to run." },
+  { weight: 1, monsterIds: ["dire_bear"],           count: 1,      flavor: "A dire bear guards the only path forward. It towers over you, bellowing." },
+];
+
+const MOUNTAIN_GOOD: GoodEncounterEntry[] = [
+  { weight: 4, description: "Mountain herbs growing in a sheltered crevice — valerian and sage. Valuable to healers.", foodChange: 1, goldCp: 25 },
+  { weight: 3, description: "An abandoned mine camp with leftover supplies — rope, pitons, and dried rations.", foodChange: 1, goldCp: 30 },
+  { weight: 3, description: "A hot spring in a rocky bowl. The warmth eases every ache.", hpChange: 3, xpChange: 3 },
+  { weight: 2, description: "A vantage point reveals the land for miles. You spot a safer route ahead.", xpChange: 10 },
+  { weight: 2, description: "Quartz crystals glitter in the rock face. Some are large enough to have trade value.", goldCp: 50 },
+  { weight: 2, description: "A dwarf prospector shares his fire and a flask of spirits. 'The mountains are honest — it's the valleys you have to worry about.'", foodChange: 1, hpChange: 1, xpChange: 5 },
+  { weight: 1, description: "A collapsed cairn reveals a buried traveler's gear — weathered but serviceable.", goldCp: 75, foodChange: 1 },
+  { weight: 1, description: "An eagle drops a mountain hare at your feet and wheels away. The gods provide.", foodChange: 2, xpChange: 5 },
+];
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  DESERT — Sun Wastes, Scorched Ridge, Desert Camp (Level 5-8)
+// ══════════════════════════════════════════════════════════════════════════════
+
+const DESERT_EASY: EncounterTableEntry[] = [
+  { weight: 4, monsterIds: ["gnoll"],               count: [2, 3], flavor: "Desert gnolls in tattered robes. They've been tracking your water supply." },
+  { weight: 3, monsterIds: ["monstrous_scorpion_med"], count: [1, 2], flavor: "Scorpions the size of dogs erupt from the sand. You stepped on their burrow." },
+  { weight: 3, monsterIds: ["hobgoblin"],           count: [2, 3], flavor: "Hobgoblin desert raiders. Sun-burnt and mean — they want your supplies." },
+  { weight: 2, monsterIds: ["giant_ant_worker"],    count: [2, 4], flavor: "Giant ants swarming a dried-up oasis. They'll fight anything for the last moisture." },
+  { weight: 2, monsterIds: ["giant_centipede"], count: [1, 2], flavor: "Sand centipedes — half-buried, waiting for vibrations. You gave them some." },
+  { weight: 1, monsterIds: ["stirge"],              count: [2, 3], flavor: "Desert stirges roosting in a dead tree. Dehydrated and desperate for blood." },
+];
+
+const DESERT_HARD: EncounterTableEntry[] = [
+  { weight: 4, monsterIds: ["gnoll"],               count: [4, 6], flavor: "A gnoll warband! They've set up an ambush near the only shade for miles." },
+  { weight: 3, monsterIds: ["ogre"],                count: [1, 2], flavor: "Desert ogres draped in stolen cloaks. They've been surviving on anything that moves." },
+  { weight: 2, monsterIds: ["monstrous_scorpion_lg"], count: [1, 2], flavor: "A nest of huge scorpions. The largest one's tail drips venom that hisses in the sand." },
+  { weight: 2, monsterIds: ["orc"],                 count: [3, 5], flavor: "Desert orcs — scarred, sun-blackened, and brutal. They've killed before and they'll kill again." },
+  { weight: 2, monsterIds: ["bugbear"],             count: [2, 3], flavor: "Bugbears have taken over an old waystation. They charge out when you approach the well." },
+  { weight: 1, monsterIds: ["dire_wolf"],           count: [2, 3], flavor: "Desert dire wolves — gaunt and relentless. They've been trailing you since dawn." },
+];
+
+const DESERT_GOOD: GoodEncounterEntry[] = [
+  { weight: 4, description: "An underground spring bubbles up between the rocks. Clean water — precious out here.", foodChange: 2, hpChange: 1 },
+  { weight: 3, description: "A merchant caravan's broken wagon. They've moved on, leaving behind some provisions.", foodChange: 2, goldCp: 20 },
+  { weight: 3, description: "Date palms at a hidden oasis. Shade, water, and fruit — a desert miracle.", foodChange: 3, hpChange: 2 },
+  { weight: 2, description: "A sandstorm uncovers an old campsite. Sun-bleached but the coin pouch is intact.", goldCp: 60 },
+  { weight: 2, description: "A desert trader offers to trade information for help carrying his pack to the next waypoint.", xpChange: 10, goldCp: 30 },
+  { weight: 2, description: "Aloe and desert sage growing in a rocky wash. Useful for burns and healing.", hpChange: 2, foodChange: 1 },
+  { weight: 1, description: "An ancient tomb entrance half-buried in sand. The entryway has been looted, but copper coins litter the floor.", goldCp: 100, xpChange: 8 },
+  { weight: 1, description: "A lost camel with full saddlebags wanders into your camp. Provisions and trade goods.", foodChange: 3, goldCp: 50 },
+];
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  COAST — Shoreline, cliffs, tidal zones (Level 5-8)
+// ══════════════════════════════════════════════════════════════════════════════
+
+const COAST_EASY: EncounterTableEntry[] = [
+  { weight: 4, monsterIds: ["goblin"],              count: [2, 4], flavor: "Shoreline goblins scavenging driftwood. They're scrappy and salt-crusted." },
+  { weight: 3, monsterIds: ["stirge"],              count: [2, 3], flavor: "Sea stirges — salt-adapted and nesting in cliff holes. They swoop from above." },
+  { weight: 2, monsterIds: ["giant_ant_worker"],    count: [2, 3], flavor: "Coastal ants raiding a tide pool. They snap at anything nearby." },
+  { weight: 2, monsterIds: ["wolf"],                count: [1, 2], flavor: "Beach wolves — lean scavengers that hunt the shoreline at low tide." },
+  { weight: 2, monsterIds: ["giant_centipede"], count: [1, 2], flavor: "Centipedes under the driftwood. You disturbed their shelter from the spray." },
+  { weight: 1, monsterIds: ["dire_rat"],            count: [3, 4], flavor: "Ship rats — enormous and aggressive. They came ashore from a wreck." },
+];
+
+const COAST_HARD: EncounterTableEntry[] = [
+  { weight: 4, monsterIds: ["griffon"],              count: 1,      flavor: "A territorial griffon dives from the sea cliffs! Talons out, screeching like fury." },
+  { weight: 3, monsterIds: ["orc"],                 count: [3, 4], flavor: "Coastal raiders! Orcs from a longship beached in a hidden cove." },
+  { weight: 3, monsterIds: ["gnoll"],               count: [2, 3], flavor: "Gnoll scavengers picking through a shipwreck. They see you and charge." },
+  { weight: 2, monsterIds: ["troll"],               count: 1,      flavor: "A sea troll — barnacle-crusted and smelling of brine. It lives in the cave at high tide." },
+  { weight: 2, monsterIds: ["ogre"],                count: 1,      flavor: "A coastal ogre fishing with its bare hands. It decides you look tastier." },
+  { weight: 1, monsterIds: ["dire_wolf"],           count: [2, 3], flavor: "A pack of dire wolves has claimed the beach as hunting ground. The surf covers their approach." },
+];
+
+const COAST_GOOD: GoodEncounterEntry[] = [
+  { weight: 4, description: "Tide pools full of mussels and sea urchins. Easy coastal foraging.", foodChange: 2 },
+  { weight: 3, description: "A fisherman's abandoned net tangled in the rocks. Several good fish are still caught.", foodChange: 2, xpChange: 3 },
+  { weight: 3, description: "Driftwood, rope, and sailcloth washed ashore. Worth something to the right buyer.", goldCp: 35 },
+  { weight: 2, description: "A sheltered sea cave above the tide line. Dry, warm, and hidden — perfect camp.", hpChange: 2, xpChange: 5 },
+  { weight: 2, description: "Sea glass and semi-precious stones polished smooth by the waves.", goldCp: 45 },
+  { weight: 2, description: "A sealed barrel from a wrecked ship bobs in the surf. Salted meat and hardtack — still good.", foodChange: 3 },
+  { weight: 1, description: "A pearl in an oyster you pried from the rocks. Small but genuine.", goldCp: 100, xpChange: 5 },
+  { weight: 1, description: "Wreckage from a merchant vessel. Waterlogged goods, but the strongbox is intact.", goldCp: 120, foodChange: 1 },
+];
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  ENDGAME — Magic Lake & East Shore (Level 8+)
+//  High-CR creatures, magical beasts, dragons. The land itself fights back.
+// ══════════════════════════════════════════════════════════════════════════════
+
+const ENDGAME_EASY: EncounterTableEntry[] = [
+  { weight: 4, monsterIds: ["troll"],               count: [1, 2], flavor: "Trolls lumbering along the lakeshore, sniffing the air. Their wounds close as fast as you can inflict them." },
+  { weight: 3, monsterIds: ["ogre_mage"],           count: 1,      flavor: "An ogre mage shimmers into view — invisibility fading as it casts a spell. Far more dangerous than a common ogre." },
+  { weight: 3, monsterIds: ["wyvern"],              count: 1,      flavor: "A wyvern circles overhead, its barbed tail dripping venom. It's hunting — and you're in the open." },
+  { weight: 2, monsterIds: ["chimera"],             count: 1,      flavor: "A chimera — lion, goat, and dragon heads snarling in unison. It lands with a crash of wings." },
+  { weight: 2, monsterIds: ["dire_bear"],           count: 1,      flavor: "A dire bear, scarred and massive, guards a salmon run. It rises to its full terrifying height." },
+  { weight: 2, monsterIds: ["green_hag"],           count: 1,      flavor: "A green hag steps from behind a willow, her face a mask of false kindness. 'Lost, dear?'" },
+  { weight: 1, monsterIds: ["dire_tiger"],          count: 1,      flavor: "A dire tiger — enormous, striped, and silent. By the time you see it, it's already pouncing." },
+];
+
+const ENDGAME_HARD: EncounterTableEntry[] = [
+  { weight: 4, monsterIds: ["young_black_dragon"],  count: 1,      flavor: "A young black dragon erupts from the lake, acid dripping from its jaws. Its eyes burn with ancient malice." },
+  { weight: 3, monsterIds: ["hydra_5head"],         count: 1,      flavor: "A five-headed hydra surges from the shallows. Each head snaps independently — cutting one only makes two." },
+  { weight: 3, monsterIds: ["mind_flayer"],         count: 1,      flavor: "A mind flayer materializes from nothing, tentacles writhing. Your thoughts feel... exposed. Alien." },
+  { weight: 2, monsterIds: ["hill_giant"],          count: [1, 2], flavor: "Hill giants hurling boulders from the ridge. Each impact shakes the ground like an earthquake." },
+  { weight: 2, monsterIds: ["stone_giant"],         count: 1,      flavor: "A stone giant steps from the cliff face itself — perfectly camouflaged until it moves. It hefts a boulder the size of a cart." },
+  { weight: 1, monsterIds: ["frost_giant"],         count: 1,      flavor: "A frost giant strides through the mist, greataxe resting on one shoulder. Ice crystals form in its wake." },
+  { weight: 1, monsterIds: ["young_blue_dragon"],   count: 1,      flavor: "Lightning crackles across the sky. A young blue dragon descends through the storm clouds, electricity arcing between its horns." },
+];
+
+const ENDGAME_GOOD: GoodEncounterEntry[] = [
+  { weight: 4, description: "The lake water glows faintly. You drink and feel ancient magic mend your wounds.", hpChange: 4, xpChange: 8 },
+  { weight: 3, description: "A hermit sage living in a lakeside cave shares knowledge of the region's dangers and history.", xpChange: 20 },
+  { weight: 3, description: "Rare phosphorescent fish in the shallows. Easy to catch and deeply restorative.", foodChange: 3, hpChange: 2 },
+  { weight: 2, description: "An old shrine to a forgotten god. Leaving an offering brings a sense of profound peace.", hpChange: 3, xpChange: 10, fameChange: 1 },
+  { weight: 2, description: "A sunken chest visible through the crystal-clear water. The lock has rusted away.", goldCp: 200, xpChange: 8 },
+  { weight: 2, description: "Moonstone fragments scattered across the shore — left by receding magical tides.", goldCp: 150, xpChange: 5 },
+  { weight: 1, description: "A dragon turtle surfaces briefly, regards you with ancient eyes, and submerges. In its wake: a pearl the size of your fist.", goldCp: 500, xpChange: 15 },
+  { weight: 1, description: "The ruins of an arcane observatory. Intact star charts and a cache of preserved spell components.", goldCp: 300, xpChange: 20, fameChange: 1 },
+];
 
 // Terrain fallback tables (when no zone-specific table exists)
 const TERRAIN_ENCOUNTER_TABLES: Record<string, ZoneTables> = {
-  "farm":    { easy: FARM_EASY,   hard: FARM_HARD,   good: FARM_GOOD },
-  "road":    { easy: ROAD_EASY,   hard: ROAD_HARD,   good: ROAD_GOOD },
-  "town":    { easy: TOWN_EASY,   hard: TOWN_HARD,   good: TOWN_GOOD },
-  "plains":  { easy: PLAINS_EASY, hard: PLAINS_HARD,  good: PLAINS_GOOD },
-  "swamp":   { easy: MARSH_EASY,  hard: MARSH_HARD,  good: MARSH_GOOD },
+  "farm":     { easy: FARM_EASY,     hard: FARM_HARD,     good: FARM_GOOD },
+  "road":     { easy: ROAD_EASY,     hard: ROAD_HARD,     good: ROAD_GOOD },
+  "town":     { easy: TOWN_EASY,     hard: TOWN_HARD,     good: TOWN_GOOD },
+  "plains":   { easy: PLAINS_EASY,   hard: PLAINS_HARD,   good: PLAINS_GOOD },
+  "swamp":    { easy: MARSH_EASY,    hard: MARSH_HARD,    good: MARSH_GOOD },
+  "forest":   { easy: FOREST_EASY,   hard: FOREST_HARD,   good: FOREST_GOOD },
+  "mountain": { easy: MOUNTAIN_EASY, hard: MOUNTAIN_HARD, good: MOUNTAIN_GOOD },
+  "desert":   { easy: DESERT_EASY,   hard: DESERT_HARD,   good: DESERT_GOOD },
+  "coast":    { easy: COAST_EASY,    hard: COAST_HARD,    good: COAST_GOOD },
+  "endgame":  { easy: ENDGAME_EASY, hard: ENDGAME_HARD, good: ENDGAME_GOOD },
 };
+
+// Wire wilderness zones to their terrain-specific encounter tables
+Object.assign(ZONE_ENCOUNTER_TABLES, {
+  // Forest zones
+  "giant-forest":    { easy: FOREST_EASY,   hard: FOREST_HARD,   good: FOREST_GOOD },
+  "deep-wood":       { easy: FOREST_EASY,   hard: FOREST_HARD,   good: FOREST_GOOD },
+  // Thornwood + Crossroads (level 3-5 with unique tables)
+  "thornwood":       { easy: THORNWOOD_EASY,   hard: THORNWOOD_HARD,   good: THORNWOOD_GOOD },
+  "crossroads":      { easy: CROSSROADS_EASY,  hard: CROSSROADS_HARD,  good: CROSSROADS_GOOD },
+  "mushroom-grove":  { easy: FOREST_EASY,   hard: FOREST_HARD,   good: FOREST_GOOD },
+  // Mountain zones
+  "iron-crag":       { easy: MOUNTAIN_EASY, hard: MOUNTAIN_HARD, good: MOUNTAIN_GOOD },
+  "west-cliffs":     { easy: MOUNTAIN_EASY, hard: MOUNTAIN_HARD, good: MOUNTAIN_GOOD },
+  "shoreline-peaks": { easy: COAST_EASY,    hard: COAST_HARD,    good: COAST_GOOD },
+  "scorched-ridge":  { easy: MOUNTAIN_EASY, hard: MOUNTAIN_HARD, good: MOUNTAIN_GOOD },
+  // Desert zones
+  "desert":          { easy: DESERT_EASY,   hard: DESERT_HARD,   good: DESERT_GOOD },
+  "sun-wastes":      { easy: DESERT_EASY,   hard: DESERT_HARD,   good: DESERT_GOOD },
+  "desert-camp":     { easy: DESERT_EASY,   hard: DESERT_HARD,   good: DESERT_GOOD },
+  // Swamp zones
+  "black-swamps":    { easy: MARSH_EASY,    hard: MARSH_HARD,    good: MARSH_GOOD },
+  "black-mire":      { easy: MARSH_EASY,    hard: MARSH_HARD,    good: MARSH_GOOD },
+  "witchs-bog":      { easy: MARSH_EASY,    hard: MARSH_HARD,    good: MARSH_GOOD },
+  // Mid-level field/road zones (Level 3-5)
+  "east-fields":      { easy: FARM_EASY,     hard: FARM_HARD,     good: FARM_GOOD },
+  "south-road":       { easy: ROAD_EASY,     hard: ROAD_HARD,     good: ROAD_GOOD },
+  "forest-dirt-road": { easy: ROAD_EASY,     hard: ROAD_HARD,     good: ROAD_GOOD },
+  "farm-fields":      { easy: FARM_EASY,     hard: FARM_HARD,     good: FARM_GOOD },
+  // Endgame zones (Level 8+)
+  "magic-lake":      { easy: ENDGAME_EASY,  hard: ENDGAME_HARD,  good: ENDGAME_GOOD },
+  "east-shore":      { easy: ENDGAME_EASY,  hard: ENDGAME_HARD,  good: ENDGAME_GOOD },
+});
 
 /** Roll a good encounter for a zone. Returns null if no table exists. */
 export function rollGoodEncounter(zoneId?: string, terrain?: string): GoodEncounterEntry | null {

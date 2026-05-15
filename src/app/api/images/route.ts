@@ -37,10 +37,10 @@ async function resolveImage(metadataUri: string): Promise<string | null> {
 }
 
 async function resolveUri(nft: { contractAddress: `0x${string}` }): Promise<{ uri?: string; chain?: "base" | "polygon" }> {
-  try { const r = await baseClient.readContract({ address: nft.contractAddress, abi: ERC1155_ABI, functionName: "uri", args: [TOKEN_ID] }); const raw = (r as string).replace("{id}", TOKEN_ID.toString()); if (raw) return { uri: raw, chain: "base" }; } catch {}
-  try { const r = await baseClient.readContract({ address: nft.contractAddress, abi: ERC721_ABI, functionName: "tokenURI", args: [TOKEN_ID] }); if (r) return { uri: r as string, chain: "base" }; } catch {}
-  try { const r = await polygonClient.readContract({ address: nft.contractAddress, abi: ERC1155_ABI, functionName: "uri", args: [TOKEN_ID] }); const raw = (r as string).replace("{id}", TOKEN_ID.toString()); if (raw) return { uri: raw, chain: "polygon" }; } catch {}
-  try { const r = await polygonClient.readContract({ address: nft.contractAddress, abi: ERC721_ABI, functionName: "tokenURI", args: [TOKEN_ID] }); if (r) return { uri: r as string, chain: "polygon" }; } catch {}
+  try { const r = await baseClient.readContract({ address: nft.contractAddress, abi: ERC1155_ABI, functionName: "uri", args: [TOKEN_ID] }); const raw = (r as string).replace("{id}", TOKEN_ID.toString()); if (raw) return { uri: raw, chain: "base" }; } catch (e) { console.warn('resolveUri: Base ERC1155 uri failed for', nft.contractAddress, e); }
+  try { const r = await baseClient.readContract({ address: nft.contractAddress, abi: ERC721_ABI, functionName: "tokenURI", args: [TOKEN_ID] }); if (r) return { uri: r as string, chain: "base" }; } catch (e) { console.warn('resolveUri: Base ERC721 tokenURI failed for', nft.contractAddress, e); }
+  try { const r = await polygonClient.readContract({ address: nft.contractAddress, abi: ERC1155_ABI, functionName: "uri", args: [TOKEN_ID] }); const raw = (r as string).replace("{id}", TOKEN_ID.toString()); if (raw) return { uri: raw, chain: "polygon" }; } catch (e) { console.warn('resolveUri: Polygon ERC1155 uri failed for', nft.contractAddress, e); }
+  try { const r = await polygonClient.readContract({ address: nft.contractAddress, abi: ERC721_ABI, functionName: "tokenURI", args: [TOKEN_ID] }); if (r) return { uri: r as string, chain: "polygon" }; } catch (e) { console.warn('resolveUri: Polygon ERC721 tokenURI failed for', nft.contractAddress, e); }
   return {};
 }
 

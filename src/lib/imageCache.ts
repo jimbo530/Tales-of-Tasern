@@ -48,7 +48,7 @@ export async function cacheImage(key: string, blob: Blob): Promise<void> {
       tx.oncomplete = () => resolve();
       tx.onerror = () => resolve();
     });
-  } catch {}
+  } catch (e) { console.warn('imageCache: failed to cache image blob:', e); }
 }
 
 /** Check if a key is cached */
@@ -107,5 +107,5 @@ export async function clearImageCache(): Promise<void> {
       tx.oncomplete = () => resolve();
       tx.onerror = () => resolve();
     });
-  } catch {}
+  } catch (e) { console.warn('imageCache: failed to clear cache:', e); }
 }

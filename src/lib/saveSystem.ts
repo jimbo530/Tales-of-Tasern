@@ -398,7 +398,7 @@ export function setLocalSave(save: CharacterSave) {
   if (typeof window === "undefined") return;
   try {
     localStorage.setItem(`${SAVE_CACHE_KEY}-${save.wallet.toLowerCase()}`, JSON.stringify(save));
-  } catch {}
+  } catch (e) { console.warn('setLocalSave: failed to write localStorage:', e); }
 }
 
 // ── Load (local-first for RPG, chain-first for stats) ────────────────────────

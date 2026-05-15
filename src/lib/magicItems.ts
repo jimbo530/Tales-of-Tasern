@@ -1,1263 +1,2120 @@
 // ============================================================
-// magicItems.ts — All magical items from DMG Chapter 7
-// D&D 3.5 Dungeon Master's Guide magic item listings
-// Organized by type. Imported by shops.ts into Arcane Emporium.
+// magicItems.ts — D20 Magic Items Database for Tales of Tasern
+// D&D 3.5-style magic items with full game mechanics
+// Rarity system, loot tables, set bonuses, shop generation
 // ============================================================
 
-// Standalone helper — mirrors shopItem() in shops.ts but avoids circular dep
-function mi(
-  id: string, name: string, category: "weapon" | "armor" | "gear" | "consumable",
-  gp: number, wt: number, desc: string,
-  effect?: string, day?: number,
-) {
-  const cp = Math.round(gp * 100);
-  return {
-    id, name, category, value: gp, weight: wt, description: desc,
-    effect, buyPrice: cp, sellPrice: Math.floor(cp / 2),
-    minLevel: day ?? 0, kardovOnly: true as const,
-  };
+// ── Types & Enums ─────────────────────────────────────────────────────────────
+
+export type Rarity = "common" | "uncommon" | "rare" | "epic" | "legendary";
+export type Element = "fire" | "cold" | "lightning" | "acid" | "sonic" | "force" | "necrotic" | "radiant" | "poison" | "none";
+export type ItemSlot = "mainhand" | "offhand" | "head" | "neck" | "body" | "hands" | "feet" | "ring" | "belt" | "back" | "consumable" | "none";
+
+export type StatModifier = {
+  stat: "STR" | "DEX" | "CON" | "INT" | "WIS" | "CHA";
+  value: number;
+};
+
+export type OnHitEffect = {
+  type: "poison" | "stun" | "slow" | "burn" | "bleed" | "freeze" | "drain" | "knockback";
+  chance: number; // percent (0-100)
+  duration?: number; // rounds
+  damage?: string; // dice notation e.g. "1d6"
+  dc?: number; // save DC
+};
+
+export type PassiveAbility = {
+  type: "regen" | "stealth" | "flight" | "waterbreathing" | "darkvision" | "resistance" | "immunity" | "reflect" | "thorns";
+  value?: number; // numeric magnitude
+  element?: Element; // for resistance/immunity
+  description: string;
+};
+
+export type ActiveAbility = {
+  name: string;
+  description: string;
+  usesPerDay: number;
+  cooldownRounds?: number;
+  damage?: string;
+  dc?: number;
+  range?: number; // feet
+};
+
+export type DamageResistance = {
+  element: Element;
+  percent: number; // 0-100
+};
+
+// ── Base Item Type ────────────────────────────────────────────────────────────
+
+export type MagicItemBase = {
+  id: string;
+  name: string;
+  rarity: Rarity;
+  value: number; // gold pieces
+  weight: number; // pounds
+  description: string;
+  requiredLevel: number;
+  slot: ItemSlot;
+  setId?: string; // for set bonus tracking
+  statModifiers?: StatModifier[];
+  passives?: PassiveAbility[];
+  actives?: ActiveAbility[];
+  resistances?: DamageResistance[];
+};
+
+// ── Weapon Type ───────────────────────────────────────────────────────────────
+
+export type WeaponType = "longsword" | "shortsword" | "greatsword" | "dagger" | "battleaxe" | "greataxe" | "warhammer" | "mace" | "flail" | "rapier" | "scimitar" | "longbow" | "shortbow" | "crossbow" | "staff" | "spear" | "halberd" | "trident";
+
+export type MagicWeapon = MagicItemBase & {
+  category: "weapon";
+  weaponType: WeaponType;
+  baseDamage: string; // dice notation "1d8", "2d6"
+  bonusToHit: number;
+  bonusDamage: number;
+  element: Element;
+  critRange: number; // e.g. 19 means 19-20, 20 means only 20
+  critMultiplier: number; // x2, x3, etc.
+  onHit?: OnHitEffect;
+  twoHanded?: boolean;
+  range?: number; // ranged weapon range in feet
+  specialEffect: string;
+};
+
+// ── Armor Type ────────────────────────────────────────────────────────────────
+
+export type ArmorType = "plate" | "half-plate" | "chainmail" | "breastplate" | "chain-shirt" | "leather" | "studded-leather" | "hide" | "padded" | "robes" | "shield" | "buckler";
+
+export type MagicArmor = MagicItemBase & {
+  category: "armor";
+  armorType: ArmorType;
+  baseAC: number;
+  maxDexBonus: number;
+  armorCheckPenalty: number;
+  arcaneFailure: number; // percent
+  specialEffect: string;
+};
+
+// ── Ring Type ─────────────────────────────────────────────────────────────────
+
+export type MagicRing = MagicItemBase & {
+  category: "ring";
+  specialEffect: string;
+};
+
+// ── Amulet Type ───────────────────────────────────────────────────────────────
+
+export type MagicAmulet = MagicItemBase & {
+  category: "amulet";
+  specialEffect: string;
+};
+
+// ── Potion Type ───────────────────────────────────────────────────────────────
+
+export type MagicPotion = MagicItemBase & {
+  category: "potion";
+  healing?: string; // dice notation
+  duration?: number; // rounds (0 = instant)
+  specialEffect: string;
+};
+
+// ── Scroll Type ───────────────────────────────────────────────────────────────
+
+export type MagicScroll = MagicItemBase & {
+  category: "scroll";
+  spellLevel: number;
+  casterLevel: number;
+  specialEffect: string;
+};
+
+// ── Wondrous Item Type ────────────────────────────────────────────────────────
+
+export type WondrousSlot = "head" | "neck" | "body" | "hands" | "feet" | "belt" | "back" | "none";
+
+export type MagicWondrous = MagicItemBase & {
+  category: "wondrous";
+  wondrousSlot: WondrousSlot;
+  specialEffect: string;
+};
+
+// ── Union Type ────────────────────────────────────────────────────────────────
+
+export type MagicItem = MagicWeapon | MagicArmor | MagicRing | MagicAmulet | MagicPotion | MagicScroll | MagicWondrous;
+
+// ── Rarity Colors (for UI) ───────────────────────────────────────────────────
+
+export const RARITY_COLORS: Record<Rarity, string> = {
+  common: "#ffffff",
+  uncommon: "#1eff00",
+  rare: "#0070ff",
+  epic: "#a335ee",
+  legendary: "#ff8000",
+};
+
+export const RARITY_LABEL: Record<Rarity, string> = {
+  common: "Common",
+  uncommon: "Uncommon",
+  rare: "Rare",
+  epic: "Epic",
+  legendary: "Legendary",
+};
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  WEAPONS (40 items)
+// ══════════════════════════════════════════════════════════════════════════════
+
+export const MAGIC_WEAPONS: MagicWeapon[] = [
+  // ── Common (+1) ──
+  {
+    id: "wpn_longsword_1", name: "Longsword +1", category: "weapon", weaponType: "longsword",
+    rarity: "common", value: 2315, weight: 4, requiredLevel: 1, slot: "mainhand",
+    baseDamage: "1d8", bonusToHit: 1, bonusDamage: 1, element: "none",
+    critRange: 19, critMultiplier: 2,
+    description: "A well-crafted longsword with a faint magical shimmer along the blade.",
+    specialEffect: "+1 enhancement bonus to attack and damage.",
+  },
+  {
+    id: "wpn_shortbow_1", name: "Shortbow +1", category: "weapon", weaponType: "shortbow",
+    rarity: "common", value: 2330, weight: 2, requiredLevel: 1, slot: "mainhand",
+    baseDamage: "1d6", bonusToHit: 1, bonusDamage: 1, element: "none",
+    critRange: 20, critMultiplier: 3, range: 60,
+    description: "A compact bow of yew with glowing string.",
+    specialEffect: "+1 enhancement bonus to attack and damage.",
+  },
+  {
+    id: "wpn_dagger_1", name: "Dagger +1", category: "weapon", weaponType: "dagger",
+    rarity: "common", value: 2302, weight: 1, requiredLevel: 1, slot: "mainhand",
+    baseDamage: "1d4", bonusToHit: 1, bonusDamage: 1, element: "none",
+    critRange: 19, critMultiplier: 2, range: 10,
+    description: "A sharp dagger that hums with minor enchantment.",
+    specialEffect: "+1 enhancement bonus to attack and damage. Can be thrown.",
+  },
+  {
+    id: "wpn_mace_1", name: "Heavy Mace +1", category: "weapon", weaponType: "mace",
+    rarity: "common", value: 2312, weight: 8, requiredLevel: 1, slot: "mainhand",
+    baseDamage: "1d8", bonusToHit: 1, bonusDamage: 1, element: "none",
+    critRange: 20, critMultiplier: 2,
+    description: "A sturdy mace with a head that glows faintly blue.",
+    specialEffect: "+1 enhancement bonus to attack and damage.",
+  },
+  {
+    id: "wpn_battleaxe_1", name: "Battleaxe +1", category: "weapon", weaponType: "battleaxe",
+    rarity: "common", value: 2310, weight: 6, requiredLevel: 1, slot: "mainhand",
+    baseDamage: "1d8", bonusToHit: 1, bonusDamage: 1, element: "none",
+    critRange: 20, critMultiplier: 3,
+    description: "A keen-edged axe with runes etched along the blade.",
+    specialEffect: "+1 enhancement bonus to attack and damage.",
+  },
+  {
+    id: "wpn_staff_1", name: "Quarterstaff +1", category: "weapon", weaponType: "staff",
+    rarity: "common", value: 2300, weight: 4, requiredLevel: 1, slot: "mainhand",
+    baseDamage: "1d6", bonusToHit: 1, bonusDamage: 1, element: "none",
+    critRange: 20, critMultiplier: 2, twoHanded: true,
+    description: "A hardwood staff reinforced with magical energy.",
+    specialEffect: "+1 enhancement bonus to attack and damage.",
+  },
+  {
+    id: "wpn_longbow_1", name: "Longbow +1", category: "weapon", weaponType: "longbow",
+    rarity: "common", value: 2375, weight: 3, requiredLevel: 1, slot: "mainhand",
+    baseDamage: "1d8", bonusToHit: 1, bonusDamage: 1, element: "none",
+    critRange: 20, critMultiplier: 3, range: 100, twoHanded: true,
+    description: "A tall composite bow with elvish runes.",
+    specialEffect: "+1 enhancement bonus to attack and damage.",
+  },
+
+  // ── Uncommon (+2, elemental) ──
+  {
+    id: "wpn_flaming_longsword", name: "Flaming Longsword", category: "weapon", weaponType: "longsword",
+    rarity: "uncommon", value: 8315, weight: 4, requiredLevel: 5, slot: "mainhand",
+    baseDamage: "1d8", bonusToHit: 1, bonusDamage: 1, element: "fire",
+    critRange: 19, critMultiplier: 2,
+    onHit: { type: "burn", chance: 100, damage: "1d6", duration: 1 },
+    description: "A longsword wreathed in flickering flames that never die.",
+    specialEffect: "+1 longsword, +1d6 fire damage on every hit.",
+  },
+  {
+    id: "wpn_frost_battleaxe", name: "Frost Battleaxe", category: "weapon", weaponType: "battleaxe",
+    rarity: "uncommon", value: 8310, weight: 6, requiredLevel: 5, slot: "mainhand",
+    baseDamage: "1d8", bonusToHit: 1, bonusDamage: 1, element: "cold",
+    critRange: 20, critMultiplier: 3,
+    onHit: { type: "slow", chance: 25, duration: 2, dc: 14 },
+    description: "An axe rimed with perpetual frost that chills foes to the bone.",
+    specialEffect: "+1 battleaxe, +1d6 cold damage. 25% chance to slow on hit (2 rounds, Fort DC 14).",
+  },
+  {
+    id: "wpn_shock_longbow", name: "Shocking Longbow", category: "weapon", weaponType: "longbow",
+    rarity: "uncommon", value: 8375, weight: 3, requiredLevel: 5, slot: "mainhand",
+    baseDamage: "1d8", bonusToHit: 1, bonusDamage: 1, element: "lightning",
+    critRange: 20, critMultiplier: 3, range: 100, twoHanded: true,
+    onHit: { type: "stun", chance: 10, duration: 1, dc: 14 },
+    description: "A bow crackling with arcs of electricity between the limbs.",
+    specialEffect: "+1 longbow, +1d6 lightning damage. 10% chance to stun (1 round, Fort DC 14).",
+  },
+  {
+    id: "wpn_venom_dagger", name: "Venom Dagger", category: "weapon", weaponType: "dagger",
+    rarity: "uncommon", value: 8302, weight: 1, requiredLevel: 5, slot: "mainhand",
+    baseDamage: "1d4", bonusToHit: 2, bonusDamage: 2, element: "poison",
+    critRange: 19, critMultiplier: 2, range: 10,
+    onHit: { type: "poison", chance: 50, damage: "1d6", duration: 3, dc: 14 },
+    description: "A +2 dagger with a hollow pommel dripping with virulent venom.",
+    specialEffect: "+2 dagger. 50% chance on hit: 1d6 poison/round for 3 rounds (Fort DC 14).",
+  },
+  {
+    id: "wpn_thundering_warhammer", name: "Thundering Warhammer", category: "weapon", weaponType: "warhammer",
+    rarity: "uncommon", value: 8312, weight: 5, requiredLevel: 5, slot: "mainhand",
+    baseDamage: "1d8", bonusToHit: 1, bonusDamage: 1, element: "sonic",
+    critRange: 20, critMultiplier: 3,
+    onHit: { type: "knockback", chance: 20, dc: 14 },
+    description: "A warhammer that booms like thunder on impact.",
+    specialEffect: "+1 warhammer, +1d6 sonic on crit. 20% chance to knock back 5ft.",
+  },
+  {
+    id: "wpn_corrosive_rapier", name: "Corrosive Rapier", category: "weapon", weaponType: "rapier",
+    rarity: "uncommon", value: 8320, weight: 2, requiredLevel: 5, slot: "mainhand",
+    baseDamage: "1d6", bonusToHit: 2, bonusDamage: 2, element: "acid",
+    critRange: 18, critMultiplier: 2,
+    onHit: { type: "bleed", chance: 30, damage: "1d4", duration: 2 },
+    description: "A rapier that weeps acid, dissolving armor on contact.",
+    specialEffect: "+2 rapier, +1d6 acid damage. 30% chance to corrode armor (-1 AC for 2 rounds).",
+  },
+  {
+    id: "wpn_radiant_mace", name: "Radiant Mace", category: "weapon", weaponType: "mace",
+    rarity: "uncommon", value: 8312, weight: 8, requiredLevel: 5, slot: "mainhand",
+    baseDamage: "1d8", bonusToHit: 2, bonusDamage: 2, element: "radiant",
+    critRange: 20, critMultiplier: 2,
+    description: "A mace that blazes with holy light, searing undead.",
+    specialEffect: "+2 mace, +1d6 radiant damage. Deals +2d6 bonus vs. undead.",
+  },
+
+  // ── Rare (+3, strong effects) ──
+  {
+    id: "wpn_flame_tongue", name: "Flame Tongue", category: "weapon", weaponType: "longsword",
+    rarity: "rare", value: 20715, weight: 4, requiredLevel: 10, slot: "mainhand",
+    baseDamage: "1d8", bonusToHit: 2, bonusDamage: 2, element: "fire",
+    critRange: 19, critMultiplier: 2,
+    onHit: { type: "burn", chance: 100, damage: "1d6", duration: 2 },
+    description: "A +1 flaming burst longsword wreathed in living fire that erupts on critical hits.",
+    specialEffect: "+2 longsword, +1d6 fire per hit, +1d10 fire on crit. Sheds light as torch.",
+    actives: [{
+      name: "Flaming Burst", description: "On critical hit, deals +1d10 extra fire damage.",
+      usesPerDay: -1,
+    }],
+  },
+  {
+    id: "wpn_frost_brand", name: "Frost Brand", category: "weapon", weaponType: "greatsword",
+    rarity: "rare", value: 54475, weight: 8, requiredLevel: 12, slot: "mainhand",
+    baseDamage: "2d6", bonusToHit: 3, bonusDamage: 3, element: "cold",
+    critRange: 19, critMultiplier: 2, twoHanded: true,
+    onHit: { type: "slow", chance: 40, duration: 2, dc: 17 },
+    description: "A +3 greatsword coated in ever-present frost that protects its wielder from fire.",
+    specialEffect: "+3 greatsword, +1d6 cold damage. 40% slow. Fire resistance 10.",
+    resistances: [{ element: "fire", percent: 30 }],
+  },
+  {
+    id: "wpn_nine_lives_stealer", name: "Nine Lives Stealer", category: "weapon", weaponType: "longsword",
+    rarity: "rare", value: 23057, weight: 4, requiredLevel: 10, slot: "mainhand",
+    baseDamage: "1d8", bonusToHit: 2, bonusDamage: 2, element: "necrotic",
+    critRange: 19, critMultiplier: 2,
+    description: "A +2 longsword with nine black gems set in the crossguard, each holding a stolen soul.",
+    specialEffect: "+2 longsword. On crit: Fort DC 20 or die. Each kill consumes one gem (9 uses).",
+    onHit: { type: "drain", chance: 5, damage: "1d4", dc: 20 },
+  },
+  {
+    id: "wpn_oathbow", name: "Oathbow", category: "weapon", weaponType: "longbow",
+    rarity: "rare", value: 25600, weight: 3, requiredLevel: 10, slot: "mainhand",
+    baseDamage: "1d8", bonusToHit: 2, bonusDamage: 2, element: "none",
+    critRange: 20, critMultiplier: 3, range: 110, twoHanded: true,
+    description: "A +2 composite longbow that forms a blood oath against your sworn enemy.",
+    specialEffect: "+2 longbow. Name sworn enemy: +5 to hit, +5 damage vs. that target until it dies.",
+    actives: [{
+      name: "Sworn Enemy", description: "Declare a sworn enemy once per day. +5 attack/damage vs that target.",
+      usesPerDay: 1,
+    }],
+  },
+  {
+    id: "wpn_life_stealing", name: "Sword of Life Stealing", category: "weapon", weaponType: "longsword",
+    rarity: "rare", value: 25715, weight: 4, requiredLevel: 10, slot: "mainhand",
+    baseDamage: "1d8", bonusToHit: 2, bonusDamage: 2, element: "necrotic",
+    critRange: 19, critMultiplier: 2,
+    onHit: { type: "drain", chance: 100, damage: "0", dc: 16 },
+    description: "A +2 longsword that drinks the lifeblood of its victims.",
+    specialEffect: "+2 longsword. On crit: bestow 1 negative level (Fort DC 16). Gain 1d6 temp HP.",
+  },
+  {
+    id: "wpn_sun_blade", name: "Sun Blade", category: "weapon", weaponType: "longsword",
+    rarity: "rare", value: 50335, weight: 2, requiredLevel: 12, slot: "mainhand",
+    baseDamage: "1d8", bonusToHit: 2, bonusDamage: 2, element: "radiant",
+    critRange: 19, critMultiplier: 2,
+    description: "A +2 bastard sword blazing with solar radiance. Weighs nothing in the hand.",
+    specialEffect: "+2 bastard sword (+4 vs evil). +2d6 radiant vs undead. Counts as sunlight.",
+    actives: [{
+      name: "Sunlight Blade", description: "Shed bright sunlight in 30ft radius. Undead take +2d6.",
+      usesPerDay: 3,
+    }],
+  },
+  {
+    id: "wpn_dwarven_thrower", name: "Dwarven Thrower", category: "weapon", weaponType: "warhammer",
+    rarity: "rare", value: 60312, weight: 5, requiredLevel: 12, slot: "mainhand",
+    baseDamage: "1d8", bonusToHit: 3, bonusDamage: 3, element: "none",
+    critRange: 20, critMultiplier: 3, range: 30,
+    description: "A +2 warhammer that returns to the wielder's hand when thrown.",
+    specialEffect: "+3 when thrown, returns. +2d8 thrown damage (+4d8 vs. giants).",
+  },
+  {
+    id: "wpn_scimitar_speed", name: "Scimitar of Speed", category: "weapon", weaponType: "scimitar",
+    rarity: "rare", value: 30000, weight: 4, requiredLevel: 10, slot: "mainhand",
+    baseDamage: "1d6", bonusToHit: 3, bonusDamage: 3, element: "none",
+    critRange: 18, critMultiplier: 2,
+    description: "A curved blade that moves faster than the eye can follow.",
+    specialEffect: "+3 scimitar. Grants one extra attack per round (as haste).",
+    passives: [{ type: "regen", value: 0, description: "Grants one extra attack per round." }],
+  },
+  {
+    id: "wpn_javelin_lightning", name: "Javelin of Lightning", category: "weapon", weaponType: "spear",
+    rarity: "uncommon", value: 1500, weight: 2, requiredLevel: 5, slot: "mainhand",
+    baseDamage: "1d6", bonusToHit: 0, bonusDamage: 0, element: "lightning",
+    critRange: 20, critMultiplier: 2, range: 30,
+    description: "A javelin wreathed in crackling arcs of electricity.",
+    specialEffect: "Transforms into 5d6 lightning bolt (120ft line, Reflex DC 14). Becomes mundane after.",
+    actives: [{
+      name: "Lightning Bolt", description: "Throw: 5d6 lightning in 120ft line (Ref DC 14). Single use.",
+      usesPerDay: 1, damage: "5d6", dc: 14, range: 120,
+    }],
+  },
+
+  // ── Epic (+4, powerful effects) ──
+  {
+    id: "wpn_holy_avenger", name: "Holy Avenger", category: "weapon", weaponType: "longsword",
+    rarity: "epic", value: 120630, weight: 4, requiredLevel: 15, slot: "mainhand",
+    baseDamage: "1d8", bonusToHit: 5, bonusDamage: 5, element: "radiant",
+    critRange: 19, critMultiplier: 2,
+    description: "A legendary +2 cold iron longsword — the ultimate weapon against evil.",
+    specialEffect: "+7 holy vs evil (+2d6 radiant). Greater dispel magic at will in 5ft radius. SR 15 aura.",
+    actives: [{
+      name: "Greater Dispel", description: "Continuous dispel magic in 5ft aura (paladin only).",
+      usesPerDay: -1,
+    }],
+    passives: [{ type: "resistance", element: "necrotic", value: 50, description: "SR 15 spell resistance aura." }],
+  },
+  {
+    id: "wpn_mace_smiting", name: "Mace of Smiting", category: "weapon", weaponType: "mace",
+    rarity: "epic", value: 75312, weight: 8, requiredLevel: 15, slot: "mainhand",
+    baseDamage: "1d8", bonusToHit: 3, bonusDamage: 3, element: "force",
+    critRange: 20, critMultiplier: 2,
+    description: "A +3 adamantine heavy mace that shatters constructs with a single blow.",
+    specialEffect: "+3 adamantine. +5 vs constructs. Crit vs construct: destroy it (Fort DC 20).",
+  },
+  {
+    id: "wpn_mace_terror", name: "Mace of Terror", category: "weapon", weaponType: "mace",
+    rarity: "epic", value: 38552, weight: 8, requiredLevel: 13, slot: "mainhand",
+    baseDamage: "1d8", bonusToHit: 2, bonusDamage: 2, element: "necrotic",
+    critRange: 20, critMultiplier: 2,
+    description: "A +2 heavy mace carved with screaming faces that project waves of dread.",
+    specialEffect: "+2 heavy mace. 3/day: cause fear in 30ft cone (Will DC 16, 1d4 rounds).",
+    actives: [{
+      name: "Wave of Terror", description: "30ft cone fear (Will DC 16 or flee 1d4 rounds).",
+      usesPerDay: 3, dc: 16, range: 30,
+    }],
+  },
+  {
+    id: "wpn_life_drinker", name: "Life-Drinker", category: "weapon", weaponType: "greataxe",
+    rarity: "epic", value: 40320, weight: 12, requiredLevel: 14, slot: "mainhand",
+    baseDamage: "1d12", bonusToHit: 1, bonusDamage: 1, element: "necrotic",
+    critRange: 20, critMultiplier: 3, twoHanded: true,
+    onHit: { type: "drain", chance: 100, damage: "0", dc: 0 },
+    description: "A +1 greataxe made of vampiric black iron that drinks life from the living.",
+    specialEffect: "+1 greataxe. On hit: bestow 1 negative level. Gain 5 temp HP. Costs 1 of your HP.",
+  },
+  {
+    id: "wpn_vorpal_greatsword", name: "Vorpal Greatsword", category: "weapon", weaponType: "greatsword",
+    rarity: "epic", value: 100000, weight: 8, requiredLevel: 18, slot: "mainhand",
+    baseDamage: "2d6", bonusToHit: 4, bonusDamage: 4, element: "none",
+    critRange: 19, critMultiplier: 2, twoHanded: true,
+    description: "A +4 greatsword so sharp it can sever heads. On a natural 20, the blade cuts clean through.",
+    specialEffect: "+4 greatsword. On natural 20: instant decapitation (Fort DC 30 or die).",
+  },
+  {
+    id: "wpn_rapier_puncturing", name: "Rapier of Puncturing", category: "weapon", weaponType: "rapier",
+    rarity: "epic", value: 50320, weight: 2, requiredLevel: 14, slot: "mainhand",
+    baseDamage: "1d6", bonusToHit: 2, bonusDamage: 2, element: "none",
+    critRange: 18, critMultiplier: 2,
+    onHit: { type: "bleed", chance: 100, damage: "1d4", duration: 99 },
+    description: "A +2 wounding rapier that bleeds targets dry with every thrust.",
+    specialEffect: "+2 rapier. On hit: 1 CON damage per round (stacks). No save.",
+  },
+
+  // ── Legendary (+5, game-changing) ──
+  {
+    id: "wpn_sword_kas", name: "Sword of Kas", category: "weapon", weaponType: "longsword",
+    rarity: "legendary", value: 200000, weight: 4, requiredLevel: 20, slot: "mainhand",
+    baseDamage: "1d8", bonusToHit: 5, bonusDamage: 5, element: "necrotic",
+    critRange: 17, critMultiplier: 3,
+    description: "A black-bladed longsword that severed the Hand of Vecna. It whispers in dreams, hungry and patient.",
+    specialEffect: "+5 longsword, +3d6 necrotic. On crit: instant kill (Fort DC 25).",
+    statModifiers: [{ stat: "STR", value: 4 }],
+    onHit: { type: "drain", chance: 100, damage: "3d6", dc: 25 },
+  },
+  {
+    id: "wpn_axe_dwarvish_lords", name: "Axe of the Dwarvish Lords", category: "weapon", weaponType: "greataxe",
+    rarity: "legendary", value: 200000, weight: 8, requiredLevel: 20, slot: "mainhand",
+    baseDamage: "1d12", bonusToHit: 5, bonusDamage: 5, element: "force",
+    critRange: 20, critMultiplier: 3, twoHanded: true,
+    description: "A mithral-edged greataxe forged in the heart of Bhalanur. The mountain roared when its last guardian fell.",
+    specialEffect: "+5 greataxe, +2d6 damage. Sundering Strike: destroy enemy shield/armor 1/battle.",
+    statModifiers: [{ stat: "CON", value: 4 }],
+    actives: [{
+      name: "Sundering Strike", description: "Destroy enemy shield or armor (no save). Once per battle.",
+      usesPerDay: 1,
+    }],
+  },
+  {
+    id: "wpn_staff_magi", name: "Staff of the Magi", category: "weapon", weaponType: "staff",
+    rarity: "legendary", value: 200000, weight: 4, requiredLevel: 20, slot: "mainhand",
+    baseDamage: "1d6", bonusToHit: 2, bonusDamage: 2, element: "force",
+    critRange: 20, critMultiplier: 2, twoHanded: true,
+    description: "One of the mightiest staves ever crafted, humming with continent-shaking arcane power.",
+    specialEffect: "+2 staff. 50 charges for spells. Spell power +3. Can break for 200ft retributive strike.",
+    statModifiers: [{ stat: "INT", value: 4 }, { stat: "WIS", value: 2 }],
+    actives: [
+      { name: "Fireball", description: "10d6 fire, 20ft radius (1 charge).", usesPerDay: 10, damage: "10d6", dc: 17, range: 150 },
+      { name: "Lightning Bolt", description: "10d6 lightning, 120ft line (1 charge).", usesPerDay: 10, damage: "10d6", dc: 17, range: 120 },
+      { name: "Retributive Strike", description: "Break staff: 200ft radius destruction. Destroys staff.", usesPerDay: 1 },
+    ],
+  },
+  {
+    id: "wpn_luck_blade", name: "Luck Blade", category: "weapon", weaponType: "shortsword",
+    rarity: "legendary", value: 100000, weight: 2, requiredLevel: 18, slot: "mainhand",
+    baseDamage: "1d6", bonusToHit: 3, bonusDamage: 3, element: "force",
+    critRange: 19, critMultiplier: 2,
+    description: "A shimmering short sword that bends fortune around its wielder, granting impossible luck.",
+    specialEffect: "+3 short sword. +1 luck bonus to all saves. Contains 3 wish spells.",
+    actives: [{
+      name: "Wish", description: "Cast Wish. 3 uses total (consumed permanently).",
+      usesPerDay: 1,
+    }],
+  },
+  {
+    id: "wpn_dancing_scimitar", name: "Dancing Scimitar", category: "weapon", weaponType: "scimitar",
+    rarity: "epic", value: 50000, weight: 4, requiredLevel: 14, slot: "mainhand",
+    baseDamage: "1d6", bonusToHit: 3, bonusDamage: 3, element: "none",
+    critRange: 18, critMultiplier: 2,
+    description: "A +3 scimitar that fights on its own, hovering in the air beside you.",
+    specialEffect: "+3 scimitar. Release to fight autonomously for 4 rounds (attacks independently).",
+    actives: [{
+      name: "Dance", description: "Release weapon — it fights alone for 4 rounds (uses your BAB).",
+      usesPerDay: 3, cooldownRounds: 10,
+    }],
+  },
+  {
+    id: "wpn_speed_longsword", name: "Longsword of Speed", category: "weapon", weaponType: "longsword",
+    rarity: "epic", value: 50315, weight: 4, requiredLevel: 14, slot: "mainhand",
+    baseDamage: "1d8", bonusToHit: 3, bonusDamage: 3, element: "none",
+    critRange: 19, critMultiplier: 2,
+    description: "A +3 longsword that strikes with supernatural speed, granting an extra attack.",
+    specialEffect: "+3 longsword. Grants one extra attack per round at highest BAB.",
+  },
+  {
+    id: "wpn_disruption_mace", name: "Mace of Disruption", category: "weapon", weaponType: "mace",
+    rarity: "rare", value: 18000, weight: 8, requiredLevel: 8, slot: "mainhand",
+    baseDamage: "1d8", bonusToHit: 1, bonusDamage: 1, element: "radiant",
+    critRange: 20, critMultiplier: 2,
+    description: "A +1 mace blazing with positive energy, the bane of all undead.",
+    specialEffect: "+1 mace. Undead hit must Will DC 14 or be destroyed. Sheds daylight 20ft.",
+    actives: [{
+      name: "Disruption", description: "Undead on hit must Will DC 14 or be instantly destroyed.",
+      usesPerDay: -1,
+    }],
+  },
+  {
+    id: "wpn_assassin_dagger", name: "Assassin's Dagger", category: "weapon", weaponType: "dagger",
+    rarity: "rare", value: 10302, weight: 1, requiredLevel: 8, slot: "mainhand",
+    baseDamage: "1d4", bonusToHit: 2, bonusDamage: 2, element: "poison",
+    critRange: 19, critMultiplier: 2, range: 10,
+    onHit: { type: "poison", chance: 30, damage: "2d6", duration: 3, dc: 16 },
+    description: "A +2 dagger designed for killing, amplifying sneak attacks and death strikes.",
+    specialEffect: "+2 dagger. +1d6 sneak attack damage. Death attack DC +1.",
+  },
+  {
+    id: "wpn_crossbow_distance", name: "Crossbow of Distance", category: "weapon", weaponType: "crossbow",
+    rarity: "uncommon", value: 8350, weight: 4, requiredLevel: 5, slot: "mainhand",
+    baseDamage: "1d8", bonusToHit: 1, bonusDamage: 1, element: "none",
+    critRange: 19, critMultiplier: 2, range: 240, twoHanded: true,
+    description: "A +1 heavy crossbow enchanted to shoot bolts at double range.",
+    specialEffect: "+1 heavy crossbow. Range increment doubled (240ft). No range penalty within 120ft.",
+  },
+  {
+    id: "wpn_halberd_force", name: "Halberd of Force", category: "weapon", weaponType: "halberd",
+    rarity: "rare", value: 30000, weight: 12, requiredLevel: 10, slot: "mainhand",
+    baseDamage: "1d10", bonusToHit: 3, bonusDamage: 3, element: "force",
+    critRange: 20, critMultiplier: 3, twoHanded: true,
+    onHit: { type: "knockback", chance: 30, dc: 17 },
+    description: "A +3 halberd crackling with force energy that sends foes flying.",
+    specialEffect: "+3 halberd, +1d6 force damage. 30% chance knockback 10ft (Fort DC 17).",
+  },
+  {
+    id: "wpn_trident_warning", name: "Trident of Warning", category: "weapon", weaponType: "trident",
+    rarity: "uncommon", value: 10115, weight: 4, requiredLevel: 6, slot: "mainhand",
+    baseDamage: "1d8", bonusToHit: 2, bonusDamage: 2, element: "none",
+    critRange: 20, critMultiplier: 2, range: 10,
+    description: "A +2 trident that glows red when enemies are near.",
+    specialEffect: "+2 trident. Cannot be surprised — weapon warns of hostile intent within 120ft.",
+    passives: [{ type: "darkvision", value: 120, description: "Warns of enemies within 120ft. Cannot be surprised." }],
+  },
+  {
+    id: "wpn_flail_smiting", name: "Flail of Smiting", category: "weapon", weaponType: "flail",
+    rarity: "rare", value: 35000, weight: 8, requiredLevel: 10, slot: "mainhand",
+    baseDamage: "1d8", bonusToHit: 3, bonusDamage: 3, element: "radiant",
+    critRange: 20, critMultiplier: 2,
+    description: "A +3 heavy flail wreathed in divine energy, crushing evil where it stands.",
+    specialEffect: "+3 flail. +2d6 radiant vs. evil outsiders. Crit vs evil: stun 1 round (no save).",
+  },
+];
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  ARMOR (30 items)
+// ══════════════════════════════════════════════════════════════════════════════
+
+export const MAGIC_ARMORS: MagicArmor[] = [
+  // ── Common ──
+  {
+    id: "arm_chain_shirt_1", name: "Chain Shirt +1", category: "armor", armorType: "chain-shirt",
+    rarity: "common", value: 1250, weight: 25, requiredLevel: 1, slot: "body",
+    baseAC: 5, maxDexBonus: 4, armorCheckPenalty: -2, arcaneFailure: 20,
+    description: "A shirt of interlocking rings with a faint magical ward.",
+    specialEffect: "+1 enhancement bonus to AC.",
+  },
+  {
+    id: "arm_leather_1", name: "Leather Armor +1", category: "armor", armorType: "leather",
+    rarity: "common", value: 1160, weight: 15, requiredLevel: 1, slot: "body",
+    baseAC: 3, maxDexBonus: 6, armorCheckPenalty: 0, arcaneFailure: 10,
+    description: "Well-oiled leather armor reinforced with magical protection.",
+    specialEffect: "+1 enhancement bonus to AC.",
+  },
+  {
+    id: "arm_breastplate_1", name: "Breastplate +1", category: "armor", armorType: "breastplate",
+    rarity: "common", value: 1350, weight: 30, requiredLevel: 1, slot: "body",
+    baseAC: 6, maxDexBonus: 3, armorCheckPenalty: -4, arcaneFailure: 25,
+    description: "A solid breastplate with a subtle shimmer of protection.",
+    specialEffect: "+1 enhancement bonus to AC.",
+  },
+  {
+    id: "arm_shield_heavy_1", name: "Heavy Shield +1", category: "armor", armorType: "shield",
+    rarity: "common", value: 1170, weight: 15, requiredLevel: 1, slot: "offhand",
+    baseAC: 2, maxDexBonus: 99, armorCheckPenalty: -2, arcaneFailure: 15,
+    description: "A sturdy shield with a faint protective aura.",
+    specialEffect: "+1 enhancement bonus to shield AC.",
+  },
+  {
+    id: "arm_studded_leather_1", name: "Studded Leather +1", category: "armor", armorType: "studded-leather",
+    rarity: "common", value: 1175, weight: 20, requiredLevel: 1, slot: "body",
+    baseAC: 4, maxDexBonus: 5, armorCheckPenalty: -1, arcaneFailure: 15,
+    description: "Studded leather reinforced with magical studs.",
+    specialEffect: "+1 enhancement bonus to AC.",
+  },
+  {
+    id: "arm_full_plate_1", name: "Full Plate +1", category: "armor", armorType: "plate",
+    rarity: "common", value: 2650, weight: 50, requiredLevel: 3, slot: "body",
+    baseAC: 9, maxDexBonus: 1, armorCheckPenalty: -6, arcaneFailure: 35,
+    description: "A suit of full plate armor with a minor magical enhancement.",
+    specialEffect: "+1 enhancement bonus to AC.",
+  },
+
+  // ── Uncommon ──
+  {
+    id: "arm_mithral_shirt", name: "Mithral Shirt", category: "armor", armorType: "chain-shirt",
+    rarity: "uncommon", value: 1100, weight: 10, requiredLevel: 5, slot: "body",
+    baseAC: 5, maxDexBonus: 6, armorCheckPenalty: 0, arcaneFailure: 10,
+    description: "A shirt of finely woven mithral rings — light as silk, strong as steel.",
+    specialEffect: "+4 AC, +6 max DEX, no armor check penalty. Light armor.",
+  },
+  {
+    id: "arm_elven_chain", name: "Elven Chain", category: "armor", armorType: "chainmail",
+    rarity: "uncommon", value: 4150, weight: 20, requiredLevel: 6, slot: "body",
+    baseAC: 6, maxDexBonus: 4, armorCheckPenalty: -2, arcaneFailure: 20,
+    description: "An exquisitely crafted suit of mithral chainmail of elven make.",
+    specialEffect: "+5 AC, +4 max DEX, -2 check penalty. Counts as light armor for movement.",
+  },
+  {
+    id: "arm_rhino_hide", name: "Rhino Hide", category: "armor", armorType: "hide",
+    rarity: "uncommon", value: 5165, weight: 25, requiredLevel: 6, slot: "body",
+    baseAC: 6, maxDexBonus: 4, armorCheckPenalty: -3, arcaneFailure: 20,
+    description: "Thick rhinoceros hide reinforced with magic — charges deal extra damage.",
+    specialEffect: "+5 AC. On successful charge attack: +2d6 bonus damage.",
+  },
+  {
+    id: "arm_adamantine_breastplate", name: "Adamantine Breastplate", category: "armor", armorType: "breastplate",
+    rarity: "uncommon", value: 10200, weight: 30, requiredLevel: 8, slot: "body",
+    baseAC: 6, maxDexBonus: 3, armorCheckPenalty: -4, arcaneFailure: 25,
+    description: "A mirror-bright breastplate of indestructible adamantine.",
+    specialEffect: "+5 AC. DR 2/-- (reduces all physical damage by 2).",
+    passives: [{ type: "resistance", value: 2, description: "DR 2/-- reduces all physical damage by 2." }],
+  },
+  {
+    id: "arm_spined_shield", name: "Spined Shield", category: "armor", armorType: "shield",
+    rarity: "uncommon", value: 5580, weight: 15, requiredLevel: 6, slot: "offhand",
+    baseAC: 3, maxDexBonus: 99, armorCheckPenalty: -2, arcaneFailure: 15,
+    description: "A +1 heavy shield bristling with sharp iron spikes.",
+    specialEffect: "+3 AC. Fire spines: ranged attack 120ft, 1d10+3 damage, 3/day.",
+    actives: [{
+      name: "Fire Spine", description: "Launch a spine: ranged attack, 1d10+3 piercing, 120ft range.",
+      usesPerDay: 3, damage: "1d10+3", range: 120,
+    }],
+  },
+  {
+    id: "arm_darkwood_buckler", name: "Darkwood Buckler", category: "armor", armorType: "buckler",
+    rarity: "common", value: 205, weight: 2.5, requiredLevel: 1, slot: "offhand",
+    baseAC: 1, maxDexBonus: 99, armorCheckPenalty: 0, arcaneFailure: 5,
+    description: "A small shield carved from rare darkwood — nearly weightless.",
+    specialEffect: "+1 AC shield bonus. No armor check penalty.",
+  },
+
+  // ── Rare ──
+  {
+    id: "arm_dwarven_plate", name: "Dwarven Plate", category: "armor", armorType: "plate",
+    rarity: "rare", value: 16500, weight: 45, requiredLevel: 10, slot: "body",
+    baseAC: 11, maxDexBonus: 1, armorCheckPenalty: -5, arcaneFailure: 35,
+    description: "Masterwork dwarven full plate of unmatched craftsmanship.",
+    specialEffect: "+9 AC (+2 full plate). Dwarven-forged — never rusts. -5 check penalty.",
+  },
+  {
+    id: "arm_banded_luck", name: "Banded Mail of Luck", category: "armor", armorType: "chainmail",
+    rarity: "rare", value: 18900, weight: 35, requiredLevel: 10, slot: "body",
+    baseAC: 9, maxDexBonus: 1, armorCheckPenalty: -6, arcaneFailure: 35,
+    description: "Gem-studded +3 banded mail that bends fate around its wearer.",
+    specialEffect: "+6 AC. Once per week: force an attack against you to be rerolled.",
+    actives: [{
+      name: "Luck Reroll", description: "Force one attack against you to be rerolled (1/week).",
+      usesPerDay: 1,
+    }],
+  },
+  {
+    id: "arm_celestial", name: "Celestial Armor", category: "armor", armorType: "chainmail",
+    rarity: "rare", value: 22400, weight: 20, requiredLevel: 10, slot: "body",
+    baseAC: 8, maxDexBonus: 8, armorCheckPenalty: -2, arcaneFailure: 15,
+    description: "Bright silver +3 chainmail so fine it can be worn under clothing.",
+    specialEffect: "+6 AC, +8 max DEX. Fly 1/day (5 minutes). Counts as light armor.",
+    actives: [{
+      name: "Fly", description: "Fly at 60ft speed for 5 minutes.",
+      usesPerDay: 1,
+    }],
+    passives: [{ type: "flight", value: 60, description: "Fly 1/day for 5 minutes." }],
+  },
+  {
+    id: "arm_plate_deep", name: "Plate Armor of the Deep", category: "armor", armorType: "plate",
+    rarity: "rare", value: 24650, weight: 45, requiredLevel: 10, slot: "body",
+    baseAC: 10, maxDexBonus: 1, armorCheckPenalty: -6, arcaneFailure: 35,
+    description: "Blue-green +1 full plate decorated with aquatic motifs.",
+    specialEffect: "+9 AC. Breathe underwater, swim 20ft, understand aquatic languages.",
+    passives: [{ type: "waterbreathing", description: "Breathe and move freely underwater." }],
+  },
+  {
+    id: "arm_breastplate_command", name: "Breastplate of Command", category: "armor", armorType: "breastplate",
+    rarity: "rare", value: 25400, weight: 30, requiredLevel: 10, slot: "body",
+    baseAC: 8, maxDexBonus: 3, armorCheckPenalty: -4, arcaneFailure: 25,
+    description: "A finely crafted +2 breastplate radiating a commanding aura.",
+    specialEffect: "+7 AC. +2 CHA checks. Allies within 360ft gain +1 morale vs fear.",
+    statModifiers: [{ stat: "CHA", value: 2 }],
+  },
+  {
+    id: "arm_lions_shield", name: "Lion's Shield", category: "armor", armorType: "shield",
+    rarity: "rare", value: 9170, weight: 15, requiredLevel: 8, slot: "offhand",
+    baseAC: 4, maxDexBonus: 99, armorCheckPenalty: -2, arcaneFailure: 15,
+    description: "A +2 heavy shield emblazoned with a roaring lion head.",
+    specialEffect: "+4 AC. Lion's head bites once per round: +8 melee, 2d6+3 damage.",
+    actives: [{
+      name: "Lion Bite", description: "Lion head bites each round: +8 attack, 2d6+3 damage.",
+      usesPerDay: -1,
+    }],
+  },
+  {
+    id: "arm_shield_reflection", name: "Shield of Spell Reflection", category: "armor", armorType: "shield",
+    rarity: "rare", value: 25000, weight: 15, requiredLevel: 12, slot: "offhand",
+    baseAC: 4, maxDexBonus: 99, armorCheckPenalty: -2, arcaneFailure: 15,
+    description: "A polished +3 heavy shield that reflects hostile spells back at their casters.",
+    specialEffect: "+5 AC. 1/day: reflect a targeted spell back at the caster.",
+    actives: [{
+      name: "Spell Reflection", description: "Reflect one targeted spell back at the caster.",
+      usesPerDay: 1,
+    }],
+    passives: [{ type: "reflect", value: 1, description: "Reflects one spell per day." }],
+  },
+  {
+    id: "arm_winged_shield", name: "Winged Shield", category: "armor", armorType: "shield",
+    rarity: "rare", value: 17257, weight: 10, requiredLevel: 10, slot: "offhand",
+    baseAC: 5, maxDexBonus: 99, armorCheckPenalty: -1, arcaneFailure: 15,
+    description: "A +3 heavy shield decorated with eagle wings that animate on command.",
+    specialEffect: "+5 AC. Fly 60ft for 5 minutes, 1/day.",
+    actives: [{
+      name: "Fly", description: "Wings animate: fly 60ft (average) for 5 minutes.",
+      usesPerDay: 1,
+    }],
+  },
+
+  // ── Epic ──
+  {
+    id: "arm_demon_armor", name: "Demon Armor", category: "armor", armorType: "plate",
+    rarity: "epic", value: 52260, weight: 50, requiredLevel: 15, slot: "body",
+    baseAC: 13, maxDexBonus: 1, armorCheckPenalty: -6, arcaneFailure: 35,
+    description: "Fiendish +4 full plate shaped like a snarling demon, granting claws.",
+    specialEffect: "+12 AC. Claw attacks 1d10+1 each. Contagion 1/day. Evil aura.",
+    actives: [{
+      name: "Contagion", description: "Cast contagion on touch (Fort DC 16).",
+      usesPerDay: 1, dc: 16,
+    }],
+  },
+  {
+    id: "arm_invulnerability", name: "Plate of Invulnerability", category: "armor", armorType: "plate",
+    rarity: "epic", value: 60000, weight: 50, requiredLevel: 15, slot: "body",
+    baseAC: 13, maxDexBonus: 1, armorCheckPenalty: -6, arcaneFailure: 35,
+    description: "A +3 full plate of adamantine that renders its wearer nearly impervious.",
+    specialEffect: "+12 AC. DR 5/-- (reduce all physical damage by 5). Immune to critical hits.",
+    passives: [{ type: "resistance", value: 5, description: "DR 5/-- physical damage reduction." }],
+  },
+  {
+    id: "arm_absorbing_shield", name: "Absorbing Shield", category: "armor", armorType: "shield",
+    rarity: "epic", value: 50170, weight: 15, requiredLevel: 15, slot: "offhand",
+    baseAC: 3, maxDexBonus: 99, armorCheckPenalty: -2, arcaneFailure: 15,
+    description: "A +1 heavy shield that devours magical energy on contact.",
+    specialEffect: "+3 AC. Absorb (disintegrate) one magic item per day on touch, no save.",
+    actives: [{
+      name: "Absorb Item", description: "Touch a magic item to permanently destroy it (1/day).",
+      usesPerDay: 1,
+    }],
+  },
+
+  // ── Legendary ──
+  {
+    id: "arm_dragon_scale_red", name: "Red Dragon Scale Mail", category: "armor", armorType: "half-plate",
+    rarity: "legendary", value: 100000, weight: 35, requiredLevel: 18, slot: "body",
+    baseAC: 12, maxDexBonus: 3, armorCheckPenalty: -3, arcaneFailure: 20,
+    description: "Armor forged from the scales of an ancient red dragon, radiating furnace heat.",
+    specialEffect: "+10 AC. Fire immunity. 1/day: breath weapon 12d6 fire (30ft cone, Ref DC 20).",
+    resistances: [{ element: "fire", percent: 100 }],
+    actives: [{
+      name: "Fire Breath", description: "Breathe fire: 12d6 in 30ft cone (Reflex DC 20 half).",
+      usesPerDay: 1, damage: "12d6", dc: 20, range: 30,
+    }],
+  },
+  {
+    id: "arm_robe_archmagi", name: "Robe of the Archmagi", category: "armor", armorType: "robes",
+    rarity: "legendary", value: 75000, weight: 1, requiredLevel: 18, slot: "body",
+    baseAC: 5, maxDexBonus: 99, armorCheckPenalty: 0, arcaneFailure: 0,
+    description: "The supreme garment of arcane power, woven from pure magic itself.",
+    specialEffect: "+5 AC. SR 18. +4 resistance saves. +2 caster level to overcome SR. No arcane failure.",
+    passives: [{ type: "resistance", element: "force", value: 18, description: "Spell Resistance 18." }],
+  },
+  {
+    id: "arm_ethereal_plate", name: "Ethereal Plate", category: "armor", armorType: "plate",
+    rarity: "legendary", value: 120000, weight: 0, requiredLevel: 20, slot: "body",
+    baseAC: 14, maxDexBonus: 4, armorCheckPenalty: 0, arcaneFailure: 0,
+    description: "Armor that exists partially on the ethereal plane — weightless, invisible, impenetrable.",
+    specialEffect: "+14 AC. Weightless. No penalties. 3/day: become ethereal for 1 round.",
+    actives: [{
+      name: "Ethereal Shift", description: "Become ethereal for 1 round (untouchable, can pass through walls).",
+      usesPerDay: 3,
+    }],
+  },
+];
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  RINGS (25 items)
+// ══════════════════════════════════════════════════════════════════════════════
+
+export const MAGIC_RINGS: MagicRing[] = [
+  {
+    id: "ring_protection_1", name: "Ring of Protection +1", category: "ring",
+    rarity: "common", value: 2000, weight: 0, requiredLevel: 1, slot: "ring",
+    description: "A silver ring inscribed with a minor ward of deflection.",
+    specialEffect: "+1 deflection bonus to AC.",
+  },
+  {
+    id: "ring_feather_falling", name: "Ring of Feather Falling", category: "ring",
+    rarity: "common", value: 2200, weight: 0, requiredLevel: 1, slot: "ring",
+    description: "A delicate silver ring set with a tiny white feather.",
+    specialEffect: "Automatically activates feather fall when you fall more than 5ft.",
+    passives: [{ type: "resistance", description: "Immune to falling damage." }],
+  },
+  {
+    id: "ring_sustenance", name: "Ring of Sustenance", category: "ring",
+    rarity: "common", value: 2500, weight: 0, requiredLevel: 1, slot: "ring",
+    description: "A plain iron ring that hums with nourishing magic.",
+    specialEffect: "No need for food or water. Only need 2 hours sleep per night.",
+  },
+  {
+    id: "ring_climbing", name: "Ring of Climbing", category: "ring",
+    rarity: "common", value: 2500, weight: 0, requiredLevel: 1, slot: "ring",
+    description: "A rough stone ring carved with gecko motifs.",
+    specialEffect: "+5 competence bonus to Climb checks.",
+  },
+  {
+    id: "ring_swimming", name: "Ring of Swimming", category: "ring",
+    rarity: "common", value: 2500, weight: 0, requiredLevel: 1, slot: "ring",
+    description: "A blue-green ring shaped like a wave.",
+    specialEffect: "+5 competence bonus to Swim checks.",
+  },
+  {
+    id: "ring_protection_2", name: "Ring of Protection +2", category: "ring",
+    rarity: "uncommon", value: 8000, weight: 0, requiredLevel: 5, slot: "ring",
+    description: "A gold ring inscribed with a powerful ward of deflection.",
+    specialEffect: "+2 deflection bonus to AC.",
+  },
+  {
+    id: "ring_counterspells", name: "Ring of Counterspells", category: "ring",
+    rarity: "uncommon", value: 4000, weight: 0, requiredLevel: 5, slot: "ring",
+    description: "A ring with a hollow setting that can hold a spell.",
+    specialEffect: "Store one spell; auto-counters that same spell when cast at you.",
+  },
+  {
+    id: "ring_mind_shielding", name: "Ring of Mind Shielding", category: "ring",
+    rarity: "uncommon", value: 8000, weight: 0, requiredLevel: 5, slot: "ring",
+    description: "A dark metal ring that blocks mental intrusion.",
+    specialEffect: "Immune to detect thoughts, discern lies, and alignment detection.",
+    passives: [{ type: "immunity", element: "force", description: "Immune to mind-reading effects." }],
+  },
+  {
+    id: "ring_force_shield", name: "Ring of Force Shield", category: "ring",
+    rarity: "uncommon", value: 8500, weight: 0, requiredLevel: 5, slot: "ring",
+    description: "A ring that projects a buckler-sized disc of shimmering force.",
+    specialEffect: "+2 shield bonus to AC (activate/deactivate as free action).",
+  },
+  {
+    id: "ring_ram", name: "Ring of the Ram", category: "ring",
+    rarity: "uncommon", value: 8600, weight: 0, requiredLevel: 6, slot: "ring",
+    description: "An iron ring shaped like a ram's head.",
+    specialEffect: "50 charges. Ranged force attack: 1-3 charges for 1d6-3d6 force + bull rush.",
+    actives: [{
+      name: "Ram Strike", description: "Spend 1-3 charges for 1d6-3d6 force damage + knockback.",
+      usesPerDay: 10, range: 60,
+    }],
+  },
+  {
+    id: "ring_energy_resist_minor", name: "Ring of Energy Resistance (Minor)", category: "ring",
+    rarity: "uncommon", value: 12000, weight: 0, requiredLevel: 6, slot: "ring",
+    description: "A ring set with a swirling elemental gemstone.",
+    specialEffect: "Resist 10 against one energy type (fire, cold, acid, lightning, or sonic).",
+    resistances: [{ element: "fire", percent: 25 }],
+  },
+  {
+    id: "ring_protection_3", name: "Ring of Protection +3", category: "ring",
+    rarity: "rare", value: 18000, weight: 0, requiredLevel: 10, slot: "ring",
+    description: "A mithral ring blazing with deflection wards.",
+    specialEffect: "+3 deflection bonus to AC.",
+  },
+  {
+    id: "ring_invisibility", name: "Ring of Invisibility", category: "ring",
+    rarity: "rare", value: 20000, weight: 0, requiredLevel: 10, slot: "ring",
+    description: "A plain band that turns transparent when worn.",
+    specialEffect: "Become invisible at will (as invisibility spell).",
+    actives: [{
+      name: "Invisibility", description: "Become invisible at will. Ends if you attack.",
+      usesPerDay: -1,
+    }],
+    passives: [{ type: "stealth", value: 20, description: "Invisibility at will." }],
+  },
+  {
+    id: "ring_evasion", name: "Ring of Evasion", category: "ring",
+    rarity: "rare", value: 25000, weight: 0, requiredLevel: 10, slot: "ring",
+    description: "A nimble mithral ring that glimmers with protective magic.",
+    specialEffect: "Evasion: Reflex saves for half damage take no damage on success instead.",
+  },
+  {
+    id: "ring_spell_storing_minor", name: "Ring of Minor Spell Storing", category: "ring",
+    rarity: "rare", value: 18000, weight: 0, requiredLevel: 9, slot: "ring",
+    description: "A ring with three tiny crystal chambers for holding spells.",
+    specialEffect: "Store up to 3 levels of spells, cast them as if you cast them yourself.",
+  },
+  {
+    id: "ring_water_walking", name: "Ring of Water Walking", category: "ring",
+    rarity: "uncommon", value: 15000, weight: 0, requiredLevel: 7, slot: "ring",
+    description: "A blue sapphire ring that repels water.",
+    specialEffect: "Walk on water as if solid ground.",
+    passives: [{ type: "waterbreathing", description: "Walk on water surfaces." }],
+  },
+  {
+    id: "ring_xray_vision", name: "Ring of X-Ray Vision", category: "ring",
+    rarity: "rare", value: 25000, weight: 0, requiredLevel: 10, slot: "ring",
+    description: "A lead-rimmed ring with a crystalline lens.",
+    specialEffect: "See through solid matter (1ft stone, 1in metal, 3ft wood) for 1 min/day.",
+    actives: [{
+      name: "X-Ray Vision", description: "See through walls for 1 minute per day.",
+      usesPerDay: 1,
+    }],
+  },
+  {
+    id: "ring_protection_4", name: "Ring of Protection +4", category: "ring",
+    rarity: "epic", value: 32000, weight: 0, requiredLevel: 13, slot: "ring",
+    description: "An adamantine ring glowing with deflection magic.",
+    specialEffect: "+4 deflection bonus to AC.",
+  },
+  {
+    id: "ring_freedom_of_movement", name: "Ring of Freedom of Movement", category: "ring",
+    rarity: "epic", value: 40000, weight: 0, requiredLevel: 14, slot: "ring",
+    description: "A ring of interlocking bands that never tangle.",
+    specialEffect: "Continuous freedom of movement — immune to paralysis, grapple, entangle, slow.",
+    passives: [{ type: "immunity", description: "Immune to paralysis, grapple, entangle, slow." }],
+  },
+  {
+    id: "ring_energy_resist_major", name: "Ring of Energy Resistance (Major)", category: "ring",
+    rarity: "epic", value: 28000, weight: 0, requiredLevel: 13, slot: "ring",
+    description: "A ring blazing with elemental energy.",
+    specialEffect: "Resist 20 against one energy type.",
+    resistances: [{ element: "fire", percent: 50 }],
+  },
+  {
+    id: "ring_regeneration", name: "Ring of Regeneration", category: "ring",
+    rarity: "epic", value: 90000, weight: 0, requiredLevel: 16, slot: "ring",
+    description: "A living ring of green metal that pulses with vitality.",
+    specialEffect: "Regenerate 1 HP per round. Regrow lost limbs in 1d7 days.",
+    passives: [{ type: "regen", value: 1, description: "Regenerate 1 HP per round." }],
+  },
+  {
+    id: "ring_spell_turning", name: "Ring of Spell Turning", category: "ring",
+    rarity: "epic", value: 98280, weight: 0, requiredLevel: 16, slot: "ring",
+    description: "A mirrored ring that reflects hostile magic.",
+    specialEffect: "Reflects 1d4+6 spell levels back at caster per day.",
+    passives: [{ type: "reflect", value: 10, description: "Reflects spells back at caster." }],
+  },
+  {
+    id: "ring_protection_5", name: "Ring of Protection +5", category: "ring",
+    rarity: "legendary", value: 50000, weight: 0, requiredLevel: 18, slot: "ring",
+    description: "A legendary ring of absolute deflection.",
+    specialEffect: "+5 deflection bonus to AC.",
+  },
+  {
+    id: "ring_spell_storing", name: "Ring of Spell Storing", category: "ring",
+    rarity: "legendary", value: 50000, weight: 0, requiredLevel: 18, slot: "ring",
+    description: "A ring with five crystal chambers for storing magic.",
+    specialEffect: "Store up to 5 levels of spells, cast them as if you cast them yourself.",
+  },
+  {
+    id: "ring_three_wishes", name: "Ring of Three Wishes", category: "ring",
+    rarity: "legendary", value: 97950, weight: 0, requiredLevel: 20, slot: "ring",
+    description: "A golden ring with three rubies — each holding a miracle.",
+    specialEffect: "Contains 3 wish spells. Each ruby dims when a wish is used.",
+    actives: [{
+      name: "Wish", description: "Cast Wish (3 total uses, consumed permanently).",
+      usesPerDay: 1,
+    }],
+  },
+];
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  AMULETS & NECKLACES (20 items)
+// ══════════════════════════════════════════════════════════════════════════════
+
+export const MAGIC_AMULETS: MagicAmulet[] = [
+  {
+    id: "amu_health_2", name: "Amulet of Health +2", category: "amulet",
+    rarity: "uncommon", value: 4000, weight: 0, requiredLevel: 5, slot: "neck",
+    description: "A jade amulet carved with a bear symbol.",
+    specialEffect: "+2 enhancement bonus to Constitution.",
+    statModifiers: [{ stat: "CON", value: 2 }],
+  },
+  {
+    id: "amu_health_4", name: "Amulet of Health +4", category: "amulet",
+    rarity: "rare", value: 16000, weight: 0, requiredLevel: 10, slot: "neck",
+    description: "A powerful jade amulet radiating vitality.",
+    specialEffect: "+4 enhancement bonus to Constitution.",
+    statModifiers: [{ stat: "CON", value: 4 }],
+  },
+  {
+    id: "amu_health_6", name: "Amulet of Health +6", category: "amulet",
+    rarity: "epic", value: 36000, weight: 0, requiredLevel: 15, slot: "neck",
+    description: "A legendary jade amulet of supreme vitality.",
+    specialEffect: "+6 enhancement bonus to Constitution.",
+    statModifiers: [{ stat: "CON", value: 6 }],
+  },
+  {
+    id: "amu_nat_armor_1", name: "Amulet of Natural Armor +1", category: "amulet",
+    rarity: "common", value: 2000, weight: 0, requiredLevel: 1, slot: "neck",
+    description: "A bone amulet with druidic sigils that toughen the skin.",
+    specialEffect: "+1 enhancement bonus to natural armor.",
+  },
+  {
+    id: "amu_nat_armor_2", name: "Amulet of Natural Armor +2", category: "amulet",
+    rarity: "uncommon", value: 8000, weight: 0, requiredLevel: 5, slot: "neck",
+    description: "A bone amulet with stronger druidic sigils.",
+    specialEffect: "+2 enhancement bonus to natural armor.",
+  },
+  {
+    id: "amu_nat_armor_3", name: "Amulet of Natural Armor +3", category: "amulet",
+    rarity: "rare", value: 18000, weight: 0, requiredLevel: 10, slot: "neck",
+    description: "A bone amulet blazing with protective magic.",
+    specialEffect: "+3 enhancement bonus to natural armor.",
+  },
+  {
+    id: "amu_periapt_wisdom_2", name: "Periapt of Wisdom +2", category: "amulet",
+    rarity: "uncommon", value: 4000, weight: 0, requiredLevel: 5, slot: "neck",
+    description: "A blue pearl pendant that deepens insight.",
+    specialEffect: "+2 enhancement bonus to Wisdom.",
+    statModifiers: [{ stat: "WIS", value: 2 }],
+  },
+  {
+    id: "amu_periapt_wisdom_4", name: "Periapt of Wisdom +4", category: "amulet",
+    rarity: "rare", value: 16000, weight: 0, requiredLevel: 10, slot: "neck",
+    description: "A deep blue pearl pendant of profound insight.",
+    specialEffect: "+4 enhancement bonus to Wisdom.",
+    statModifiers: [{ stat: "WIS", value: 4 }],
+  },
+  {
+    id: "amu_necklace_fireballs", name: "Necklace of Fireballs", category: "amulet",
+    rarity: "uncommon", value: 4350, weight: 1, requiredLevel: 6, slot: "neck",
+    description: "A necklace strung with dull red beads that erupt into fireballs.",
+    specialEffect: "5 beads: one 5d6, two 3d6, two 2d6 fireballs (Reflex DC 14).",
+    actives: [{
+      name: "Throw Bead", description: "Throw bead: fireball (damage varies by bead size). 5 total.",
+      usesPerDay: 5, damage: "5d6", dc: 14, range: 150,
+    }],
+  },
+  {
+    id: "amu_proof_poison", name: "Periapt of Proof against Poison", category: "amulet",
+    rarity: "rare", value: 27000, weight: 0, requiredLevel: 10, slot: "neck",
+    description: "A gem pendant that neutralizes all toxins on contact.",
+    specialEffect: "Immune to all poisons.",
+    passives: [{ type: "immunity", element: "poison", description: "Immune to all poisons." }],
+  },
+  {
+    id: "amu_periapt_health", name: "Periapt of Health", category: "amulet",
+    rarity: "uncommon", value: 7400, weight: 0, requiredLevel: 6, slot: "neck",
+    description: "A jade periapt that wards against disease.",
+    specialEffect: "Immune to all diseases, including magical diseases.",
+    passives: [{ type: "immunity", description: "Immune to all diseases." }],
+  },
+  {
+    id: "amu_adaptation", name: "Necklace of Adaptation", category: "amulet",
+    rarity: "rare", value: 9000, weight: 0, requiredLevel: 8, slot: "neck",
+    description: "A leather necklace with a crystal that purifies air.",
+    specialEffect: "Breathe normally in any environment — underwater, vacuum, poison gas.",
+    passives: [{ type: "waterbreathing", description: "Breathe in any environment." }],
+  },
+  {
+    id: "amu_proof_detection", name: "Amulet of Proof against Detection", category: "amulet",
+    rarity: "epic", value: 35000, weight: 0, requiredLevel: 14, slot: "neck",
+    description: "A black star sapphire amulet that hides you from all divination.",
+    specialEffect: "Immune to scrying, locate creature, detect thoughts, and all divination.",
+    passives: [{ type: "stealth", value: 30, description: "Immune to all divination magic." }],
+  },
+  {
+    id: "amu_scarab_protection", name: "Scarab of Protection", category: "amulet",
+    rarity: "epic", value: 38000, weight: 0, requiredLevel: 14, slot: "neck",
+    description: "A golden scarab brooch that absorbs death magic.",
+    specialEffect: "+3 resistance saves. Absorbs energy drain/death effects (12 charges).",
+    passives: [{ type: "immunity", element: "necrotic", description: "Absorbs death effects (12 charges)." }],
+  },
+  {
+    id: "amu_mighty_fists_1", name: "Amulet of Mighty Fists +1", category: "amulet",
+    rarity: "common", value: 6000, weight: 0, requiredLevel: 3, slot: "neck",
+    description: "A fist-shaped iron amulet that empowers unarmed strikes.",
+    specialEffect: "+1 enhancement bonus to unarmed attack and damage.",
+  },
+  {
+    id: "amu_mighty_fists_3", name: "Amulet of Mighty Fists +3", category: "amulet",
+    rarity: "rare", value: 54000, weight: 0, requiredLevel: 12, slot: "neck",
+    description: "A powerful amulet blazing with martial ki.",
+    specialEffect: "+3 enhancement bonus to unarmed attack and damage.",
+  },
+  {
+    id: "amu_brooch_shielding", name: "Brooch of Shielding", category: "amulet",
+    rarity: "common", value: 1500, weight: 0, requiredLevel: 1, slot: "neck",
+    description: "A silver brooch that absorbs magic missiles.",
+    specialEffect: "Absorbs magic missiles (up to 101 points of force damage total).",
+    resistances: [{ element: "force", percent: 100 }],
+  },
+  {
+    id: "amu_medallion_thoughts", name: "Medallion of Thoughts", category: "amulet",
+    rarity: "rare", value: 12000, weight: 1, requiredLevel: 8, slot: "neck",
+    description: "A gold medallion etched with a third eye.",
+    specialEffect: "Detect thoughts at will (Will DC 13). Read surface thoughts within 60ft.",
+    actives: [{
+      name: "Detect Thoughts", description: "Read surface thoughts within 60ft (Will DC 13 negates).",
+      usesPerDay: -1, dc: 13, range: 60,
+    }],
+  },
+  {
+    id: "amu_nat_armor_5", name: "Amulet of Natural Armor +5", category: "amulet",
+    rarity: "legendary", value: 50000, weight: 0, requiredLevel: 18, slot: "neck",
+    description: "A legendary bone amulet of absolute natural defense.",
+    specialEffect: "+5 enhancement bonus to natural armor.",
+  },
+  {
+    id: "amu_hand_of_glory", name: "Hand of Glory", category: "amulet",
+    rarity: "legendary", value: 60000, weight: 1, requiredLevel: 18, slot: "neck",
+    description: "A mummified hand on a chain that grants an extra ring slot and powers.",
+    specialEffect: "Wear a third ring. Daylight and see invisibility at will. Dimension door 1/day.",
+    actives: [{
+      name: "Dimension Door", description: "Teleport up to 400ft (1/day).",
+      usesPerDay: 1, range: 400,
+    }],
+  },
+];
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  POTIONS (30 items)
+// ═══════════════════════════════════════════════════════════════════════��══════
+
+export const MAGIC_POTIONS: MagicPotion[] = [
+  {
+    id: "pot_cure_light", name: "Potion of Cure Light Wounds", category: "potion",
+    rarity: "common", value: 50, weight: 0.1, requiredLevel: 1, slot: "consumable",
+    description: "A small vial of warm golden liquid.",
+    specialEffect: "Heals 1d8+1 hit points.",
+    healing: "1d8+1", duration: 0,
+  },
+  {
+    id: "pot_cure_moderate", name: "Potion of Cure Moderate Wounds", category: "potion",
+    rarity: "uncommon", value: 300, weight: 0.1, requiredLevel: 3, slot: "consumable",
+    description: "A larger vial of warm golden healing draught.",
+    specialEffect: "Heals 2d8+3 hit points.",
+    healing: "2d8+3", duration: 0,
+  },
+  {
+    id: "pot_cure_serious", name: "Potion of Cure Serious Wounds", category: "potion",
+    rarity: "rare", value: 750, weight: 0.1, requiredLevel: 5, slot: "consumable",
+    description: "A large vial of intensely radiant golden liquid.",
+    specialEffect: "Heals 3d8+5 hit points.",
+    healing: "3d8+5", duration: 0,
+  },
+  {
+    id: "pot_cure_critical", name: "Potion of Cure Critical Wounds", category: "potion",
+    rarity: "epic", value: 1400, weight: 0.1, requiredLevel: 7, slot: "consumable",
+    description: "A crystal flask of blazing golden healing essence.",
+    specialEffect: "Heals 4d8+7 hit points.",
+    healing: "4d8+7", duration: 0,
+  },
+  {
+    id: "pot_mage_armor", name: "Potion of Mage Armor", category: "potion",
+    rarity: "common", value: 50, weight: 0.1, requiredLevel: 1, slot: "consumable",
+    description: "A shimmering silver liquid that hardens into an invisible ward.",
+    specialEffect: "+4 armor bonus to AC for 1 hour.",
+    duration: 600,
+  },
+  {
+    id: "pot_bulls_strength", name: "Potion of Bull's Strength", category: "potion",
+    rarity: "uncommon", value: 300, weight: 0.1, requiredLevel: 3, slot: "consumable",
+    description: "A thick red liquid that makes muscles bulge.",
+    specialEffect: "+4 enhancement bonus to Strength for 3 minutes.",
+    statModifiers: [{ stat: "STR", value: 4 }], duration: 30,
+  },
+  {
+    id: "pot_cats_grace", name: "Potion of Cat's Grace", category: "potion",
+    rarity: "uncommon", value: 300, weight: 0.1, requiredLevel: 3, slot: "consumable",
+    description: "A lithe amber liquid that makes you light on your feet.",
+    specialEffect: "+4 enhancement bonus to Dexterity for 3 minutes.",
+    statModifiers: [{ stat: "DEX", value: 4 }], duration: 30,
+  },
+  {
+    id: "pot_bears_endurance", name: "Potion of Bear's Endurance", category: "potion",
+    rarity: "uncommon", value: 300, weight: 0.1, requiredLevel: 3, slot: "consumable",
+    description: "A thick brown tonic that toughens the body.",
+    specialEffect: "+4 enhancement bonus to Constitution for 3 minutes.",
+    statModifiers: [{ stat: "CON", value: 4 }], duration: 30,
+  },
+  {
+    id: "pot_foxs_cunning", name: "Potion of Fox's Cunning", category: "potion",
+    rarity: "uncommon", value: 300, weight: 0.1, requiredLevel: 3, slot: "consumable",
+    description: "A sharp-smelling orange liquid that clears the mind.",
+    specialEffect: "+4 enhancement bonus to Intelligence for 3 minutes.",
+    statModifiers: [{ stat: "INT", value: 4 }], duration: 30,
+  },
+  {
+    id: "pot_owls_wisdom", name: "Potion of Owl's Wisdom", category: "potion",
+    rarity: "uncommon", value: 300, weight: 0.1, requiredLevel: 3, slot: "consumable",
+    description: "A dark potion with the scent of old incense.",
+    specialEffect: "+4 enhancement bonus to Wisdom for 3 minutes.",
+    statModifiers: [{ stat: "WIS", value: 4 }], duration: 30,
+  },
+  {
+    id: "pot_eagles_splendor", name: "Potion of Eagle's Splendor", category: "potion",
+    rarity: "uncommon", value: 300, weight: 0.1, requiredLevel: 3, slot: "consumable",
+    description: "A liquid that gleams like polished gold.",
+    specialEffect: "+4 enhancement bonus to Charisma for 3 minutes.",
+    statModifiers: [{ stat: "CHA", value: 4 }], duration: 30,
+  },
+  {
+    id: "pot_invisibility", name: "Potion of Invisibility", category: "potion",
+    rarity: "uncommon", value: 300, weight: 0.1, requiredLevel: 3, slot: "consumable",
+    description: "A clear liquid that turns transparent on your tongue.",
+    specialEffect: "Invisible for 3 minutes or until you attack.",
+    duration: 30,
+  },
+  {
+    id: "pot_haste", name: "Potion of Haste", category: "potion",
+    rarity: "rare", value: 750, weight: 0.1, requiredLevel: 5, slot: "consumable",
+    description: "A vibrating red elixir that makes the world slow down.",
+    specialEffect: "+1 attack, +30ft speed, +1 AC, extra attack per round for 5 rounds.",
+    duration: 5,
+  },
+  {
+    id: "pot_fly", name: "Potion of Fly", category: "potion",
+    rarity: "rare", value: 750, weight: 0.1, requiredLevel: 5, slot: "consumable",
+    description: "A pale blue potion with tiny clouds swirling inside.",
+    specialEffect: "Fly at 60ft speed for 5 minutes.",
+    duration: 50,
+  },
+  {
+    id: "pot_heroism", name: "Potion of Heroism", category: "potion",
+    rarity: "rare", value: 750, weight: 0.1, requiredLevel: 5, slot: "consumable",
+    description: "A bold crimson draught that fills you with unshakable confidence.",
+    specialEffect: "+2 morale bonus on attack rolls, saves, and skill checks for 50 minutes.",
+    duration: 500,
+  },
+  {
+    id: "pot_displacement", name: "Potion of Displacement", category: "potion",
+    rarity: "rare", value: 750, weight: 0.1, requiredLevel: 5, slot: "consumable",
+    description: "A shimmering liquid that bends light around you.",
+    specialEffect: "50% miss chance (as displacement spell) for 5 rounds.",
+    duration: 5,
+  },
+  {
+    id: "pot_barkskin", name: "Potion of Barkskin", category: "potion",
+    rarity: "uncommon", value: 300, weight: 0.1, requiredLevel: 3, slot: "consumable",
+    description: "A thick brown liquid that toughens skin to bark.",
+    specialEffect: "+2 enhancement bonus to natural armor for 30 minutes.",
+    duration: 300,
+  },
+  {
+    id: "pot_darkvision", name: "Potion of Darkvision", category: "potion",
+    rarity: "common", value: 300, weight: 0.1, requiredLevel: 3, slot: "consumable",
+    description: "An inky black liquid that makes eyes gleam in darkness.",
+    specialEffect: "See 60ft in total darkness for 3 hours.",
+    duration: 1800,
+  },
+  {
+    id: "pot_resist_fire", name: "Potion of Fire Resistance", category: "potion",
+    rarity: "uncommon", value: 300, weight: 0.1, requiredLevel: 3, slot: "consumable",
+    description: "A red liquid with dancing sparks inside.",
+    specialEffect: "Resist 10 fire damage for 30 minutes.",
+    resistances: [{ element: "fire", percent: 25 }], duration: 300,
+  },
+  {
+    id: "pot_resist_cold", name: "Potion of Cold Resistance", category: "potion",
+    rarity: "uncommon", value: 300, weight: 0.1, requiredLevel: 3, slot: "consumable",
+    description: "A blue potion rimed with frost at the mouth.",
+    specialEffect: "Resist 10 cold damage for 30 minutes.",
+    resistances: [{ element: "cold", percent: 25 }], duration: 300,
+  },
+  {
+    id: "pot_neutralize_poison", name: "Potion of Neutralize Poison", category: "potion",
+    rarity: "rare", value: 750, weight: 0.1, requiredLevel: 5, slot: "consumable",
+    description: "A green elixir that purges all toxins from the body.",
+    specialEffect: "Detoxifies all poisons. Cures poisoned conditions.",
+    duration: 0,
+  },
+  {
+    id: "pot_gaseous_form", name: "Potion of Gaseous Form", category: "potion",
+    rarity: "rare", value: 750, weight: 0.1, requiredLevel: 5, slot: "consumable",
+    description: "A wispy grey liquid that dissolves on contact with air.",
+    specialEffect: "Become insubstantial mist for 5 minutes. DR 10/magic, fly 10ft.",
+    duration: 50,
+  },
+  {
+    id: "pot_giant_strength", name: "Potion of Giant Strength", category: "potion",
+    rarity: "rare", value: 900, weight: 0.1, requiredLevel: 6, slot: "consumable",
+    description: "A viscous green liquid that swells muscles to grotesque proportions.",
+    specialEffect: "+6 enhancement bonus to Strength for 3 minutes.",
+    statModifiers: [{ stat: "STR", value: 6 }], duration: 30,
+  },
+  {
+    id: "pot_fire_breath", name: "Potion of Fire Breath", category: "potion",
+    rarity: "uncommon", value: 1100, weight: 0.1, requiredLevel: 4, slot: "consumable",
+    description: "A fiery red elixir that makes your breath explosive.",
+    specialEffect: "Breathe fire: 4d6 in 25ft cone (Reflex DC 13 half). 3 uses.",
+    duration: 0,
+  },
+  {
+    id: "pot_water_breathing", name: "Potion of Water Breathing", category: "potion",
+    rarity: "common", value: 750, weight: 0.1, requiredLevel: 3, slot: "consumable",
+    description: "A briny blue potion that lets you breathe underwater.",
+    specialEffect: "Breathe water freely for 50 minutes.",
+    duration: 500,
+  },
+  {
+    id: "pot_spider_climb", name: "Potion of Spider Climb", category: "potion",
+    rarity: "uncommon", value: 300, weight: 0.1, requiredLevel: 3, slot: "consumable",
+    description: "A sticky grey potion that makes your hands adhere to surfaces.",
+    specialEffect: "Climb walls and ceilings at full speed for 30 minutes.",
+    duration: 300,
+  },
+  {
+    id: "pot_protection_evil", name: "Potion of Protection from Evil", category: "potion",
+    rarity: "common", value: 50, weight: 0.1, requiredLevel: 1, slot: "consumable",
+    description: "A silver-flecked elixir that wards against dark forces.",
+    specialEffect: "+2 deflection AC, +2 resistance saves vs. evil creatures for 1 minute.",
+    duration: 10,
+  },
+  {
+    id: "pot_restoration", name: "Potion of Lesser Restoration", category: "potion",
+    rarity: "uncommon", value: 300, weight: 0.1, requiredLevel: 3, slot: "consumable",
+    description: "A sparkling white elixir of renewal.",
+    specialEffect: "Dispels 1d4 points of ability damage.",
+    duration: 0,
+  },
+  {
+    id: "pot_rage", name: "Potion of Rage", category: "potion",
+    rarity: "rare", value: 750, weight: 0.1, requiredLevel: 5, slot: "consumable",
+    description: "A frothing red berserker's draught.",
+    specialEffect: "+2 STR, +2 CON, +1 Will saves, -2 AC for 5 rounds.",
+    statModifiers: [{ stat: "STR", value: 2 }, { stat: "CON", value: 2 }], duration: 5,
+  },
+  {
+    id: "pot_stoneskin", name: "Potion of Stoneskin", category: "potion",
+    rarity: "epic", value: 1500, weight: 0.1, requiredLevel: 8, slot: "consumable",
+    description: "A liquid stone potion that hardens the skin to granite.",
+    specialEffect: "DR 10/adamantine, absorbs up to 100 points of damage.",
+    duration: 100,
+  },
+];
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  SCROLLS (25 items)
+// ══════════════════════════════════════════════════════════════════════════════
+
+export const MAGIC_SCROLLS: MagicScroll[] = [
+  {
+    id: "scr_magic_missile", name: "Scroll of Magic Missile", category: "scroll",
+    rarity: "common", value: 25, weight: 0, requiredLevel: 1, slot: "consumable",
+    spellLevel: 1, casterLevel: 1,
+    description: "A scroll inscribed with glowing arcane arrows.",
+    specialEffect: "1d4+1 force damage (auto-hit). Single use.",
+  },
+  {
+    id: "scr_mage_armor", name: "Scroll of Mage Armor", category: "scroll",
+    rarity: "common", value: 25, weight: 0, requiredLevel: 1, slot: "consumable",
+    spellLevel: 1, casterLevel: 1,
+    description: "A scroll inscribed with a shimmering ward formula.",
+    specialEffect: "+4 armor bonus to AC for 1 hour. Single use.",
+  },
+  {
+    id: "scr_sleep", name: "Scroll of Sleep", category: "scroll",
+    rarity: "common", value: 25, weight: 0, requiredLevel: 1, slot: "consumable",
+    spellLevel: 1, casterLevel: 1,
+    description: "A scroll written in drowsy, curving script.",
+    specialEffect: "4 HD of creatures fall asleep (Will negates). Single use.",
+  },
+  {
+    id: "scr_burning_hands", name: "Scroll of Burning Hands", category: "scroll",
+    rarity: "common", value: 25, weight: 0, requiredLevel: 1, slot: "consumable",
+    spellLevel: 1, casterLevel: 1,
+    description: "A scroll that smolders faintly at the edges.",
+    specialEffect: "1d4 fire in 15ft cone (Reflex DC 11 half). Single use.",
+  },
+  {
+    id: "scr_shield", name: "Scroll of Shield", category: "scroll",
+    rarity: "common", value: 25, weight: 0, requiredLevel: 1, slot: "consumable",
+    spellLevel: 1, casterLevel: 1,
+    description: "A scroll edged with a faint blue glow.",
+    specialEffect: "+4 shield bonus to AC for 1 minute. Blocks magic missiles. Single use.",
+  },
+  {
+    id: "scr_bulls_strength", name: "Scroll of Bull's Strength", category: "scroll",
+    rarity: "uncommon", value: 150, weight: 0, requiredLevel: 3, slot: "consumable",
+    spellLevel: 2, casterLevel: 3,
+    description: "A scroll penned in bold, forceful strokes.",
+    specialEffect: "+4 STR for 3 minutes. Single use.",
+  },
+  {
+    id: "scr_invisibility", name: "Scroll of Invisibility", category: "scroll",
+    rarity: "uncommon", value: 150, weight: 0, requiredLevel: 3, slot: "consumable",
+    spellLevel: 2, casterLevel: 3,
+    description: "A scroll written in invisible ink.",
+    specialEffect: "Invisible for 3 min or until attacking. Single use.",
+  },
+  {
+    id: "scr_scorching_ray", name: "Scroll of Scorching Ray", category: "scroll",
+    rarity: "uncommon", value: 150, weight: 0, requiredLevel: 3, slot: "consumable",
+    spellLevel: 2, casterLevel: 3,
+    description: "A scroll that radiates warmth when touched.",
+    specialEffect: "Ranged touch: 4d6 fire damage. Single use.",
+  },
+  {
+    id: "scr_web", name: "Scroll of Web", category: "scroll",
+    rarity: "uncommon", value: 150, weight: 0, requiredLevel: 3, slot: "consumable",
+    spellLevel: 2, casterLevel: 3,
+    description: "A scroll with sticky fibers woven into the parchment.",
+    specialEffect: "20ft radius sticky web (Reflex DC 13 or stuck). Single use.",
+  },
+  {
+    id: "scr_mirror_image", name: "Scroll of Mirror Image", category: "scroll",
+    rarity: "uncommon", value: 150, weight: 0, requiredLevel: 3, slot: "consumable",
+    spellLevel: 2, casterLevel: 3,
+    description: "A scroll that shimmers with duplicate reflections.",
+    specialEffect: "Create 1d4+1 illusory duplicates for 3 minutes. Single use.",
+  },
+  {
+    id: "scr_fireball", name: "Scroll of Fireball", category: "scroll",
+    rarity: "rare", value: 375, weight: 0, requiredLevel: 5, slot: "consumable",
+    spellLevel: 3, casterLevel: 5,
+    description: "A scroll that flickers with inner flame.",
+    specialEffect: "5d6 fire in 20ft radius (Reflex DC 14 half). Single use.",
+  },
+  {
+    id: "scr_lightning_bolt", name: "Scroll of Lightning Bolt", category: "scroll",
+    rarity: "rare", value: 375, weight: 0, requiredLevel: 5, slot: "consumable",
+    spellLevel: 3, casterLevel: 5,
+    description: "A scroll crackling with static electricity.",
+    specialEffect: "5d6 lightning in 120ft line (Reflex DC 14 half). Single use.",
+  },
+  {
+    id: "scr_haste", name: "Scroll of Haste", category: "scroll",
+    rarity: "rare", value: 375, weight: 0, requiredLevel: 5, slot: "consumable",
+    spellLevel: 3, casterLevel: 5,
+    description: "A scroll humming with barely contained energy.",
+    specialEffect: "+1 attack, +30ft speed, extra attack for 5 rounds. Single use.",
+  },
+  {
+    id: "scr_dispel_magic", name: "Scroll of Dispel Magic", category: "scroll",
+    rarity: "rare", value: 375, weight: 0, requiredLevel: 5, slot: "consumable",
+    spellLevel: 3, casterLevel: 5,
+    description: "A scroll of unraveling script.",
+    specialEffect: "Targeted or area dispel (d20+5 vs DC 11+CL). Single use.",
+  },
+  {
+    id: "scr_fly", name: "Scroll of Fly", category: "scroll",
+    rarity: "rare", value: 375, weight: 0, requiredLevel: 5, slot: "consumable",
+    spellLevel: 3, casterLevel: 5,
+    description: "A scroll with feathery sigils that flutter in still air.",
+    specialEffect: "Fly at 60ft speed for 5 minutes. Single use.",
+  },
+  {
+    id: "scr_stoneskin", name: "Scroll of Stoneskin", category: "scroll",
+    rarity: "epic", value: 700, weight: 0, requiredLevel: 7, slot: "consumable",
+    spellLevel: 4, casterLevel: 7,
+    description: "A scroll inscribed on granite-grey parchment.",
+    specialEffect: "DR 10/adamantine, absorbs 70 damage. Single use.",
+  },
+  {
+    id: "scr_dimension_door", name: "Scroll of Dimension Door", category: "scroll",
+    rarity: "epic", value: 700, weight: 0, requiredLevel: 7, slot: "consumable",
+    spellLevel: 4, casterLevel: 7,
+    description: "A scroll that folds space when read.",
+    specialEffect: "Teleport up to 680ft. Single use.",
+  },
+  {
+    id: "scr_wall_of_fire", name: "Scroll of Wall of Fire", category: "scroll",
+    rarity: "epic", value: 700, weight: 0, requiredLevel: 7, slot: "consumable",
+    spellLevel: 4, casterLevel: 7,
+    description: "A scroll that burns with inner flame when unrolled.",
+    specialEffect: "Creates fire wall: 2d4 within 10ft, 1d4 within 20ft. Single use.",
+  },
+  {
+    id: "scr_cloudkill", name: "Scroll of Cloudkill", category: "scroll",
+    rarity: "epic", value: 1125, weight: 0, requiredLevel: 9, slot: "consumable",
+    spellLevel: 5, casterLevel: 9,
+    description: "A scroll reeking of chemical death.",
+    specialEffect: "20ft cloud of poison: kills 3 HD or less, 1d4 CON to 4-6 HD (Fort negates). Single use.",
+  },
+  {
+    id: "scr_teleport", name: "Scroll of Teleport", category: "scroll",
+    rarity: "epic", value: 1125, weight: 0, requiredLevel: 9, slot: "consumable",
+    spellLevel: 5, casterLevel: 9,
+    description: "A scroll inscribed with spatial coordinates.",
+    specialEffect: "Teleport to any known location on same plane. Single use.",
+  },
+  {
+    id: "scr_raise_dead", name: "Scroll of Raise Dead", category: "scroll",
+    rarity: "epic", value: 6125, weight: 0, requiredLevel: 9, slot: "consumable",
+    spellLevel: 5, casterLevel: 9,
+    description: "A holy scroll radiating divine power.",
+    specialEffect: "Raise one dead creature (dead no more than 5 days). -1 level. Single use.",
+  },
+  {
+    id: "scr_disintegrate", name: "Scroll of Disintegrate", category: "scroll",
+    rarity: "legendary", value: 1650, weight: 0, requiredLevel: 11, slot: "consumable",
+    spellLevel: 6, casterLevel: 11,
+    description: "A scroll of absolute destruction.",
+    specialEffect: "Ranged touch: 22d6 damage (Fort DC 19: 5d6 instead). Single use.",
+  },
+  {
+    id: "scr_heal", name: "Scroll of Heal", category: "scroll",
+    rarity: "legendary", value: 1650, weight: 0, requiredLevel: 11, slot: "consumable",
+    spellLevel: 6, casterLevel: 11,
+    description: "A scroll blazing with divine restoration.",
+    specialEffect: "Heals 150 HP. Cures all conditions except death. Single use.",
+  },
+  {
+    id: "scr_resurrection", name: "Scroll of Resurrection", category: "scroll",
+    rarity: "legendary", value: 12275, weight: 0, requiredLevel: 13, slot: "consumable",
+    spellLevel: 7, casterLevel: 13,
+    description: "A golden scroll of supreme divine power.",
+    specialEffect: "Raise dead (any time since death). Full HP. No level loss. Single use.",
+  },
+  {
+    id: "scr_power_word_kill", name: "Scroll of Power Word Kill", category: "scroll",
+    rarity: "legendary", value: 3825, weight: 0, requiredLevel: 17, slot: "consumable",
+    spellLevel: 9, casterLevel: 17,
+    description: "A scroll inscribed with a single terrible word.",
+    specialEffect: "Instantly kill one creature with 100 HP or less (no save). Single use.",
+  },
+];
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  WONDROUS ITEMS (30 items)
+// ══════════════════════════════════════════════════════════════════════════════
+
+export const MAGIC_WONDROUS: MagicWondrous[] = [
+  // ── Boots ──
+  {
+    id: "won_boots_speed", name: "Boots of Speed", category: "wondrous", wondrousSlot: "feet",
+    rarity: "rare", value: 12000, weight: 1, requiredLevel: 8, slot: "feet",
+    description: "Red leather boots that blur with each step.",
+    specialEffect: "10 rounds/day: activate haste (+1 attack, +30ft speed, +1 AC, extra attack).",
+    actives: [{
+      name: "Haste", description: "Activate haste for 1 round (10 rounds/day total).",
+      usesPerDay: 10,
+    }],
+  },
+  {
+    id: "won_boots_elvenkind", name: "Boots of Elvenkind", category: "wondrous", wondrousSlot: "feet",
+    rarity: "uncommon", value: 2500, weight: 1, requiredLevel: 3, slot: "feet",
+    description: "Soft leather boots that make no sound.",
+    specialEffect: "+5 competence bonus on Move Silently checks.",
+    passives: [{ type: "stealth", value: 5, description: "+5 Move Silently." }],
+  },
+  {
+    id: "won_boots_striding", name: "Boots of Striding and Springing", category: "wondrous", wondrousSlot: "feet",
+    rarity: "uncommon", value: 5500, weight: 1, requiredLevel: 5, slot: "feet",
+    description: "Sturdy boots that propel each step with magical energy.",
+    specialEffect: "+10ft enhancement bonus to land speed. +5 Jump checks.",
+  },
+  {
+    id: "won_boots_levitation", name: "Boots of Levitation", category: "wondrous", wondrousSlot: "feet",
+    rarity: "rare", value: 7500, weight: 1, requiredLevel: 7, slot: "feet",
+    description: "Boots that let you walk on air.",
+    specialEffect: "Levitate at will — rise/descend 20ft per round.",
+    passives: [{ type: "flight", value: 20, description: "Levitate at will." }],
+  },
+  {
+    id: "won_boots_teleportation", name: "Boots of Teleportation", category: "wondrous", wondrousSlot: "feet",
+    rarity: "legendary", value: 49000, weight: 3, requiredLevel: 14, slot: "feet",
+    description: "Sleek boots that fold space.",
+    specialEffect: "Teleport (self only) 3/day — anywhere on the same plane.",
+    actives: [{
+      name: "Teleport", description: "Teleport to any known location (3/day).",
+      usesPerDay: 3,
+    }],
+  },
+
+  // ── Cloaks ──
+  {
+    id: "won_cloak_resistance_1", name: "Cloak of Resistance +1", category: "wondrous", wondrousSlot: "back",
+    rarity: "common", value: 1000, weight: 1, requiredLevel: 1, slot: "back",
+    description: "A grey cloak with a shimmer of protection.",
+    specialEffect: "+1 resistance bonus to all saving throws.",
+  },
+  {
+    id: "won_cloak_elvenkind", name: "Cloak of Elvenkind", category: "wondrous", wondrousSlot: "back",
+    rarity: "uncommon", value: 2500, weight: 1, requiredLevel: 3, slot: "back",
+    description: "A grey-green cloak that shifts to match surroundings.",
+    specialEffect: "+5 competence bonus on Hide checks.",
+    passives: [{ type: "stealth", value: 5, description: "+5 Hide." }],
+  },
+  {
+    id: "won_cloak_resistance_3", name: "Cloak of Resistance +3", category: "wondrous", wondrousSlot: "back",
+    rarity: "rare", value: 9000, weight: 1, requiredLevel: 8, slot: "back",
+    description: "A deep grey cloak with powerful protective weave.",
+    specialEffect: "+3 resistance bonus to all saving throws.",
+  },
+  {
+    id: "won_cloak_displacement", name: "Cloak of Displacement", category: "wondrous", wondrousSlot: "back",
+    rarity: "rare", value: 24000, weight: 1, requiredLevel: 10, slot: "back",
+    description: "A shimmering cloak that blurs your outline.",
+    specialEffect: "20% miss chance against all attacks (as blur, continuously).",
+  },
+  {
+    id: "won_cloak_arachnida", name: "Cloak of Arachnida", category: "wondrous", wondrousSlot: "back",
+    rarity: "rare", value: 14000, weight: 1, requiredLevel: 8, slot: "back",
+    description: "A black cloak sewn from giant spider silk.",
+    specialEffect: "Spider climb at will. Immune to web spells. Web 1/day.",
+    passives: [{ type: "resistance", description: "Immune to web effects. Spider climb at will." }],
+  },
+  {
+    id: "won_cloak_bat", name: "Cloak of the Bat", category: "wondrous", wondrousSlot: "back",
+    rarity: "epic", value: 26000, weight: 1, requiredLevel: 12, slot: "back",
+    description: "A black bat-wing cloak that grants flight in darkness.",
+    specialEffect: "+5 Hide in dim light. Fly 40ft in darkness. Hang from ceiling.",
+    passives: [{ type: "flight", value: 40, description: "Fly 40ft in darkness." }],
+  },
+  {
+    id: "won_wings_flying", name: "Wings of Flying", category: "wondrous", wondrousSlot: "back",
+    rarity: "legendary", value: 54000, weight: 2, requiredLevel: 14, slot: "back",
+    description: "A pair of silver-feathered wings that unfurl from a cloak.",
+    specialEffect: "Fly at 60ft speed (good maneuverability) at will.",
+    passives: [{ type: "flight", value: 60, description: "Fly 60ft at will." }],
+  },
+
+  // ── Gloves/Gauntlets ──
+  {
+    id: "won_gauntlets_ogre", name: "Gauntlets of Ogre Power", category: "wondrous", wondrousSlot: "hands",
+    rarity: "uncommon", value: 4000, weight: 4, requiredLevel: 5, slot: "hands",
+    description: "Massive iron gauntlets that grant inhuman strength.",
+    specialEffect: "+2 enhancement bonus to Strength.",
+    statModifiers: [{ stat: "STR", value: 2 }],
+  },
+  {
+    id: "won_gloves_dexterity_2", name: "Gloves of Dexterity +2", category: "wondrous", wondrousSlot: "hands",
+    rarity: "uncommon", value: 4000, weight: 0, requiredLevel: 5, slot: "hands",
+    description: "Supple leather gloves that make your fingers lightning-fast.",
+    specialEffect: "+2 enhancement bonus to Dexterity.",
+    statModifiers: [{ stat: "DEX", value: 2 }],
+  },
+  {
+    id: "won_gloves_dexterity_4", name: "Gloves of Dexterity +4", category: "wondrous", wondrousSlot: "hands",
+    rarity: "rare", value: 16000, weight: 0, requiredLevel: 10, slot: "hands",
+    description: "Supple mithral-thread gloves of extraordinary agility.",
+    specialEffect: "+4 enhancement bonus to Dexterity.",
+    statModifiers: [{ stat: "DEX", value: 4 }],
+  },
+  {
+    id: "won_gloves_arrow_snaring", name: "Gloves of Arrow Snaring", category: "wondrous", wondrousSlot: "hands",
+    rarity: "uncommon", value: 4000, weight: 0, requiredLevel: 5, slot: "hands",
+    description: "Leather gloves with tiny magnets woven in.",
+    specialEffect: "1/round: snatch a ranged attack out of the air (as free action).",
+  },
+  {
+    id: "won_gauntlets_str_4", name: "Gauntlets of Giant Strength +4", category: "wondrous", wondrousSlot: "hands",
+    rarity: "rare", value: 16000, weight: 4, requiredLevel: 10, slot: "hands",
+    description: "Heavy gauntlets of ogre hide radiating raw power.",
+    specialEffect: "+4 enhancement bonus to Strength.",
+    statModifiers: [{ stat: "STR", value: 4 }],
+  },
+
+  // ── Headgear ──
+  {
+    id: "won_headband_intellect_2", name: "Headband of Intellect +2", category: "wondrous", wondrousSlot: "head",
+    rarity: "uncommon", value: 4000, weight: 0, requiredLevel: 5, slot: "head",
+    description: "A silver circlet that sharpens the mind.",
+    specialEffect: "+2 enhancement bonus to Intelligence.",
+    statModifiers: [{ stat: "INT", value: 2 }],
+  },
+  {
+    id: "won_headband_intellect_4", name: "Headband of Intellect +4", category: "wondrous", wondrousSlot: "head",
+    rarity: "rare", value: 16000, weight: 0, requiredLevel: 10, slot: "head",
+    description: "A platinum circlet pulsing with mental energy.",
+    specialEffect: "+4 enhancement bonus to Intelligence.",
+    statModifiers: [{ stat: "INT", value: 4 }],
+  },
+  {
+    id: "won_hat_disguise", name: "Hat of Disguise", category: "wondrous", wondrousSlot: "head",
+    rarity: "common", value: 1800, weight: 0, requiredLevel: 2, slot: "head",
+    description: "A nondescript hat that changes your appearance at will.",
+    specialEffect: "Disguise self at will (+10 Disguise).",
+    passives: [{ type: "stealth", value: 10, description: "Disguise self at will." }],
+  },
+  {
+    id: "won_helm_telepathy", name: "Helm of Telepathy", category: "wondrous", wondrousSlot: "head",
+    rarity: "rare", value: 27000, weight: 3, requiredLevel: 10, slot: "head",
+    description: "A copper helm that reads and projects thoughts.",
+    specialEffect: "Detect thoughts at will. Suggestion 1/day (Will DC 14).",
+    actives: [{
+      name: "Suggestion", description: "Implant a suggestion in one creature (Will DC 14).",
+      usesPerDay: 1, dc: 14, range: 60,
+    }],
+  },
+  {
+    id: "won_goggles_night", name: "Goggles of Night", category: "wondrous", wondrousSlot: "head",
+    rarity: "uncommon", value: 12000, weight: 0, requiredLevel: 6, slot: "head",
+    description: "Dark lenses that grant supernatural vision in darkness.",
+    specialEffect: "Darkvision 60ft.",
+    passives: [{ type: "darkvision", value: 60, description: "See in total darkness to 60ft." }],
+  },
+  {
+    id: "won_helm_brilliance", name: "Helm of Brilliance", category: "wondrous", wondrousSlot: "head",
+    rarity: "legendary", value: 125000, weight: 3, requiredLevel: 18, slot: "head",
+    description: "A crown-like helm set with 10 diamonds, 20 rubies, 30 fire opals, and 40 opals.",
+    specialEffect: "Gems cast spells (prismatic spray, wall of fire, fireball, daylight). Fire resist 30. Flaming weapon.",
+    resistances: [{ element: "fire", percent: 75 }],
+  },
+
+  // ── Belt ──
+  {
+    id: "won_belt_dwarvenkind", name: "Belt of Dwarvenkind", category: "wondrous", wondrousSlot: "belt",
+    rarity: "rare", value: 14900, weight: 1, requiredLevel: 8, slot: "belt",
+    description: "A thick belt of golden links with a gem clasp.",
+    specialEffect: "+2 CON, darkvision 60ft, +2 saves vs. poison/spells.",
+    statModifiers: [{ stat: "CON", value: 2 }],
+    passives: [{ type: "darkvision", value: 60, description: "Darkvision 60ft." }],
+  },
+  {
+    id: "won_belt_giant_str_6", name: "Belt of Giant Strength +6", category: "wondrous", wondrousSlot: "belt",
+    rarity: "legendary", value: 36000, weight: 1, requiredLevel: 14, slot: "belt",
+    description: "A titanic belt of storm giant hide radiating raw power.",
+    specialEffect: "+6 enhancement bonus to Strength.",
+    statModifiers: [{ stat: "STR", value: 6 }],
+  },
+
+  // ── Misc Wondrous ──
+  {
+    id: "won_bag_holding_1", name: "Bag of Holding (Type I)", category: "wondrous", wondrousSlot: "none",
+    rarity: "uncommon", value: 2500, weight: 15, requiredLevel: 3, slot: "none",
+    description: "A cloth sack that holds far more than possible.",
+    specialEffect: "Holds 250 lbs / 30 cubic ft. Always weighs 15 lbs.",
+  },
+  {
+    id: "won_handy_haversack", name: "Handy Haversack", category: "wondrous", wondrousSlot: "none",
+    rarity: "uncommon", value: 2000, weight: 5, requiredLevel: 3, slot: "none",
+    description: "A well-made leather backpack bigger on the inside.",
+    specialEffect: "Holds 120 lbs total. Always weighs 5 lbs. Always find what you reach for.",
+  },
+  {
+    id: "won_portable_hole", name: "Portable Hole", category: "wondrous", wondrousSlot: "none",
+    rarity: "epic", value: 20000, weight: 0, requiredLevel: 12, slot: "none",
+    description: "A circle of cloth that opens into a 10ft deep extradimensional space.",
+    specialEffect: "6ft wide, 10ft deep hole. Holds 280 cubic ft. Folds up flat.",
+  },
+  {
+    id: "won_stone_good_luck", name: "Stone of Good Luck (Luckstone)", category: "wondrous", wondrousSlot: "none",
+    rarity: "rare", value: 20000, weight: 0, requiredLevel: 8, slot: "none",
+    description: "A small, unremarkable stone that bends probability in your favor.",
+    specialEffect: "+1 luck bonus on saving throws, ability checks, and skill checks.",
+  },
+  {
+    id: "won_decanter_water", name: "Decanter of Endless Water", category: "wondrous", wondrousSlot: "none",
+    rarity: "uncommon", value: 9000, weight: 2, requiredLevel: 5, slot: "none",
+    description: "A stoppered flask that pours infinite fresh water.",
+    specialEffect: "Stream (1 gal/round), fountain (5 gal/round), or geyser (30 gal + bull rush DC 15).",
+  },
+];
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  ITEM SETS (5 sets, 3-4 pieces each)
+// ══════════════════════════════════════════════════════════════════════════════
+
+export type ItemSet = {
+  id: string;
+  name: string;
+  description: string;
+  pieces: string[]; // item ids
+  bonuses: SetBonus[];
+};
+
+export type SetBonus = {
+  piecesRequired: number;
+  description: string;
+  statModifiers?: StatModifier[];
+  specialEffect?: string;
+};
+
+export const ITEM_SETS: ItemSet[] = [
+  {
+    id: "set_shadow_dancer",
+    name: "Shadow Dancer's Regalia",
+    description: "Worn by the legendary assassin Kael Duskblade, these items bend shadow around the wearer.",
+    pieces: ["set_shadow_cloak", "set_shadow_boots", "set_shadow_gloves", "set_shadow_dagger"],
+    bonuses: [
+      { piecesRequired: 2, description: "+5 bonus to Hide and Move Silently checks.", specialEffect: "+5 stealth" },
+      { piecesRequired: 3, description: "Gain permanent concealment (20% miss chance).", specialEffect: "20% miss chance" },
+      { piecesRequired: 4, description: "Shadow Step: teleport through shadows 60ft, 3/day.", specialEffect: "Shadow Step 3/day" },
+    ],
+  },
+  {
+    id: "set_iron_warden",
+    name: "Iron Warden's Bulwark",
+    description: "Forged in the deepforges of Bhalanur, this set makes its wearer an unbreakable wall.",
+    pieces: ["set_warden_plate", "set_warden_shield", "set_warden_helm"],
+    bonuses: [
+      { piecesRequired: 2, description: "+2 bonus to AC and saving throws vs. spells.", specialEffect: "+2 AC/saves vs spells" },
+      { piecesRequired: 3, description: "DR 5/-- and immunity to knockback/trip.", specialEffect: "DR 5/-- + no knockdown", statModifiers: [{ stat: "CON", value: 2 }] },
+    ],
+  },
+  {
+    id: "set_storm_caller",
+    name: "Storm Caller's Vestments",
+    description: "Blessed by the sea-god Namaris, crackling with the fury of the tempest.",
+    pieces: ["set_storm_staff", "set_storm_robes", "set_storm_circlet", "set_storm_ring"],
+    bonuses: [
+      { piecesRequired: 2, description: "+2 bonus to spell DCs for lightning/cold spells.", specialEffect: "+2 DC lightning/cold" },
+      { piecesRequired: 3, description: "Lightning resistance 20. +4 INT.", statModifiers: [{ stat: "INT", value: 4 }], specialEffect: "Lightning resist 20" },
+      { piecesRequired: 4, description: "Call Lightning Storm: 10d6 lightning, 3/day (no save on crit).", specialEffect: "Call Lightning Storm 3/day" },
+    ],
+  },
+  {
+    id: "set_beast_lord",
+    name: "Beast Lord's Raiment",
+    description: "Trophies taken from the most fearsome monsters of the wild, granting primal power.",
+    pieces: ["set_beast_hide", "set_beast_claws", "set_beast_helm"],
+    bonuses: [
+      { piecesRequired: 2, description: "+4 bonus to STR and natural armor +2.", statModifiers: [{ stat: "STR", value: 4 }], specialEffect: "+2 natural armor" },
+      { piecesRequired: 3, description: "Gain Scent ability, Pounce (full attack on charge), +30ft speed.", specialEffect: "Scent + Pounce + 30ft speed" },
+    ],
+  },
+  {
+    id: "set_divine_herald",
+    name: "Divine Herald's Vestments",
+    description: "Sacred relics gifted by the High Luminar to his chosen champion.",
+    pieces: ["set_herald_mace", "set_herald_armor", "set_herald_shield", "set_herald_crown"],
+    bonuses: [
+      { piecesRequired: 2, description: "All healing spells heal +50%.", specialEffect: "+50% healing" },
+      { piecesRequired: 3, description: "Radiant aura: undead within 30ft take 2d6 radiant/round.", specialEffect: "Anti-undead aura 2d6" },
+      { piecesRequired: 4, description: "Divine Intervention: once per day, avoid lethal damage (drop to 1 HP instead).", specialEffect: "Cheat death 1/day", statModifiers: [{ stat: "WIS", value: 4 }, { stat: "CHA", value: 4 }] },
+    ],
+  },
+];
+
+// Set piece items (equipped like normal, tracked by setId)
+export const SET_ITEMS: MagicItem[] = [
+  // Shadow Dancer set
+  { id: "set_shadow_cloak", name: "Kael's Shadow Cloak", category: "wondrous", wondrousSlot: "back", rarity: "rare", value: 15000, weight: 1, requiredLevel: 10, slot: "back", setId: "set_shadow_dancer", description: "A cloak of living shadow that drinks in light.", specialEffect: "+5 Hide. Darkvision 60ft.", passives: [{ type: "stealth", value: 5, description: "+5 Hide." }, { type: "darkvision", value: 60, description: "Darkvision 60ft." }] },
+  { id: "set_shadow_boots", name: "Kael's Silent Treads", category: "wondrous", wondrousSlot: "feet", rarity: "rare", value: 12000, weight: 1, requiredLevel: 10, slot: "feet", setId: "set_shadow_dancer", description: "Boots that make no sound, not even on gravel.", specialEffect: "+5 Move Silently. +10ft speed.", passives: [{ type: "stealth", value: 5, description: "+5 Move Silently." }] },
+  { id: "set_shadow_gloves", name: "Kael's Phantom Gloves", category: "wondrous", wondrousSlot: "hands", rarity: "rare", value: 10000, weight: 0, requiredLevel: 10, slot: "hands", setId: "set_shadow_dancer", description: "Gloves that make your hands pass through locks.", specialEffect: "+10 Open Lock. +5 Sleight of Hand.", statModifiers: [{ stat: "DEX", value: 2 }] },
+  { id: "set_shadow_dagger", name: "Kael's Duskblade", category: "weapon", weaponType: "dagger", rarity: "rare", value: 18000, weight: 1, requiredLevel: 10, slot: "mainhand", setId: "set_shadow_dancer", baseDamage: "1d4", bonusToHit: 3, bonusDamage: 3, element: "necrotic", critRange: 18, critMultiplier: 2, range: 10, description: "A dagger that drinks shadow and strikes from nowhere.", specialEffect: "+3 dagger. +2d6 sneak attack. Returns when thrown.", onHit: { type: "drain", chance: 20, damage: "1d4", dc: 15 } },
+
+  // Iron Warden set
+  { id: "set_warden_plate", name: "Ironwarden Full Plate", category: "armor", armorType: "plate", rarity: "rare", value: 25000, weight: 50, requiredLevel: 10, slot: "body", setId: "set_iron_warden", baseAC: 11, maxDexBonus: 1, armorCheckPenalty: -5, arcaneFailure: 35, description: "Dwarven full plate of unmatched resilience, etched with fortress runes.", specialEffect: "+9 AC. DR 3/--." },
+  { id: "set_warden_shield", name: "Ironwarden Bulwark", category: "armor", armorType: "shield", rarity: "rare", value: 15000, weight: 15, requiredLevel: 10, slot: "offhand", setId: "set_iron_warden", baseAC: 4, maxDexBonus: 99, armorCheckPenalty: -1, arcaneFailure: 15, description: "A tower shield that can protect an entire hallway.", specialEffect: "+4 AC. Total cover vs ranged as move action." },
+  { id: "set_warden_helm", name: "Ironwarden Visage", category: "wondrous", wondrousSlot: "head", rarity: "rare", value: 12000, weight: 3, requiredLevel: 10, slot: "head", setId: "set_iron_warden", description: "A helm of dark iron with protective runes.", specialEffect: "Immune to critical hits. +2 Will saves.", passives: [{ type: "immunity", description: "Immune to critical hits." }] },
+
+  // Storm Caller set
+  { id: "set_storm_staff", name: "Tempest Staff", category: "weapon", weaponType: "staff", rarity: "rare", value: 25000, weight: 4, requiredLevel: 10, slot: "mainhand", setId: "set_storm_caller", baseDamage: "1d6", bonusToHit: 2, bonusDamage: 2, element: "lightning", critRange: 20, critMultiplier: 2, twoHanded: true, description: "A staff of copper and crystal crackling with storm energy.", specialEffect: "+2 staff. +2d6 lightning damage. Lightning spells +2 CL.", onHit: { type: "stun", chance: 15, duration: 1, dc: 16 } },
+  { id: "set_storm_robes", name: "Stormweave Robes", category: "armor", armorType: "robes", rarity: "rare", value: 18000, weight: 1, requiredLevel: 10, slot: "body", setId: "set_storm_caller", baseAC: 4, maxDexBonus: 99, armorCheckPenalty: 0, arcaneFailure: 0, description: "Robes woven from cloudstuff, crackling faintly.", specialEffect: "+4 AC. No arcane failure. Lightning resist 10." },
+  { id: "set_storm_circlet", name: "Circlet of the Tempest", category: "wondrous", wondrousSlot: "head", rarity: "rare", value: 16000, weight: 0, requiredLevel: 10, slot: "head", setId: "set_storm_caller", description: "A circlet of white gold with a sapphire thunderbolt.", specialEffect: "+2 INT. +2 spell DC. Call lightning 1/day.", statModifiers: [{ stat: "INT", value: 2 }] },
+  { id: "set_storm_ring", name: "Ring of the Storm Eye", category: "ring", rarity: "rare", value: 12000, weight: 0, requiredLevel: 10, slot: "ring", setId: "set_storm_caller", description: "A sapphire ring that calms the storm around you.", specialEffect: "+2 saves. Immune to own lightning effects." },
+
+  // Beast Lord set
+  { id: "set_beast_hide", name: "Dire Bear Mantle", category: "armor", armorType: "hide", rarity: "rare", value: 20000, weight: 25, requiredLevel: 10, slot: "body", setId: "set_beast_lord", baseAC: 7, maxDexBonus: 4, armorCheckPenalty: -2, arcaneFailure: 20, description: "A mantle of dire bear hide that grants primal fury.", specialEffect: "+7 AC. +2 natural armor. Rage 1/day (as barbarian)." },
+  { id: "set_beast_claws", name: "Claws of the Beast", category: "wondrous", wondrousSlot: "hands", rarity: "rare", value: 15000, weight: 2, requiredLevel: 10, slot: "hands", setId: "set_beast_lord", description: "Gauntlets tipped with adamantine claws.", specialEffect: "+2 STR. Claw attacks 1d8+STR each.", statModifiers: [{ stat: "STR", value: 2 }] },
+  { id: "set_beast_helm", name: "Helm of the Alpha", category: "wondrous", wondrousSlot: "head", rarity: "rare", value: 12000, weight: 3, requiredLevel: 10, slot: "head", setId: "set_beast_lord", description: "A helm shaped from a dire wolf skull.", specialEffect: "Scent (detect creatures by smell). Intimidate +5. +2 CON.", statModifiers: [{ stat: "CON", value: 2 }] },
+
+  // Divine Herald set
+  { id: "set_herald_mace", name: "Luminar's Judgment", category: "weapon", weaponType: "mace", rarity: "epic", value: 50000, weight: 8, requiredLevel: 14, slot: "mainhand", setId: "set_divine_herald", baseDamage: "1d8", bonusToHit: 4, bonusDamage: 4, element: "radiant", critRange: 20, critMultiplier: 2, description: "A golden mace blazing with divine judgment.", specialEffect: "+4 mace. +2d6 radiant. Undead on hit: Will DC 18 or destroyed." },
+  { id: "set_herald_armor", name: "Vestments of the Herald", category: "armor", armorType: "breastplate", rarity: "epic", value: 40000, weight: 30, requiredLevel: 14, slot: "body", setId: "set_divine_herald", baseAC: 10, maxDexBonus: 3, armorCheckPenalty: -3, arcaneFailure: 20, description: "Gleaming silver breastplate blessed by the High Luminar.", specialEffect: "+8 AC. Healing received +25%. Death ward (immune to death effects)." },
+  { id: "set_herald_shield", name: "Aegis of Faith", category: "armor", armorType: "shield", rarity: "epic", value: 30000, weight: 15, requiredLevel: 14, slot: "offhand", setId: "set_divine_herald", baseAC: 5, maxDexBonus: 99, armorCheckPenalty: -1, arcaneFailure: 15, description: "A radiant shield bearing the sun symbol of the High Luminar.", specialEffect: "+5 AC. Allies within 10ft gain +2 AC." },
+  { id: "set_herald_crown", name: "Crown of the Faithful", category: "wondrous", wondrousSlot: "head", rarity: "epic", value: 35000, weight: 2, requiredLevel: 14, slot: "head", setId: "set_divine_herald", description: "A golden circlet that marks the chosen of the High Luminar.", specialEffect: "+4 WIS, +4 CHA. Turn undead as 4 levels higher.", statModifiers: [{ stat: "WIS", value: 4 }, { stat: "CHA", value: 4 }] },
+];
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  UTILITY FUNCTIONS
+// ══════════════════════════════════════════════════════════════════════════════
+
+/** Get all items in a flat array */
+export function getAllItems(): MagicItem[] {
+  return [
+    ...MAGIC_WEAPONS,
+    ...MAGIC_ARMORS,
+    ...MAGIC_RINGS,
+    ...MAGIC_AMULETS,
+    ...MAGIC_POTIONS,
+    ...MAGIC_SCROLLS,
+    ...MAGIC_WONDROUS,
+    ...SET_ITEMS,
+  ];
 }
 
-// ══════════════════════════════════════════════════════════════
-//  POTIONS  (DMG Table 7-17)
-// ══════════════════════════════════════════════════════════════
+/** Find an item by ID */
+export function getItemById(id: string): MagicItem | undefined {
+  return getAllItems().find(i => i.id === id);
+}
 
-export const MAGIC_POTIONS = [
-  // ── 0-level (25 gp) ──
-  mi("pot_detect_magic", "Potion of Detect Magic", "consumable", 25, 0.1,
-    "A thin blue liquid that makes magical auras visible.",
-    "Detect magic for 1 minute"),
-  mi("pot_resistance", "Potion of Resistance", "consumable", 25, 0.1,
-    "A chalky white draught that steels the spirit.",
-    "+1 resistance bonus to saving throws for 1 minute"),
-  mi("pot_virtue", "Potion of Virtue", "consumable", 25, 0.1,
-    "A golden tonic that bolsters vitality.",
-    "+1 temporary hit point for 1 minute"),
+/** Get items by rarity */
+export function getItemsByRarity(rarity: Rarity): MagicItem[] {
+  return getAllItems().filter(i => i.rarity === rarity);
+}
 
-  // ── 1st-level (50 gp) ──
-  mi("pot_mage_armor", "Potion of Mage Armor", "consumable", 50, 0.1,
-    "A shimmering silver liquid that hardens into an invisible ward.",
-    "+4 armor bonus to AC for 1 hour (no armor check penalty)"),
-  mi("pot_shield_of_faith", "Potion of Shield of Faith", "consumable", 50, 0.1,
-    "A clear potion with a tiny golden shield suspended within.",
-    "+2 deflection bonus to AC for 1 minute"),
-  mi("pot_endure_elements", "Potion of Endure Elements", "consumable", 50, 0.1,
-    "A swirling red-blue solution that tempers the body against extremes.",
-    "Resist cold and heat (comfort in -50F to 140F) for 24 hours"),
-  mi("pot_enlarge_person", "Potion of Enlarge Person", "consumable", 50, 0.1,
-    "A viscous green liquid that causes rapid growth.",
-    "Grow one size category for 1 minute. +2 STR, -2 DEX"),
-  mi("pot_reduce_person", "Potion of Reduce Person", "consumable", 50, 0.1,
-    "A tiny vial of shrinking elixir.",
-    "Shrink one size category for 1 minute. +2 DEX, -2 STR"),
-  mi("pot_jump", "Potion of Jump", "consumable", 50, 0.1,
-    "A springy yellow liquid that makes you light on your feet.",
-    "+10 enhancement bonus to Jump checks for 1 minute"),
-  mi("pot_hide_from_undead", "Potion of Hide from Undead", "consumable", 50, 0.1,
-    "A pale potion with flecks of silver.",
-    "Undead cannot see, hear, or smell you for 10 minutes (Will DC 11 if intelligent)"),
-  mi("pot_remove_fear", "Potion of Remove Fear", "consumable", 50, 0.1,
-    "A warm amber draught that steadies shaking hands.",
-    "Suppresses fear effects. +4 morale bonus vs. fear for 10 minutes"),
-  mi("pot_sanctuary", "Potion of Sanctuary", "consumable", 50, 0.1,
-    "A tranquil blue liquid that wards against aggression.",
-    "Enemies must Will DC 11 to attack you for 1 round/level"),
-  mi("pot_protection_evil", "Potion of Protection from Evil", "consumable", 50, 0.1,
-    "A silver-flecked elixir that wards against dark forces.",
-    "+2 deflection AC, +2 resistance saves vs. evil creatures for 1 minute"),
-  mi("pot_protection_good", "Potion of Protection from Good", "consumable", 50, 0.1,
-    "A black elixir that wards against righteous forces.",
-    "+2 deflection AC, +2 resistance saves vs. good creatures for 1 minute"),
-  mi("pot_bless_weapon", "Potion of Bless Weapon", "consumable", 50, 0.1,
-    "Oil that makes a weapon glow with holy light.",
-    "Weapon counts as good-aligned for 1 minute. Auto-confirms crits vs. evil"),
-  mi("pot_pass_without_trace", "Potion of Pass without Trace", "consumable", 50, 0.1,
-    "A brown earthy liquid that masks your passage.",
-    "Leave no tracks or scent for 1 hour"),
+// ── Loot Generation ──────────────────────────────────────────────────────────
 
-  // ── 2nd-level (300 gp) ──
-  mi("pot_eagles_splendor", "Potion of Eagle's Splendor", "consumable", 300, 0.1,
-    "A liquid that gleams like polished gold.",
-    "+4 enhancement bonus to Charisma for 3 minutes", 5),
-  mi("pot_foxs_cunning", "Potion of Fox's Cunning", "consumable", 300, 0.1,
-    "A sharp-smelling orange liquid that clears the mind.",
-    "+4 enhancement bonus to Intelligence for 3 minutes", 5),
-  mi("pot_owls_wisdom", "Potion of Owl's Wisdom", "consumable", 300, 0.1,
-    "A dark potion with the scent of old incense.",
-    "+4 enhancement bonus to Wisdom for 3 minutes", 5),
-  mi("pot_barkskin", "Potion of Barkskin", "consumable", 300, 0.1,
-    "A thick brown liquid that toughens skin to bark.",
-    "+2 enhancement bonus to natural armor for 30 minutes", 5),
-  mi("pot_cure_moderate", "Potion of Cure Moderate Wounds", "consumable", 300, 0.1,
-    "A larger vial of warm golden healing draught.",
-    "Heals 2d8+3 hit points", 5),
-  mi("pot_darkvision", "Potion of Darkvision", "consumable", 300, 0.1,
-    "An inky black liquid that makes eyes gleam in darkness.",
-    "See 60ft in total darkness for 3 hours", 5),
-  mi("pot_delay_poison", "Potion of Delay Poison", "consumable", 300, 0.1,
-    "A green antidote that holds toxins at bay.",
-    "Neutralizes poison effects for 1 hour", 5),
-  mi("pot_invisibility", "Potion of Invisibility", "consumable", 300, 0.1,
-    "A clear liquid that turns transparent on your tongue.",
-    "Invisible for 3 minutes or until you attack", 5),
-  mi("pot_lesser_restoration", "Potion of Lesser Restoration", "consumable", 300, 0.1,
-    "A sparkling white elixir of renewal.",
-    "Dispels 1d4 points of ability damage", 5),
-  mi("pot_levitate", "Potion of Levitate", "consumable", 300, 0.1,
-    "A fizzy potion that makes you feel weightless.",
-    "Rise or descend 20ft/round for 3 minutes", 5),
-  mi("pot_resist_energy", "Potion of Resist Energy", "consumable", 300, 0.1,
-    "A multicolored swirling elixir.",
-    "Resist 10 points of one energy type (fire/cold/acid/electricity/sonic) for 30 min", 5),
-  mi("pot_spider_climb", "Potion of Spider Climb", "consumable", 300, 0.1,
-    "A sticky grey potion that makes your hands adhere to any surface.",
-    "Climb walls and ceilings at your land speed for 30 minutes", 5),
-  mi("pot_blur", "Potion of Blur", "consumable", 300, 0.1,
-    "A hazy liquid that makes you shimmer and distort.",
-    "20% miss chance against you for 3 minutes", 5),
-  mi("pot_aid", "Potion of Aid", "consumable", 300, 0.1,
-    "A bright red tonic of courage and vigor.",
-    "+1 morale to attack/saves vs fear, +1d8 temporary HP for 1 min", 5),
-  mi("pot_protection_arrows", "Potion of Protection from Arrows", "consumable", 300, 0.1,
-    "A metallic-tasting elixir that toughens skin against missiles.",
-    "DR 10/magic vs. ranged weapons (max 100 points) for 1 hour", 5),
+const RARITY_WEIGHTS: Record<number, Record<Rarity, number>> = {
+  // difficulty brackets: weights per rarity (higher = more likely)
+  1: { common: 70, uncommon: 25, rare: 5, epic: 0, legendary: 0 },
+  2: { common: 50, uncommon: 35, rare: 12, epic: 3, legendary: 0 },
+  3: { common: 30, uncommon: 35, rare: 25, epic: 8, legendary: 2 },
+  4: { common: 15, uncommon: 25, rare: 35, epic: 18, legendary: 7 },
+  5: { common: 5, uncommon: 15, rare: 30, epic: 30, legendary: 20 },
+};
 
-  // ── 3rd-level (750 gp) ──
-  mi("pot_cure_serious", "Potion of Cure Serious Wounds", "consumable", 750, 0.1,
-    "A large vial of intensely radiant golden liquid.",
-    "Heals 3d8+5 hit points", 10),
-  mi("pot_displacement", "Potion of Displacement", "consumable", 750, 0.1,
-    "A shimmering liquid that bends light around you.",
-    "50% miss chance (as displacement spell) for 5 rounds", 10),
-  mi("pot_fly", "Potion of Fly", "consumable", 750, 0.1,
-    "A pale blue potion with tiny clouds swirling inside.",
-    "Fly at 60ft speed for 5 minutes", 10),
-  mi("pot_gaseous_form", "Potion of Gaseous Form", "consumable", 750, 0.1,
-    "A wispy grey liquid that dissolves on contact with air.",
-    "Become insubstantial mist for 5 minutes. DR 10/magic, fly 10ft", 10),
-  mi("pot_haste", "Potion of Haste", "consumable", 750, 0.1,
-    "A vibrating red elixir that makes the world slow down around you.",
-    "+1 attack, +30ft speed, +1 AC, extra attack per round for 5 rounds", 10),
-  mi("pot_heroism", "Potion of Heroism", "consumable", 750, 0.1,
-    "A bold crimson draught that fills you with unshakable confidence.",
-    "+2 morale bonus on attack rolls, saves, and skill checks for 50 minutes", 10),
-  mi("pot_keen_edge", "Potion of Keen Edge", "consumable", 750, 0.1,
-    "An oil that makes blades impossibly sharp.",
-    "Doubles weapon threat range for 50 minutes", 10),
-  mi("pot_magic_circle_evil", "Potion of Magic Circle against Evil", "consumable", 750, 0.1,
-    "A silvery draught that radiates protective energy.",
-    "+2 deflection AC, +2 resistance saves vs evil in 10ft radius for 50 min", 10),
-  mi("pot_neutralize_poison", "Potion of Neutralize Poison", "consumable", 750, 0.1,
-    "A green elixir that purges all toxins from the body.",
-    "Detoxifies all poisons in subject, cures poisoned conditions", 10),
-  mi("pot_protection_energy", "Potion of Protection from Energy", "consumable", 750, 0.1,
-    "A prismatic liquid that absorbs elemental harm.",
-    "Absorb up to 60 points of one energy type", 10),
-  mi("pot_rage", "Potion of Rage", "consumable", 750, 0.1,
-    "A frothing red berserker's draught.",
-    "+2 STR, +2 CON, +1 Will saves, -2 AC for 5 rounds", 10),
-  mi("pot_remove_blindness", "Potion of Remove Blindness/Deafness", "consumable", 750, 0.1,
-    "A sparkling clear elixir that restores the senses.",
-    "Cures blindness or deafness", 10),
-  mi("pot_remove_curse", "Potion of Remove Curse", "consumable", 750, 0.1,
-    "A pure white liquid that dispels dark enchantments.",
-    "Frees subject from curses", 10),
-  mi("pot_remove_disease", "Potion of Remove Disease", "consumable", 750, 0.1,
-    "A pungent herbal concoction that scours illness.",
-    "Cures all diseases affecting the subject", 10),
-  mi("pot_tongues", "Potion of Tongues", "consumable", 750, 0.1,
-    "A babbling potion that grants the gift of speech.",
-    "Speak and understand any language for 50 minutes", 10),
-  mi("pot_water_breathing", "Potion of Water Breathing", "consumable", 750, 0.1,
-    "A briny blue potion that lets you breathe underwater.",
-    "Breathe water freely for 50 minutes", 10),
-  mi("pot_good_hope", "Potion of Good Hope", "consumable", 750, 0.1,
-    "A radiant golden tonic that fills you with optimism.",
-    "+2 morale bonus on attack, damage, saves, skills, and ability checks for 50 min", 10),
-];
+function getDifficultyBracket(difficulty: number, playerLevel: number): number {
+  const effective = difficulty + Math.floor(playerLevel / 4);
+  if (effective <= 3) return 1;
+  if (effective <= 6) return 2;
+  if (effective <= 10) return 3;
+  if (effective <= 15) return 4;
+  return 5;
+}
 
-// ══════════════════════════════════════════════════════════════
-//  SCROLLS  (beyond existing ones in shops.ts)
-// ══════════════════════════════════════════════════════════════
+function weightedRarityPick(bracket: number): Rarity {
+  const weights = RARITY_WEIGHTS[bracket] || RARITY_WEIGHTS[3];
+  const total = Object.values(weights).reduce((s, v) => s + v, 0);
+  let roll = Math.random() * total;
+  for (const [rarity, weight] of Object.entries(weights) as [Rarity, number][]) {
+    roll -= weight;
+    if (roll <= 0) return rarity;
+  }
+  return "common";
+}
 
-export const MAGIC_SCROLLS = [
-  // 1st-level (25 gp)
-  mi("scr_mage_armor", "Scroll of Mage Armor", "consumable", 25, 0,
-    "A scroll inscribed with a shimmering ward formula.",
-    "Casts Mage Armor (CL 1): +4 armor bonus to AC for 1 hour"),
-  mi("scr_sleep", "Scroll of Sleep", "consumable", 25, 0,
-    "A scroll written in drowsy, curving script.",
-    "Casts Sleep (CL 1): 4 HD of creatures fall asleep, Will negates"),
-  mi("scr_burning_hands", "Scroll of Burning Hands", "consumable", 25, 0,
-    "A scroll that smolders faintly at the edges.",
-    "Casts Burning Hands (CL 1): 1d4 fire in 15ft cone, Reflex DC 11 half"),
-  mi("scr_color_spray", "Scroll of Color Spray", "consumable", 25, 0,
-    "A scroll that shimmers with rainbow hues.",
-    "Casts Color Spray (CL 1): stun/blind/unconscious creatures up to 6 HD in 15ft cone"),
-  mi("scr_enlarge", "Scroll of Enlarge Person", "consumable", 25, 0,
-    "A scroll scribed in oversized letters.",
-    "Casts Enlarge Person (CL 1): +2 STR, -2 DEX, grow one size for 1 minute"),
-  // 2nd-level (150 gp)
-  mi("scr_bulls_strength", "Scroll of Bull's Strength", "consumable", 150, 0,
-    "A scroll penned in bold, forceful strokes.",
-    "Casts Bull's Strength (CL 3): +4 STR for 3 minutes", 5),
-  mi("scr_cats_grace", "Scroll of Cat's Grace", "consumable", 150, 0,
-    "A scroll written in a flowing, agile hand.",
-    "Casts Cat's Grace (CL 3): +4 DEX for 3 minutes", 5),
-  mi("scr_invisibility", "Scroll of Invisibility", "consumable", 150, 0,
-    "A scroll written in invisible ink that appears only to the arcane eye.",
-    "Casts Invisibility (CL 3): invisible for 3 min or until you attack", 5),
-  mi("scr_web", "Scroll of Web", "consumable", 150, 0,
-    "A scroll with sticky fibers woven into the parchment.",
-    "Casts Web (CL 3): fills 20ft radius with sticky webs, Reflex DC 13 or stuck", 5),
-  mi("scr_scorching_ray", "Scroll of Scorching Ray", "consumable", 150, 0,
-    "A scroll that radiates warmth when touched.",
-    "Casts Scorching Ray (CL 3): ranged touch 4d6 fire damage", 5),
-  // 3rd-level (375 gp)
-  mi("scr_haste", "Scroll of Haste", "consumable", 375, 0,
-    "A scroll humming with barely contained energy.",
-    "Casts Haste (CL 5): +1 attack, +30ft speed, extra attack for 5 rounds", 10),
-  mi("scr_lightning_bolt", "Scroll of Lightning Bolt", "consumable", 375, 0,
-    "A scroll that crackles with static electricity.",
-    "Casts Lightning Bolt (CL 5): 5d6 electricity in 120ft line, Reflex DC 14 half", 10),
-  mi("scr_dispel_magic", "Scroll of Dispel Magic", "consumable", 375, 0,
-    "A scroll of unraveling script that suppresses enchantments.",
-    "Casts Dispel Magic (CL 5): targeted or area dispel, check d20+5 vs DC 11+CL", 10),
-  mi("scr_fly", "Scroll of Fly", "consumable", 375, 0,
-    "A scroll with feathery sigils that flutter in still air.",
-    "Casts Fly (CL 5): fly at 60ft speed for 5 minutes", 10),
-  // 4th-level (700 gp)
-  mi("scr_stoneskin", "Scroll of Stoneskin", "consumable", 700, 0,
-    "A scroll inscribed on granite-grey parchment.",
-    "Casts Stoneskin (CL 7): DR 10/adamantine, absorbs 70 damage", 15),
-  mi("scr_dimension_door", "Scroll of Dimension Door", "consumable", 700, 0,
-    "A scroll that folds space when read.",
-    "Casts Dimension Door (CL 7): teleport up to 680ft", 15),
-  mi("scr_wall_of_fire", "Scroll of Wall of Fire", "consumable", 700, 0,
-    "A scroll that burns with inner flame when unrolled.",
-    "Casts Wall of Fire (CL 7): deals 2d4 fire within 10ft, 1d4 within 20ft", 15),
-];
+/**
+ * Generate random loot for an encounter.
+ * @param difficulty - encounter difficulty (1-20, roughly CR)
+ * @param playerLevel - current player level
+ * @returns Array of magic items (0-3 items, scaled by difficulty)
+ */
+export function generateLoot(difficulty: number, playerLevel: number): MagicItem[] {
+  const bracket = getDifficultyBracket(difficulty, playerLevel);
+  const loot: MagicItem[] = [];
 
-// ══════════════════════════════════════════════════════════════
-//  WANDS  (50 charges each)
-// ══════════════════════════════════════════════════════════════
+  // Number of items: 0-3, weighted by difficulty
+  const itemChance = Math.min(0.8, 0.2 + difficulty * 0.05);
+  const maxItems = bracket >= 4 ? 3 : bracket >= 2 ? 2 : 1;
 
-export const MAGIC_WANDS = [
-  // 0-level wands (375 gp)
-  mi("wand_detect_magic", "Wand of Detect Magic", "gear", 375, 0,
-    "A slender willow wand tipped with a crystal bead.",
-    "50 charges. Casts Detect Magic", 5),
-  mi("wand_light", "Wand of Light", "gear", 375, 0,
-    "A birch wand that glows faintly when held.",
-    "50 charges. Casts Light on touched object for 10 min", 5),
+  for (let i = 0; i < maxItems; i++) {
+    if (Math.random() > itemChance) continue;
 
-  // 1st-level wands (750 gp)
-  mi("wand_magic_missile", "Wand of Magic Missile", "gear", 750, 0,
-    "An ivory wand etched with arcane arrows.",
-    "50 charges. Fires Magic Missile (1d4+1 force, auto-hit)", 10),
-  mi("wand_cure_light", "Wand of Cure Light Wounds", "gear", 750, 0,
-    "A white oak wand wrapped in silver wire.",
-    "50 charges. Heals 1d8+1 HP", 10),
-  mi("wand_burning_hands", "Wand of Burning Hands", "gear", 750, 0,
-    "A red oak wand warm to the touch.",
-    "50 charges. 1d4 fire in 15ft cone, Reflex DC 11 half", 10),
-  mi("wand_charm_person", "Wand of Charm Person", "gear", 750, 0,
-    "A rose-tinted wand that smells faintly of perfume.",
-    "50 charges. Target must Will DC 11 or regard you as trusted friend", 10),
-  mi("wand_sleep", "Wand of Sleep", "gear", 750, 0,
-    "A dark wand that hums a faint lullaby.",
-    "50 charges. 4 HD of creatures fall asleep", 10),
-  mi("wand_mage_armor", "Wand of Mage Armor", "gear", 750, 0,
-    "A steel-banded wand that shimmers with a protective aura.",
-    "50 charges. +4 armor bonus to AC for 1 hour", 10),
-  mi("wand_color_spray", "Wand of Color Spray", "gear", 750, 0,
-    "A prismatic crystal wand that refracts all light.",
-    "50 charges. Stun/blind/unconscious up to 6 HD in 15ft cone", 10),
-  mi("wand_enlarge_person", "Wand of Enlarge Person", "gear", 750, 0,
-    "A thick oak wand that seems slightly too large.",
-    "50 charges. Target grows one size: +2 STR, -2 DEX", 10),
-  mi("wand_ray_of_enfeeblement", "Wand of Ray of Enfeeblement", "gear", 750, 0,
-    "A sickly green wand that feels unpleasantly cold.",
-    "50 charges. Ranged touch — target takes 1d6+1 STR penalty", 10),
+    const rarity = weightedRarityPick(bracket);
+    const eligible = getAllItems().filter(item =>
+      item.rarity === rarity && item.requiredLevel <= playerLevel + 2
+    );
 
-  // 2nd-level wands (4,500 gp)
-  mi("wand_bulls_strength", "Wand of Bull's Strength", "gear", 4500, 0,
-    "A bull-horn wand banded in iron.",
-    "50 charges. +4 STR for 3 minutes", 20),
-  mi("wand_cats_grace", "Wand of Cat's Grace", "gear", 4500, 0,
-    "A lithe willow wand wrapped in cat gut.",
-    "50 charges. +4 DEX for 3 minutes", 20),
-  mi("wand_bears_endurance", "Wand of Bear's Endurance", "gear", 4500, 0,
-    "A heavy ironwood wand reinforced with bone.",
-    "50 charges. +4 CON for 3 minutes", 20),
-  mi("wand_cure_moderate", "Wand of Cure Moderate Wounds", "gear", 4500, 0,
-    "A silver-shod wand radiating warm light.",
-    "50 charges. Heals 2d8+3 HP", 20),
-  mi("wand_invisibility", "Wand of Invisibility", "gear", 4500, 0,
-    "A translucent crystal wand that's hard to see.",
-    "50 charges. Target invisible for 3 min or until attacking", 20),
-  mi("wand_scorching_ray", "Wand of Scorching Ray", "gear", 4500, 0,
-    "A red glass wand hot to the touch.",
-    "50 charges. Ranged touch 4d6 fire damage", 20),
-  mi("wand_web", "Wand of Web", "gear", 4500, 0,
-    "A wand wound with spider silk.",
-    "50 charges. 20ft radius sticky web, Reflex DC 13 or stuck", 20),
+    if (eligible.length > 0) {
+      const pick = eligible[Math.floor(Math.random() * eligible.length)];
+      // Avoid duplicates
+      if (!loot.some(l => l.id === pick.id)) {
+        loot.push(pick);
+      }
+    }
+  }
 
-  // 3rd-level wands (11,250 gp)
-  mi("wand_fireball", "Wand of Fireball", "gear", 11250, 0,
-    "A gold-capped wand that crackles with restrained flame.",
-    "50 charges. 5d6 fire in 20ft radius, Reflex DC 14 half", 30),
-  mi("wand_lightning_bolt", "Wand of Lightning Bolt", "gear", 11250, 0,
-    "A copper wand that arcs with electricity.",
-    "50 charges. 5d6 electricity in 120ft line, Reflex DC 14 half", 30),
-  mi("wand_cure_serious", "Wand of Cure Serious Wounds", "gear", 11250, 0,
-    "A blessed wand of white ash, warm with divine energy.",
-    "50 charges. Heals 3d8+5 HP", 30),
-  mi("wand_dispel_magic", "Wand of Dispel Magic", "gear", 11250, 0,
-    "A dark iron wand inscribed with negating runes.",
-    "50 charges. Dispel check d20+5 vs DC 11+CL", 30),
-  mi("wand_haste", "Wand of Haste", "gear", 11250, 0,
-    "A quicksilver wand that vibrates eagerly.",
-    "50 charges. +1 attack, +30ft speed, extra attack for 5 rounds", 30),
+  return loot;
+}
 
-  // 4th-level wands (21,000 gp)
-  mi("wand_cure_critical", "Wand of Cure Critical Wounds", "gear", 21000, 0,
-    "A holy wand of radiant white gold.",
-    "50 charges. Heals 4d8+7 HP", 40),
-  mi("wand_wall_of_fire", "Wand of Wall of Fire", "gear", 21000, 0,
-    "A basalt wand wreathed in flickering heat haze.",
-    "50 charges. Creates wall dealing 2d4/1d4 fire damage", 40),
-  mi("wand_stoneskin", "Wand of Stoneskin", "gear", 25500, 0,
-    "A granite wand heavy with protective magic.",
-    "50 charges. DR 10/adamantine, absorbs 70 points", 40),
-];
+// ── Shop Inventory Generator ─────────────────────────────────────────────────
 
-// ══════════════════════════════════════════════════════════════
-//  RINGS  (DMG Table 7-18)
-// ══════════════════════════════════════════════════════════════
+export type ShopType = "weapons" | "armor" | "magic" | "potions" | "general";
 
-export const MAGIC_RINGS = [
-  mi("ring_feather_falling", "Ring of Feather Falling", "gear", 2200, 0,
-    "A delicate silver ring set with a tiny white feather.",
-    "Automatically activates feather fall when you fall more than 5ft", 15),
-  mi("ring_sustenance", "Ring of Sustenance", "gear", 2500, 0,
-    "A plain iron ring that hums with nourishing magic.",
-    "No need for food or water. Only need 2 hours sleep per night", 15),
-  mi("ring_climbing", "Ring of Climbing", "gear", 2500, 0,
-    "A rough stone ring carved with gecko motifs.",
-    "+5 competence bonus to Climb checks", 15),
-  mi("ring_jumping", "Ring of Jumping", "gear", 2500, 0,
-    "A ring of springy mithral wire.",
-    "+5 competence bonus to Jump checks", 15),
-  mi("ring_swimming", "Ring of Swimming", "gear", 2500, 0,
-    "A blue-green ring shaped like a wave.",
-    "+5 competence bonus to Swim checks", 15),
-  mi("ring_counterspells", "Ring of Counterspells", "gear", 4000, 0,
-    "A ring with a hollow setting that can hold a spell.",
-    "Store one spell; auto-counters that same spell when cast at you", 20),
-  mi("ring_protection_2", "Ring of Protection +2", "gear", 8000, 0,
-    "A gold ring inscribed with a powerful ward of deflection.",
-    "+2 deflection bonus to AC", 25),
-  mi("ring_mind_shielding", "Ring of Mind Shielding", "gear", 8000, 0,
-    "A dark metal ring that blocks mental intrusion.",
-    "Immune to detect thoughts, discern lies, and alignment detection", 25),
-  mi("ring_force_shield", "Ring of Force Shield", "gear", 8500, 0,
-    "A ring that projects a buckler-sized disc of shimmering force.",
-    "+2 shield bonus to AC (can be activated/deactivated as free action)", 25),
-  mi("ring_ram", "Ring of the Ram", "gear", 8600, 0,
-    "An iron ring shaped like a ram's head.",
-    "50 charges. Ranged force attack: 1-3 charges for 1d6-3d6 force damage + bull rush", 25),
-  mi("ring_animal_friendship", "Ring of Animal Friendship", "gear", 10800, 0,
-    "A wooden ring carved with running animals.",
-    "Cast charm animal (Will DC 13) at will", 25),
-  mi("ring_energy_resist_minor", "Ring of Energy Resistance, Minor", "gear", 12000, 0,
-    "A ring set with a swirling elemental gemstone.",
-    "Resist 10 against one energy type (fire, cold, acid, electricity, or sonic)", 25),
-  mi("ring_chameleon", "Ring of Chameleon Power", "gear", 12700, 0,
-    "A ring that shifts color to match its surroundings.",
-    "+10 competence bonus to Hide checks. Can use disguise self at will", 25),
-  mi("ring_water_walking", "Ring of Water Walking", "gear", 15000, 0,
-    "A blue sapphire ring that repels water.",
-    "Walk on water as if solid ground", 30),
-  mi("ring_protection_3", "Ring of Protection +3", "gear", 18000, 0,
-    "A mithral ring blazing with deflection wards.",
-    "+3 deflection bonus to AC", 30),
-  mi("ring_spell_storing_minor", "Ring of Minor Spell Storing", "gear", 18000, 0,
-    "A ring with three tiny crystal chambers.",
-    "Store up to 3 levels of spells, cast them as if you cast them yourself", 30),
-  mi("ring_invisibility", "Ring of Invisibility", "gear", 20000, 0,
-    "A plain band that turns transparent when worn.",
-    "Become invisible at will (as invisibility spell)", 30),
-  mi("ring_wizardry_1", "Ring of Wizardry I", "gear", 20000, 0,
-    "A platinum ring set with a tiny diamond.",
-    "Doubles 1st-level arcane spell slots", 30),
-  mi("ring_evasion", "Ring of Evasion", "gear", 25000, 0,
-    "A nimble mithral ring that glimmers with protective magic.",
-    "Evasion: Reflex saves for half damage take no damage instead on success", 30),
-  mi("ring_xray_vision", "Ring of X-Ray Vision", "gear", 25000, 0,
-    "A lead-rimmed ring with a crystalline lens.",
-    "See through solid matter (1ft stone, 1in metal, 3ft wood/dirt) for 1 min/day", 30),
-  mi("ring_blinking", "Ring of Blinking", "gear", 27000, 0,
-    "A flickering ring that phases in and out of reality.",
-    "Blink effect at will: 50% miss chance, 20% miss chance on your attacks", 30),
-  mi("ring_energy_resist_major", "Ring of Energy Resistance, Major", "gear", 28000, 0,
-    "A ring blazing with elemental energy.",
-    "Resist 20 against one energy type", 30),
-  mi("ring_protection_4", "Ring of Protection +4", "gear", 32000, 0,
-    "An adamantine ring glowing with deflection magic.",
-    "+4 deflection bonus to AC", 40),
-  mi("ring_freedom_of_movement", "Ring of Freedom of Movement", "gear", 40000, 0,
-    "A ring of interlocking bands that never tangle.",
-    "Continuous freedom of movement — immune to paralysis, grapple, entangle, slow", 50),
-  mi("ring_wizardry_2", "Ring of Wizardry II", "gear", 40000, 0,
-    "A platinum ring with twin diamonds.",
-    "Doubles 2nd-level arcane spell slots", 50),
-  mi("ring_energy_resist_greater", "Ring of Energy Resistance, Greater", "gear", 44000, 0,
-    "A ring pulsing with raw elemental force.",
-    "Resist 30 against one energy type", 50),
-  mi("ring_protection_5", "Ring of Protection +5", "gear", 50000, 0,
-    "A legendary ring of absolute deflection.",
-    "+5 deflection bonus to AC", 50),
-  mi("ring_spell_storing", "Ring of Spell Storing", "gear", 50000, 0,
-    "A ring with five crystal chambers for storing magic.",
-    "Store up to 5 levels of spells, cast them as if you cast them yourself", 50),
-  mi("ring_regeneration", "Ring of Regeneration", "gear", 90000, 0,
-    "A living ring of green metal that pulses with vitality.",
-    "Regenerate 1 HP per round. Regrow lost limbs in 1d7 days", 60),
-  mi("ring_spell_turning", "Ring of Spell Turning", "gear", 98280, 0,
-    "A mirrored ring that reflects hostile magic.",
-    "Reflects 1d4+6 spell levels back at caster per day", 60),
-  mi("ring_telekinesis", "Ring of Telekinesis", "gear", 75000, 0,
-    "A ring of levitating metal that never touches skin.",
-    "Telekinesis at will (sustained force: 375 lbs, combat: 25 lbs as ranged attack)", 60),
-  mi("ring_three_wishes", "Ring of Three Wishes", "gear", 97950, 0,
-    "A golden ring with three rubies — each holding a miracle.",
-    "Contains 3 wish spells. Each ruby dims when a wish is used", 75),
-];
+/**
+ * Generate level-appropriate shop inventory.
+ * @param shopType - type of shop
+ * @param playerLevel - current player level (filters out too-high items)
+ * @param count - number of items to stock (default 10)
+ */
+export function generateShopInventory(shopType: ShopType, playerLevel: number, count = 10): MagicItem[] {
+  let pool: MagicItem[];
 
-// ══════════════════════════════════════════════════════════════
-//  RODS  (DMG Table 7-19)
-// ══════════════════════════════════════════════════════════════
+  switch (shopType) {
+    case "weapons":
+      pool = MAGIC_WEAPONS.filter(w => w.requiredLevel <= playerLevel + 3);
+      break;
+    case "armor":
+      pool = MAGIC_ARMORS.filter(a => a.requiredLevel <= playerLevel + 3);
+      break;
+    case "potions":
+      pool = [...MAGIC_POTIONS, ...MAGIC_SCROLLS].filter(p => p.requiredLevel <= playerLevel + 2);
+      break;
+    case "magic":
+      pool = [...MAGIC_RINGS, ...MAGIC_AMULETS, ...MAGIC_WONDROUS].filter(i => i.requiredLevel <= playerLevel + 3);
+      break;
+    case "general":
+    default:
+      pool = getAllItems().filter(i => i.requiredLevel <= playerLevel + 2 && (i.rarity === "common" || i.rarity === "uncommon"));
+      break;
+  }
 
-export const MAGIC_RODS = [
-  mi("rod_immovable", "Immovable Rod", "gear", 5000, 5,
-    "An iron rod with a small button. When pressed, it stays fixed in space.",
-    "Press button: rod becomes immovable, holds 8,000 lbs. Press again to release", 20),
-  mi("rod_metal_mineral", "Rod of Metal and Mineral Detection", "gear", 10500, 5,
-    "A forked iron rod that twitches near ore veins.",
-    "Detect metals and minerals within 30ft. Locate specific ore type as full-round action", 25),
-  mi("rod_cancellation", "Rod of Cancellation", "gear", 11000, 5,
-    "A black rod that devours magic on contact.",
-    "Touch to permanently drain one magic item of all power (no save). Single use", 25),
-  mi("rod_wonder", "Rod of Wonder", "gear", 12000, 5,
-    "A colorful rod covered in mismatched gems that produces random effects.",
-    "Activate for random magical effect (roll d%). Results range from fireball to turning blue", 25),
-  mi("rod_python", "Rod of the Python", "gear", 13000, 5,
-    "A staff carved to look like a coiled serpent.",
-    "On command, transforms into a constrictor snake (HP 60, Atk +11) for 10 min/day", 25),
-  mi("rod_flame_extinguishing", "Rod of Flame Extinguishing", "gear", 15000, 5,
-    "A blue metal rod that chills the air around it.",
-    "Extinguish nonmagical fires in 10ft radius, or make check to extinguish magical fire", 30),
-  mi("rod_viper", "Rod of the Viper", "gear", 19000, 5,
-    "A rod shaped like a striking serpent.",
-    "+2 heavy mace in combat. On command, head animates — bite deals 1d6+poison (DC 14)", 30),
-  mi("rod_enemy_detection", "Rod of Enemy Detection", "gear", 23500, 5,
-    "A rod that vibrates in the presence of hostile intent.",
-    "Detect enemies within 60ft, see through illusions/disguises of detected creatures", 30),
-  mi("rod_splendor", "Rod of Splendor", "gear", 25000, 5,
-    "A magnificent golden rod studded with jewels.",
-    "Create noble raiment (worth 7,000 gp appearance), magnificent tent, food for 100", 30),
-  mi("rod_withering", "Rod of Withering", "gear", 25000, 5,
-    "A blackened, twisted rod that saps life force.",
-    "+1 light mace. On hit: deals 1d4 STR and 1d4 CON damage (Fort DC 17 negates)", 30),
-  mi("rod_thunder_lightning", "Rod of Thunder and Lightning", "gear", 33000, 5,
-    "A bronze rod capped with storm clouds.",
-    "+2 light mace. Thunder mode: 2d6 sonic + deafen. Lightning mode: 5d6 bolt", 40),
-  mi("rod_negation", "Rod of Negation", "gear", 37000, 5,
-    "A pale crystal rod that nullifies magic.",
-    "50 charges. Dispel magic at CL 15 on touch (staffs, wands, and other rods)", 40),
-  mi("rod_absorption", "Rod of Absorption", "gear", 50000, 5,
-    "A crystalline rod that drinks in hostile spells.",
-    "Absorb spells targeted at you (up to 50 spell levels). Convert to spell slots", 50),
-  mi("rod_rulership", "Rod of Rulership", "gear", 60000, 5,
-    "A regal scepter of gold and platinum.",
-    "Command 300 HD of creatures within 120ft for 500 minutes total (Will DC 16)", 50),
-  mi("rod_security", "Rod of Security", "gear", 61000, 5,
-    "A crystal rod that creates a paradise.",
-    "Transport you and 199 others to an extradimensional sanctuary for up to 200 days", 50),
-  mi("rod_lordly_might", "Rod of Lordly Might", "gear", 70000, 5,
-    "An ornate mace that transforms into multiple weapons.",
-    "+2 light mace, +1 flaming longsword, +4 battleaxe, 50ft ladder, or battering ram", 60),
-  mi("rod_alertness", "Rod of Alertness", "gear", 85000, 5,
-    "A golden rod topped with a crystal eye.",
-    "+1 light mace, +1 Perception, detect evil/good/magic/snares at will. Animate objects 1/day", 60),
-];
+  // Shuffle and take count items
+  const shuffled = [...pool].sort(() => Math.random() - 0.5);
+  return shuffled.slice(0, Math.min(count, shuffled.length));
+}
 
-// ══════════════════════════════════════════════════════════════
-//  STAFFS  (DMG Table 7-25, 50 charges each)
-// ══════════════════════════════════════════════════════════════
+// ── Item Comparison ──────────────────────────────────────────────────────────
 
-export const MAGIC_STAFFS = [
-  mi("staff_charming", "Staff of Charming", "weapon", 16500, 4,
-    "A rose-wood staff capped with a heart-shaped gem.",
-    "50 charges. Charm person (1 chg, DC 14), charm monster (2 chg, DC 17)", 30),
-  mi("staff_fire", "Staff of Fire", "weapon", 17750, 4,
-    "A blackened ironwood staff crackling with embers.",
-    "50 charges. Burning hands (1 chg), fireball (1 chg, 6d6), wall of fire (2 chg)", 30),
-  mi("staff_swarming_insects", "Staff of Swarming Insects", "weapon", 22800, 4,
-    "A gnarled staff buzzing with dormant vermin.",
-    "50 charges. Summon insect swarm (1 chg), insect plague (3 chg)", 30),
-  mi("staff_healing", "Staff of Healing", "weapon", 27750, 4,
-    "A white ash staff wrapped in golden thread.",
-    "50 charges. Cure light (1 chg), cure serious (2 chg), cure critical (3 chg), heal (4 chg)", 30),
-  mi("staff_size_alteration", "Staff of Size Alteration", "weapon", 26150, 4,
-    "A telescoping staff that grows and shrinks at a touch.",
-    "50 charges. Enlarge person (1 chg), reduce person (1 chg), mass enlarge (3 chg)", 30),
-  mi("staff_illumination", "Staff of Illumination", "weapon", 48250, 4,
-    "A crystal-topped staff that blazes with radiance.",
-    "50 charges. Dancing lights (1 chg), flare (1 chg), daylight (2 chg), sunburst (3 chg)", 50),
-  mi("staff_frost", "Staff of Frost", "weapon", 56250, 4,
-    "An icy blue staff rimed with perpetual frost.",
-    "50 charges. Ice storm (1 chg, 5d6), wall of ice (2 chg), cone of cold (3 chg, 10d6)", 50),
-  mi("staff_defense", "Staff of Defense", "weapon", 58250, 4,
-    "A silvered staff humming with protective enchantments.",
-    "50 charges. Shield (1 chg), shield of faith (1 chg), shield other (1 chg), wall of force (3 chg)", 50),
-  mi("staff_abjuration", "Staff of Abjuration", "weapon", 65000, 4,
-    "A platinum-banded staff warding against all harm.",
-    "50 charges. Shield (1 chg), resist energy (1 chg), dispel magic (1 chg), dismiss (2 chg), repulsion (3 chg)", 50),
-  mi("staff_conjuration", "Staff of Conjuration", "weapon", 65000, 4,
-    "A staff that hums with summoning energy.",
-    "50 charges. Unseen servant (1 chg), web (1 chg), stinking cloud (1 chg), cloudkill (2 chg), summon monster VI (3 chg)", 50),
-  mi("staff_enchantment", "Staff of Enchantment", "weapon", 65000, 4,
-    "A mesmerizing staff that glitters hypnotically.",
-    "50 charges. Sleep (1 chg), hideous laughter (1 chg), suggestion (1 chg), crushing despair (2 chg), mind fog (3 chg)", 50),
-  mi("staff_evocation", "Staff of Evocation", "weapon", 65000, 4,
-    "A staff that crackles with raw arcane power.",
-    "50 charges. Magic missile (1 chg), shatter (1 chg), fireball (1 chg), ice storm (2 chg), wall of force (3 chg)", 50),
-  mi("staff_necromancy", "Staff of Necromancy", "weapon", 65000, 4,
-    "A bone-white staff that drains warmth from the air.",
-    "50 charges. Cause fear (1 chg), ghoul touch (1 chg), halt undead (1 chg), enervation (2 chg), waves of fatigue (3 chg)", 50),
-  mi("staff_transmutation", "Staff of Transmutation", "weapon", 65000, 4,
-    "A staff of living wood that changes shape subtly.",
-    "50 charges. Expeditious retreat (1 chg), alter self (1 chg), blink (1 chg), polymorph (2 chg), baleful polymorph (3 chg)", 50),
-  mi("staff_earth_stone", "Staff of Earth and Stone", "weapon", 80500, 4,
-    "A granite staff veined with precious ores.",
-    "50 charges. Passwall (1 chg), move earth (1 chg), stone to flesh (2 chg), wall of stone (2 chg)", 60),
-  mi("staff_woodlands", "Staff of Woodlands", "weapon", 101250, 4,
-    "A living staff of ironwood that sprouts leaves.",
-    "50 charges. Charm animal (1 chg), speak with animals (1 chg), barkskin (2 chg), wall of thorns (3 chg), animate plants (4 chg). +2 quarterstaff", 60),
-  mi("staff_life", "Staff of Life", "weapon", 155750, 4,
-    "A radiant staff of purest white crystal.",
-    "50 charges. Heal (1 chg), resurrection (5 chg)", 75),
-  mi("staff_passage", "Staff of Passage", "weapon", 170500, 4,
-    "A staff that bends space around its wielder.",
-    "50 charges. Dimension door (1 chg), passwall (1 chg), phase door (2 chg), greater teleport (2 chg), astral projection (3 chg)", 75),
-  mi("staff_power", "Staff of Power", "weapon", 200000, 4,
-    "One of the mightiest staves ever crafted — hums with continent-shaking power.",
-    "+2 quarterstaff. 50 charges. Magic missile (1 chg), ray of enfeeblement (1 chg), fireball (1 chg, 10d6), lightning bolt (1 chg, 10d6), wall of force (2 chg), globe of invulnerability (2 chg). Can break for 200ft retributive strike", 75),
-];
+export type ItemComparison = {
+  equipped: MagicItem;
+  candidate: MagicItem;
+  statDiffs: { label: string; current: number | string; new: number | string; better: boolean }[];
+  summary: string; // e.g. "Candidate is stronger (+2 ATK, +1d6 fire) but heavier (4 lbs more)"
+};
 
-// ══════════════════════════════════════════════════════════════
-//  SPECIFIC ARMORS  (DMG Table 7-3)
-// ══════════════════════════════════════════════════════════════
+/**
+ * Compare two items side-by-side for equip decisions.
+ */
+export function compareItems(equipped: MagicItem, candidate: MagicItem): ItemComparison {
+  const diffs: ItemComparison["statDiffs"] = [];
 
-export const MAGIC_ARMORS = [
-  mi("armor_mithral_shirt", "Mithral Shirt", "armor", 1100, 10,
-    "A shirt of finely woven mithral rings — light as silk, strong as steel.",
-    "+4 AC, +6 max DEX, no armor check penalty, 10% arcane failure. Light armor", 10),
-  mi("armor_elven_chain", "Elven Chain", "armor", 4150, 20,
-    "An exquisitely crafted suit of mithral chainmail of elven make.",
-    "+5 AC, +4 max DEX, -2 check penalty, 20% arcane failure. Light armor", 20),
-  mi("armor_rhino_hide", "Rhino Hide", "armor", 5165, 25,
-    "Thick rhinoceros hide reinforced with magic — charges deal extra damage.",
-    "+5 AC (+2 hide armor). On successful charge attack: deal +2d6 damage", 20),
-  mi("armor_adamantine_breastplate", "Adamantine Breastplate", "armor", 10200, 30,
-    "A mirror-bright breastplate of indestructible adamantine.",
-    "+5 AC. DR 2/— (damage reduction against all attacks)", 25),
-  mi("armor_dwarven_plate", "Dwarven Plate", "armor", 16500, 45,
-    "Masterwork dwarven full plate of unmatched craftsmanship.",
-    "+9 AC (+2 full plate). Dwarven-forged — never rusts, -5 check penalty", 30),
-  mi("armor_banded_luck", "Banded Mail of Luck", "armor", 18900, 35,
-    "Gem-studded +3 banded mail that bends fate around its wearer.",
-    "+6 AC. Once per week: force an attack against you to be rerolled", 30),
-  mi("armor_celestial", "Celestial Armor", "armor", 22400, 20,
-    "Bright silver +3 chainmail so fine it can be worn under clothing.",
-    "+6 AC, +8 max DEX, -2 check penalty, 15% arcane failure. Fly 1/day. Light armor", 30),
-  mi("armor_plate_deep", "Plate Armor of the Deep", "armor", 24650, 45,
-    "Blue-green +1 full plate decorated with aquatic motifs.",
-    "+9 AC. Breathe underwater, swim at 20ft speed, understand aquatic languages", 30),
-  mi("armor_breastplate_command", "Breastplate of Command", "armor", 25400, 30,
-    "A finely crafted +2 breastplate radiating a commanding aura.",
-    "+7 AC. +2 competence bonus on Charisma checks and Leadership. Allies within 360ft are braver", 30),
-  mi("armor_demon", "Demon Armor", "armor", 52260, 50,
-    "Fiendish +4 full plate shaped like a snarling demon.",
-    "+12 AC. Claw attacks deal 1d10+1. Can use contagion 1/day. Evil aura", 50),
-];
+  // Value comparison
+  diffs.push({ label: "Value (gp)", current: equipped.value, new: candidate.value, better: candidate.value > equipped.value });
+  diffs.push({ label: "Weight (lbs)", current: equipped.weight, new: candidate.weight, better: candidate.weight < equipped.weight });
+  diffs.push({ label: "Required Level", current: equipped.requiredLevel, new: candidate.requiredLevel, better: candidate.requiredLevel <= equipped.requiredLevel });
 
-// ══════════════════════════════════════════════════════════════
-//  SPECIFIC SHIELDS  (DMG Table 7-7)
-// ══════════════════════════════════════════════════════════════
+  // Weapon-specific
+  if (equipped.category === "weapon" && candidate.category === "weapon") {
+    diffs.push({ label: "To Hit Bonus", current: equipped.bonusToHit, new: candidate.bonusToHit, better: candidate.bonusToHit > equipped.bonusToHit });
+    diffs.push({ label: "Bonus Damage", current: equipped.bonusDamage, new: candidate.bonusDamage, better: candidate.bonusDamage > equipped.bonusDamage });
+    diffs.push({ label: "Base Damage", current: equipped.baseDamage, new: candidate.baseDamage, better: candidate.baseDamage >= equipped.baseDamage });
+    diffs.push({ label: "Element", current: equipped.element, new: candidate.element, better: candidate.element !== "none" && equipped.element === "none" });
+    diffs.push({ label: "Crit Range", current: `${equipped.critRange}-20`, new: `${candidate.critRange}-20`, better: candidate.critRange < equipped.critRange });
+  }
 
-export const MAGIC_SHIELDS = [
-  mi("shield_darkwood_buckler", "Darkwood Buckler", "armor", 205, 2.5,
-    "A small shield carved from rare darkwood — nearly weightless.",
-    "+1 AC shield bonus. No armor check penalty", 3),
-  mi("shield_darkwood", "Darkwood Shield", "armor", 257, 5,
-    "A large shield of darkwood with a natural grain.",
-    "+2 AC shield bonus. No armor check penalty", 3),
-  mi("shield_mithral_heavy", "Mithral Heavy Shield", "armor", 1020, 5,
-    "A heavy shield of polished mithral, light as a buckler.",
-    "+2 AC shield bonus. No armor check penalty, 5% arcane failure", 10),
-  mi("shield_casters", "Caster's Shield", "armor", 3153, 5,
-    "A +1 light shield with a leather strap for a scroll.",
-    "+1 AC. Has a scroll holder — stores one spell up to 3rd level for quick access", 15),
-  mi("shield_spined", "Spined Shield", "armor", 5580, 15,
-    "A +1 heavy shield bristling with sharp iron spikes.",
-    "+3 AC. Can fire spines: ranged attack 120ft, 1d10+3+poison, 3/day", 20),
-  mi("shield_lions", "Lion's Shield", "armor", 9170, 15,
-    "A +2 heavy shield emblazoned with a roaring lion head.",
-    "+4 AC. Lion's head bites once per round: +8 melee, 2d6+3 damage", 25),
-  mi("shield_winged", "Winged Shield", "armor", 17257, 10,
-    "A +3 heavy shield decorated with eagle wings that can animate.",
-    "+5 AC. Fly 60ft (average) for 5 minutes, 1/day", 30),
-  mi("shield_absorbing", "Absorbing Shield", "armor", 50170, 15,
-    "A +1 heavy shield that devours magical energy.",
-    "+3 AC. Can absorb (disintegrate) one magic item per day on touch, no save", 50),
-];
+  // Armor-specific
+  if (equipped.category === "armor" && candidate.category === "armor") {
+    diffs.push({ label: "Base AC", current: equipped.baseAC, new: candidate.baseAC, better: candidate.baseAC > equipped.baseAC });
+    diffs.push({ label: "Max DEX Bonus", current: equipped.maxDexBonus, new: candidate.maxDexBonus, better: candidate.maxDexBonus > equipped.maxDexBonus });
+    diffs.push({ label: "Check Penalty", current: equipped.armorCheckPenalty, new: candidate.armorCheckPenalty, better: candidate.armorCheckPenalty > equipped.armorCheckPenalty });
+  }
 
-// ══════════════════════════════════════════════════════════════
-//  SPECIFIC WEAPONS  (DMG Table 7-14)
-// ══════════════════════════════════════════════════════════════
+  // Stat modifier comparison
+  const equippedStats = equipped.statModifiers || [];
+  const candidateStats = candidate.statModifiers || [];
+  const allStats: ("STR" | "DEX" | "CON" | "INT" | "WIS" | "CHA")[] = ["STR", "DEX", "CON", "INT", "WIS", "CHA"];
+  for (const stat of allStats) {
+    const eqVal = equippedStats.find(s => s.stat === stat)?.value || 0;
+    const canVal = candidateStats.find(s => s.stat === stat)?.value || 0;
+    if (eqVal !== 0 || canVal !== 0) {
+      diffs.push({ label: stat, current: eqVal > 0 ? `+${eqVal}` : `${eqVal}`, new: canVal > 0 ? `+${canVal}` : `${canVal}`, better: canVal > eqVal });
+    }
+  }
 
-export const MAGIC_WEAPONS = [
-  mi("wpn_sleep_arrow", "Sleep Arrow", "weapon", 132, 0.1,
-    "A grey-feathered arrow tipped with enchanted dreamstone.",
-    "On hit: target falls asleep (Will DC 11). Single use", 3),
-  mi("wpn_screaming_bolt", "Screaming Bolt", "weapon", 267, 0.1,
-    "A crossbow bolt etched with sonic runes.",
-    "On hit: +1d8 sonic damage and all within 20ft must Fort DC 14 or be shaken. Single use", 5),
-  mi("wpn_masterwork_silver_dagger", "Silver Dagger, Masterwork", "weapon", 322, 1,
-    "A masterwork dagger of alchemical silver — deadly to lycanthropes.",
-    "+1 attack (masterwork). Bypasses DR/silver (lycanthropes, some devils)", 5),
-  mi("wpn_cold_iron_longsword", "Cold Iron Longsword, Masterwork", "weapon", 330, 4,
-    "A masterwork longsword forged from cold iron — bane of fey and demons.",
-    "+1 attack (masterwork). Bypasses DR/cold iron (fey, demons)", 5),
-  mi("wpn_javelin_lightning", "Javelin of Lightning", "weapon", 1500, 2,
-    "A javelin wreathed in crackling arcs of electricity.",
-    "Throw: transforms into 5d6 lightning bolt (120ft line, Reflex DC 14). Becomes normal javelin after", 10),
-  mi("wpn_slaying_arrow", "Slaying Arrow", "weapon", 2282, 0.1,
-    "A black arrow marked with a death rune for a specific creature type.",
-    "On hit vs. designated type: Fort DC 20 or die. Single use", 15),
-  mi("wpn_adamantine_dagger", "Adamantine Dagger", "weapon", 3002, 1,
-    "An indestructible dagger of mirror-bright adamantine.",
-    "+1 enhancement. Bypasses hardness up to 20. Cannot be sundered", 15),
-  mi("wpn_dagger_venom", "Dagger of Venom", "weapon", 8302, 1,
-    "A +1 dagger with a hollow pommel containing virulent poison.",
-    "+1 dagger. 1/day: coat blade with black adder venom (1d6 CON/1d6 CON, Fort DC 14)", 25),
-  mi("wpn_trident_warning", "Trident of Warning", "weapon", 10115, 4,
-    "A +2 trident that glows red when enemies are near.",
-    "+2 trident. Cannot be surprised — weapon warns of hostile intent within 120ft", 25),
-  mi("wpn_assassins_dagger", "Assassin's Dagger", "weapon", 10302, 1,
-    "A +2 dagger that amplifies death strikes.",
-    "+2 dagger. On successful death attack or coup de grace: +1d6 sneak damage, DC +1 to Fort save", 25),
-  mi("wpn_flame_tongue", "Flame Tongue", "weapon", 20715, 4,
-    "A +1 flaming burst longsword wreathed in living fire.",
-    "+1 longsword, +1d6 fire per hit, +1d10 fire on crit. Sheds light as torch", 30),
-  mi("wpn_trident_fish_command", "Trident of Fish Command", "weapon", 18650, 4,
-    "A +1 trident decorated with coral and shells.",
-    "+1 trident. Charm fish 3/day (30ft radius, Will DC 14). Speak with fish at will", 30),
-  mi("wpn_luck_blade_0", "Luck Blade", "weapon", 22060, 2,
-    "A shimmering +2 short sword that bends fortune.",
-    "+2 short sword. +1 luck bonus to saves. (No wishes remaining)", 30),
-  mi("wpn_sword_subtlety", "Sword of Subtlety", "weapon", 22310, 2,
-    "A +1 short sword that seems to fade from view mid-swing.",
-    "+1 short sword. +4 bonus on attack and damage when making sneak attacks", 30),
-  mi("wpn_sword_planes", "Sword of the Planes", "weapon", 22315, 4,
-    "A +1 longsword that cuts through planar boundaries.",
-    "+1 longsword (+2 vs outsiders, +3 vs extraplanar on their home plane)", 30),
-  mi("wpn_nine_lives_stealer", "Nine Lives Stealer", "weapon", 23057, 4,
-    "A +2 longsword with nine black gems set in the crossguard.",
-    "+2 longsword. On crit: target must Fort DC 20 or die. Each kill consumes one gem", 30),
-  mi("wpn_oathbow", "Oathbow", "weapon", 25600, 3,
-    "A +2 composite longbow that forms a blood oath against your sworn enemy.",
-    "+2 longbow. Name sworn enemy: +5 to hit, +5 damage vs. that target until it dies", 30),
-  mi("wpn_life_stealing", "Sword of Life Stealing", "weapon", 25715, 4,
-    "A +2 longsword that drinks the lifeblood of its victims.",
-    "+2 longsword. On crit: bestows 1 negative level (Fort DC 16). You gain 1d6 temp HP", 30),
-  mi("wpn_mace_terror", "Mace of Terror", "weapon", 38552, 8,
-    "A +2 heavy mace carved with screaming faces.",
-    "+2 heavy mace. 3/day: cause fear in 30ft cone (Will DC 16 or flee for 1d4 rounds)", 40),
-  mi("wpn_life_drinker", "Life-Drinker", "weapon", 40320, 12,
-    "A +1 greataxe made of vampiric black iron.",
-    "+1 greataxe. On hit: deals 1 negative level. You gain 5 temp HP. Costs 1 of your HP per swing", 40),
-  mi("wpn_sylvan_scimitar", "Sylvan Scimitar", "weapon", 47315, 4,
-    "A +3 scimitar of living green steel.",
-    "+3 scimitar. 1/day: cast cure critical wounds on yourself when you crit", 50),
-  mi("wpn_rapier_puncturing", "Rapier of Puncturing", "weapon", 50320, 2,
-    "A +2 wounding rapier that bleeds targets dry.",
-    "+2 rapier. On hit: 1 CON damage per round (stacks). No save", 50),
-  mi("wpn_sun_blade", "Sun Blade", "weapon", 50335, 2,
-    "A +2 bastard sword blazing with solar radiance.",
-    "+2 bastard sword (+4 vs evil). Use as short sword. Sunlight blade: +2d6 vs undead, counts as sunlight", 50),
-  mi("wpn_frost_brand", "Frost Brand", "weapon", 54475, 8,
-    "A +3 greatsword coated in ever-present frost.",
-    "+3 greatsword, +1d6 cold damage. Protect from fire (as endure elements). Extinguish fires on command", 50),
-  mi("wpn_dwarven_thrower", "Dwarven Thrower", "weapon", 60312, 5,
-    "A +2 warhammer that returns to a dwarf's hand when thrown.",
-    "+2 warhammer (+3 when thrown, returns). +2d8 damage when thrown (+4d8 vs. giants)", 60),
-  mi("wpn_mace_smiting", "Mace of Smiting", "weapon", 75312, 8,
-    "A +3 adamantine heavy mace that shatters constructs.",
-    "+3 adamantine heavy mace. +5 vs constructs. On crit vs construct: destroy it (Fort DC 20)", 60),
-  mi("wpn_holy_avenger", "Holy Avenger", "weapon", 120630, 4,
-    "A legendary +2 cold iron longsword — the ultimate weapon against evil.",
-    "+2 longsword (+7 holy vs evil: +2d6). In paladin's hands: cast greater dispel magic at will in 5ft radius, SR 15 aura", 75),
-];
+  // Build summary
+  const improvements = diffs.filter(d => d.better).map(d => d.label);
+  const downgrades = diffs.filter(d => !d.better && d.current !== d.new).map(d => d.label);
 
-// ══════════════════════════════════════════════════════════════
-//  WONDROUS ITEMS  (DMG Tables 7-27 through 7-29)
-// ══════════════════════════════════════════════════════════════
+  let summary: string;
+  if (improvements.length > downgrades.length) {
+    summary = `Upgrade: better ${improvements.slice(0, 3).join(", ")}${downgrades.length > 0 ? ` (trade-off: ${downgrades.slice(0, 2).join(", ")})` : ""}.`;
+  } else if (downgrades.length > improvements.length) {
+    summary = `Downgrade: worse ${downgrades.slice(0, 3).join(", ")}${improvements.length > 0 ? ` (but gains: ${improvements.slice(0, 2).join(", ")})` : ""}.`;
+  } else {
+    summary = "Sidegrade: roughly equivalent with different strengths.";
+  }
 
-export const MAGIC_WONDROUS = [
-  // ── Cheap (under 2,500 gp) ──
-  mi("won_feather_token_anchor", "Feather Token (Anchor)", "gear", 50, 0,
-    "A tiny feather that becomes a massive ship anchor.",
-    "Creates a 10ft anchor. Moors a ship. Single use"),
-  mi("won_universal_solvent", "Universal Solvent", "consumable", 50, 0,
-    "A small flask of milky liquid that dissolves any adhesive.",
-    "Dissolves sovereign glue, tanglefoot bags, and similar adhesives on contact. Single use"),
-  mi("won_unguent_timelessness", "Unguent of Timelessness", "consumable", 150, 0,
-    "A thick grey ointment that preserves anything coated in it.",
-    "Coat one item: it never ages, rusts, or decays", 3),
-  mi("won_feather_token_fan", "Feather Token (Fan)", "gear", 200, 0,
-    "A tiny feather that unfolds into a huge fan.",
-    "Creates a fan-shaped gust of wind: push creatures back or propel a sailing vessel. Single use"),
-  mi("won_dust_tracelessness", "Dust of Tracelessness", "consumable", 250, 0,
-    "A pouch of grey dust that erases all evidence of passage.",
-    "Cover 100ft trail — completely eliminates tracks and scent"),
-  mi("won_elixir_hiding", "Elixir of Hiding", "consumable", 250, 0.1,
-    "A dark draught that makes you blend into shadows.",
-    "+10 competence bonus on Hide checks for 1 hour"),
-  mi("won_elixir_sneaking", "Elixir of Sneaking", "consumable", 250, 0.1,
-    "A soft-grey liquid that muffles all sound you make.",
-    "+10 competence bonus on Move Silently checks for 1 hour"),
-  mi("won_elixir_swimming", "Elixir of Swimming", "consumable", 250, 0.1,
-    "A blue potion that makes you slice through water.",
-    "+10 competence bonus on Swim checks for 1 hour"),
-  mi("won_elixir_vision", "Elixir of Vision", "consumable", 250, 0.1,
-    "A golden drop that sharpens eyesight to supernatural clarity.",
-    "+10 competence bonus on Spot checks for 1 hour"),
-  mi("won_silversheen", "Silversheen", "consumable", 250, 0,
-    "A silver paste that coats a weapon with alchemical silver.",
-    "Coat one weapon: counts as silver for overcoming DR/silver for 1 hour"),
-  mi("won_feather_token_bird", "Feather Token (Bird)", "gear", 300, 0,
-    "A tiny feather that becomes a messenger bird.",
-    "Creates a bird that delivers a message up to 500 miles. Single use"),
-  mi("won_feather_token_tree", "Feather Token (Tree)", "gear", 400, 0,
-    "A tiny leaf that grows into a full oak tree.",
-    "Creates a 60ft tall oak tree instantly. Permanent. Single use"),
-  mi("won_feather_token_boat", "Feather Token (Swan Boat)", "gear", 450, 0,
-    "A tiny feather shaped like a swan.",
-    "Creates a swan-shaped boat (24ft long) that moves at 60ft/round for 1 day. Single use"),
-  mi("won_feather_token_whip", "Feather Token (Whip)", "gear", 500, 0,
-    "A tiny feather that becomes a +1 leather whip.",
-    "Creates a +1 whip that fights on its own (+9 attack, 1d6+1) for 1 hour. Single use"),
-  mi("won_dust_dryness", "Dust of Dryness", "consumable", 850, 0,
-    "A pinch of dust that absorbs water.",
-    "Absorbs 100 gallons of water (becomes a marble-sized pellet). Throw pellet: releases the water", 3),
+  return { equipped, candidate, statDiffs: diffs, summary };
+}
 
-  // ── Low (1,000–2,500 gp) ──
-  mi("won_phylactery_faithfulness", "Phylactery of Faithfulness", "gear", 1000, 0,
-    "A leather arm-strap containing holy parchment.",
-    "You always know if an action would affect your alignment or violate your deity's tenets", 10),
-  mi("won_pearl_power_1", "Pearl of Power (1st)", "gear", 1000, 0,
-    "A lustrous white pearl that holds a spell.",
-    "1/day: recall one 1st-level spell you already cast today", 10),
-  mi("won_bracers_armor_1", "Bracers of Armor +1", "gear", 1000, 1,
-    "Leather bracers etched with a shimmering protective ward.",
-    "+1 armor bonus to AC (stacks with nothing, works like armor)", 10),
-  mi("won_salve_slipperiness", "Salve of Slipperiness", "consumable", 1000, 0,
-    "A jar of incredibly slick oil.",
-    "Coat yourself: +20 on Escape Artist, immune to entangle/snare/web for 8 hours", 10),
-  mi("won_elixir_fire_breath", "Elixir of Fire Breath", "consumable", 1100, 0.1,
-    "A fiery red elixir that makes your breath explosive.",
-    "Breathe fire: 4d6 in 25ft cone (Reflex DC 13 half). 3 doses in one flask", 10),
-  mi("won_pipes_sewers", "Pipes of the Sewers", "gear", 1150, 1,
-    "A set of crude wooden pipes that summon rats.",
-    "Play to summon rat swarms. 1d3 swarms arrive in 1d4+1 rounds, follow your commands", 10),
-  mi("won_dust_illusion", "Dust of Illusion", "consumable", 1200, 0,
-    "Sparkling dust that changes your appearance.",
-    "Throw on yourself: disguise self for 2 hours (DC 13 to disbelieve)", 10),
-  mi("won_goggles_minute_seeing", "Goggles of Minute Seeing", "gear", 1250, 0,
-    "Crystal lenses set in leather that reveal tiny details.",
-    "+5 competence bonus on Search checks involving fine details", 10),
-  mi("won_brooch_shielding", "Brooch of Shielding", "gear", 1500, 0,
-    "A silver brooch that absorbs magic missiles.",
-    "Absorbs magic missiles (up to 101 points of force damage total)", 10),
-  mi("won_necklace_fireballs_1", "Necklace of Fireballs (Type I)", "gear", 1650, 1,
-    "A necklace strung with a single dull red bead.",
-    "One bead: throw for 5d6 fireball (Reflex DC 14)", 10),
-  mi("won_hat_disguise", "Hat of Disguise", "gear", 1800, 0,
-    "A nondescript hat that changes your appearance at will.",
-    "Disguise self at will (alter appearance, +10 Disguise)", 15),
-  mi("won_quiver_ehlonna", "Quiver of Ehlonna", "gear", 1800, 2,
-    "A magical quiver that holds far more than it should.",
-    "Holds 60 arrows, 18 javelins, and 6 bows/staffs in extradimensional space", 15),
-  mi("won_dust_appearance", "Dust of Appearance", "consumable", 1800, 0,
-    "Glittering gold dust that reveals the hidden.",
-    "10ft cloud: reveals invisible/ethereal creatures for 5 min. Outline for 10 min", 15),
-  mi("won_handy_haversack", "Handy Haversack", "gear", 2000, 5,
-    "A well-made leather backpack bigger on the inside.",
-    "Weighs 5 lbs always. Holds 80 lbs (2 side pouches 20 lbs each, main 80 lbs). Always find what you reach for", 15),
-  mi("won_horn_fog", "Horn of Fog", "gear", 2000, 1,
-    "A curled ram's horn that exhales thick fog.",
-    "Blow: creates obscuring mist (10ft cube per round, up to 100ft). Fog persists 10 min", 15),
-  mi("won_robe_bones", "Robe of Bones", "gear", 2400, 1,
-    "A black robe decorated with bone emblems.",
-    "Pull off emblem: summon undead (2 skeletons, 2 zombies, 1 ghoul, 1 shadow)", 15),
-  mi("won_sovereign_glue", "Sovereign Glue", "consumable", 2400, 0,
-    "A golden glue that permanently bonds any two surfaces.",
-    "Permanently bonds any two objects. Only universal solvent or wish can dissolve", 15),
-  mi("won_necklace_fireballs_2", "Necklace of Fireballs (Type II)", "gear", 2700, 1,
-    "A necklace with one large and two small fiery beads.",
-    "Beads: one 5d6 and two 3d6 fireballs (Reflex DC 14/13)", 15),
-  mi("won_bag_holding_1", "Bag of Holding (Type I)", "gear", 2500, 15,
-    "A cloth sack that holds far more than possible.",
-    "Holds 250 lbs / 30 cubic ft. Always weighs 15 lbs regardless of contents", 15),
-  mi("won_boots_elvenkind", "Boots of Elvenkind", "gear", 2500, 1,
-    "Soft leather boots that make no sound.",
-    "+5 competence bonus on Move Silently checks", 15),
-  mi("won_cloak_elvenkind", "Cloak of Elvenkind", "gear", 2500, 1,
-    "A grey-green cloak that shifts to match surroundings.",
-    "+5 competence bonus on Hide checks", 15),
-  mi("won_eyes_eagle", "Eyes of the Eagle", "gear", 2500, 0,
-    "Crystal lenses that sharpen distant vision.",
-    "+5 competence bonus on Spot checks", 15),
-  mi("won_boots_winterlands", "Boots of the Winterlands", "gear", 2500, 1,
-    "Heavy fur-lined boots enchanted against the cold.",
-    "Walk on snow and ice at normal speed. Endure elements (cold) continuously. Leave no tracks in snow", 15),
-  mi("won_stone_alarm", "Stone of Alarm", "gear", 2700, 2,
-    "A smooth river stone carved with an alert rune.",
-    "Set in an area: screams loudly if any creature larger than a rat comes within 20ft", 15),
-  mi("won_dust_disappearance", "Dust of Disappearance", "consumable", 2800, 0,
-    "Fine iridescent powder that bends light.",
-    "Throw on creature: greater invisibility for 2d6 rounds (attacking doesn't end it)", 15),
+// ── Set Bonus Calculator ─────────────────────────────────────────────────────
 
-  // ── Medium (2,500–10,000 gp) ──
-  mi("won_rope_climbing", "Rope of Climbing", "gear", 3000, 3,
-    "A 60ft silk rope that moves on command.",
-    "Animate rope: climbs walls, ties knots, can support 3,000 lbs", 15),
-  mi("won_horseshoes_speed", "Horseshoes of Speed", "gear", 3000, 12,
-    "Iron horseshoes engraved with wind runes.",
-    "+30ft enhancement bonus to mount's speed", 15),
-  mi("won_lens_detection", "Lens of Detection", "gear", 3500, 1,
-    "A magnifying lens rimmed in gold.",
-    "+5 circumstance bonus to Search and Survival (tracking)", 15),
-  mi("won_figurine_silver_raven", "Figurine of Wondrous Power (Silver Raven)", "gear", 3800, 0,
-    "A tiny silver raven figurine.",
-    "Becomes a real raven (HP 2, fly 40ft). Can deliver messages. Lasts 24 hours", 15),
-  mi("won_pearl_power_2", "Pearl of Power (2nd)", "gear", 4000, 0,
-    "A slightly larger lustrous pearl.",
-    "1/day: recall one 2nd-level spell you already cast today", 20),
-  mi("won_amulet_health_2", "Amulet of Health +2", "gear", 4000, 0,
-    "A jade amulet carved with a bear.",
-    "+2 enhancement bonus to Constitution", 20),
-  mi("won_gauntlets_ogre_power", "Gauntlets of Ogre Power", "gear", 4000, 4,
-    "Massive iron gauntlets that grant inhuman strength.",
-    "+2 enhancement bonus to Strength", 20),
-  mi("won_gloves_dexterity_2", "Gloves of Dexterity +2", "gear", 4000, 0,
-    "Supple leather gloves that make your fingers lightning-fast.",
-    "+2 enhancement bonus to Dexterity", 20),
-  mi("won_headband_intellect_2", "Headband of Intellect +2", "gear", 4000, 0,
-    "A silver circlet that sharpens the mind.",
-    "+2 enhancement bonus to Intelligence", 20),
-  mi("won_periapt_wisdom_2", "Periapt of Wisdom +2", "gear", 4000, 0,
-    "A blue pearl pendant that deepens insight.",
-    "+2 enhancement bonus to Wisdom", 20),
-  mi("won_cloak_charisma_2", "Cloak of Charisma +2", "gear", 4000, 1,
-    "A fine cloak that makes you more charming and compelling.",
-    "+2 enhancement bonus to Charisma", 20),
-  mi("won_bracers_armor_2", "Bracers of Armor +2", "gear", 4000, 1,
-    "Steel-banded bracers radiating a stronger ward.",
-    "+2 armor bonus to AC", 20),
-  mi("won_cloak_resistance_2", "Cloak of Resistance +2", "gear", 4000, 1,
-    "A grey cloak with a deeper shimmer of protection.",
-    "+2 resistance bonus to all saving throws", 20),
-  mi("won_necklace_fireballs_3", "Necklace of Fireballs (Type III)", "gear", 4350, 1,
-    "A necklace with one large and four small fiery beads.",
-    "Beads: one 5d6, two 3d6, and two 2d6 fireballs", 20),
-  mi("won_stone_salve", "Stone Salve", "consumable", 4000, 0,
-    "A jar of thick mineral paste.",
-    "Restores one petrified creature to normal. Two doses in jar", 20),
-  mi("won_restorative_ointment", "Restorative Ointment", "consumable", 4000, 0.5,
-    "A jar of pale green ointment that heals wounds.",
-    "5 doses. Per dose: cure 1d8+5 HP, or neutralize poison, or remove disease", 20),
-  mi("won_circlet_persuasion", "Circlet of Persuasion", "gear", 4500, 0,
-    "A silver circlet that enhances your aura of authority.",
-    "+3 competence bonus on Charisma-based checks", 20),
-  mi("won_gloves_arrow_snaring", "Gloves of Arrow Snaring", "gear", 4000, 0,
-    "Leather gloves with tiny magnets woven in.",
-    "1/round: snatch a ranged weapon out of the air (impromptu missile deflection)", 20),
-  mi("won_slippers_spider_climbing", "Slippers of Spider Climbing", "gear", 4800, 0.5,
-    "Soft slippers that let you walk on walls and ceilings.",
-    "Spider climb at will — walk on walls and ceilings at 20ft speed", 20),
-  mi("won_incense_meditation", "Incense of Meditation", "consumable", 4900, 0,
-    "A stick of rare incense that enhances divine magic.",
-    "Burn for 8 hours: divine caster maximizes all healing spells for that day", 20),
-  mi("won_bracers_archery_lesser", "Bracers of Archery, Lesser", "gear", 5000, 1,
-    "Leather bracers stamped with bow-and-arrow motifs.",
-    "+1 competence bonus on attack rolls with bows", 20),
-  mi("won_bag_holding_2", "Bag of Holding (Type II)", "gear", 5000, 25,
-    "A larger cloth sack with extradimensional space.",
-    "Holds 500 lbs / 70 cubic ft. Always weighs 25 lbs", 20),
-  mi("won_helm_comprehend", "Helm of Comprehend Languages and Read Magic", "gear", 5200, 3,
-    "A bronze helm inscribed with every known alphabet.",
-    "Understand any spoken or written language (as comprehend languages + read magic)", 20),
-  mi("won_vest_escape", "Vest of Escape", "gear", 5200, 0,
-    "A snug leather vest with concealed lockpicks.",
-    "+6 competence bonus on Escape Artist and +4 on Open Lock", 20),
-  mi("won_boots_striding", "Boots of Striding and Springing", "gear", 5500, 1,
-    "Sturdy boots that propel each step with magical energy.",
-    "+10ft enhancement bonus to land speed. +5 competence bonus on Jump checks", 20),
-  mi("won_wind_fan", "Wind Fan", "gear", 5500, 0,
-    "A folding fan that commands the wind.",
-    "Creates gust of wind (strong wind in 60ft line) on command. Usable 1/day safely", 20),
-  mi("won_necklace_fireballs_4", "Necklace of Fireballs (Type IV)", "gear", 5400, 1,
-    "A necklace with one large, two medium, and two small beads.",
-    "Beads: one 7d6, two 5d6, and two 3d6 fireballs", 20),
-  mi("won_pipes_haunting", "Pipes of Haunting", "gear", 6000, 3,
-    "Bone pipes that play an unearthly dirge.",
-    "Play: all within 30ft must Will DC 13 or be shaken for 4 rounds. 3/day", 20),
-  mi("won_horseshoes_zephyr", "Horseshoes of a Zephyr", "gear", 6000, 4,
-    "Horseshoes that let a mount walk on air.",
-    "Mount walks 4 inches above ground — leaves no tracks, can walk over water/unstable surfaces", 20),
-  mi("won_gloves_swimming_climbing", "Gloves of Swimming and Climbing", "gear", 6250, 0,
-    "Blue-green gloves that grip any surface.",
-    "+5 competence bonus on Swim and Climb checks", 20),
-  mi("won_circlet_blasting_minor", "Circlet of Blasting, Minor", "gear", 6480, 0,
-    "A ruby-set circlet that fires beams of searing light.",
-    "1/day: searing light (3d8 damage, ranged touch, double vs undead)", 20),
-  mi("won_horn_goodness", "Horn of Goodness/Evil", "gear", 6500, 1,
-    "A spiraling horn that channels moral force.",
-    "1/day: magic circle against evil (or good) centered on you for 1 hour", 20),
-  mi("won_robe_useful_items", "Robe of Useful Items", "gear", 7000, 1,
-    "A robe covered in small cloth patches shaped like items.",
-    "Pull patches that become real items: daggers, lanterns, mirrors, poles, rope, sacks, etc.", 25),
-  mi("won_bag_holding_3", "Bag of Holding (Type III)", "gear", 7400, 35,
-    "The largest standard bag of holding.",
-    "Holds 1,000 lbs / 150 cubic ft. Always weighs 35 lbs", 25),
-  mi("won_periapt_health", "Periapt of Health", "gear", 7400, 0,
-    "A jade periapt that wards against disease.",
-    "Immune to all diseases, including magical diseases (mummy rot, lycanthropy)", 25),
-  mi("won_boots_levitation", "Boots of Levitation", "gear", 7500, 1,
-    "Boots that let you walk on air.",
-    "Levitate at will — rise/descend 20ft per round", 25),
-  mi("won_robe_blending", "Robe of Blending", "gear", 8400, 1,
-    "A shifting robe that camouflages perfectly.",
-    "+10 competence bonus on Hide checks. Disguise self at will", 25),
+/**
+ * Calculate active set bonuses based on equipped item IDs.
+ * @param equippedItemIds - array of equipped item IDs
+ * @returns Active set bonuses
+ */
+export function getActiveSetBonuses(equippedItemIds: string[]): { set: ItemSet; activeBonus: SetBonus }[] {
+  const results: { set: ItemSet; activeBonus: SetBonus }[] = [];
 
-  // ── Expensive (10,000–25,000 gp) ──
-  mi("won_amulet_nat_armor_2", "Amulet of Natural Armor +2", "gear", 8000, 0,
-    "A bone amulet with stronger druidic sigils.",
-    "+2 enhancement bonus to natural armor", 25),
-  mi("won_figurine_bronze_griffon", "Figurine of Wondrous Power (Bronze Griffon)", "gear", 10000, 0,
-    "A small bronze griffon that comes to life.",
-    "Becomes a griffon mount (HP 59, fly 80ft, attacks 2d6+4). Usable twice per week, 6 hrs each", 25),
-  mi("won_figurine_ebony_fly", "Figurine of Wondrous Power (Ebony Fly)", "gear", 10000, 0,
-    "A tiny ebony fly figurine.",
-    "Becomes a giant fly mount (HP 15, fly 60ft). Can be ridden. 12 hrs/week", 25),
-  mi("won_bag_holding_4", "Bag of Holding (Type IV)", "gear", 10000, 60,
-    "A legendary extradimensional sack.",
-    "Holds 1,500 lbs / 250 cubic ft. Always weighs 60 lbs", 25),
-  mi("won_figurine_serpentine_owl", "Figurine of Wondrous Power (Serpentine Owl)", "gear", 9100, 0,
-    "A serpentine stone carved into an owl shape.",
-    "Becomes a giant owl (HP 26, fly 70ft, +8 Spot/Listen). 8 hrs/day", 25),
-  mi("won_phylactery_undead_turning", "Phylactery of Undead Turning", "gear", 11000, 0,
-    "A brow-strap inscribed with holy symbols.",
-    "+4 bonus on turning checks (as if 4 levels higher for turning undead)", 25),
-  mi("won_goggles_night", "Goggles of Night", "gear", 12000, 0,
-    "Dark lenses that grant supernatural vision in darkness.",
-    "Darkvision 60ft", 25),
-  mi("won_boots_speed", "Boots of Speed", "gear", 12000, 1,
-    "Red leather boots that blur with each step.",
-    "10 rounds/day: activate haste (+1 attack, +30ft speed, +1 AC, extra attack)", 25),
-  mi("won_medallion_thoughts", "Medallion of Thoughts", "gear", 12000, 1,
-    "A gold medallion etched with a third eye.",
-    "Detect thoughts at will (Will DC 13). Read surface thoughts within 60ft", 25),
-  mi("won_gem_brightness", "Gem of Brightness", "gear", 13000, 0,
-    "A large crystal that blazes with stored light.",
-    "50 charges. Light (1 chg), daylight (1 chg), or searing beam 1d6 per 2 chg (max 5d6)", 25),
-  mi("won_lyre_building", "Lyre of Building", "gear", 13000, 5,
-    "A golden lyre with construction magic.",
-    "Play for 30 min: construct as if 100 workers for 3 days. Negate earthquake/disintegrate on structures", 25),
-  mi("won_cloak_arachnida", "Cloak of Arachnida", "gear", 14000, 1,
-    "A black cloak sewn from giant spider silk.",
-    "Spider climb, immune to web spells, web 1/day. +2 saves vs. poison from spiders", 25),
-  mi("won_belt_dwarvenkind", "Belt of Dwarvenkind", "gear", 14900, 1,
-    "A thick belt of golden links with a gem clasp.",
-    "+2 CON, darkvision 60ft, +2 saves vs. poison/spells/spell-like, +2 CHA with dwarves", 25),
-  mi("won_pearl_power_3", "Pearl of Power (3rd)", "gear", 9000, 0,
-    "A large lustrous pearl.",
-    "1/day: recall one 3rd-level spell you already cast today", 25),
-  mi("won_bracers_armor_3", "Bracers of Armor +3", "gear", 9000, 1,
-    "Mithral bracers with a strong protective ward.",
-    "+3 armor bonus to AC", 25),
-  mi("won_cloak_resistance_3", "Cloak of Resistance +3", "gear", 9000, 1,
-    "A deep grey cloak with powerful protective weave.",
-    "+3 resistance bonus to all saving throws", 25),
-  mi("won_necklace_adaptation", "Necklace of Adaptation", "gear", 9000, 0,
-    "A leather necklace with a crystal that purifies air.",
-    "Breathe normally in any environment — underwater, vacuum, poison gas, etc.", 25),
-  mi("won_decanter_water", "Decanter of Endless Water", "gear", 9000, 2,
-    "A stoppered flask that pours infinite fresh water.",
-    "Stream (1 gallon/round), fountain (5 gal/round), or geyser (30 gal/round, bull rush DC 15)", 25),
+  for (const set of ITEM_SETS) {
+    const equippedPieces = set.pieces.filter(p => equippedItemIds.includes(p)).length;
 
-  // ── High (15,000–35,000 gp) ──
-  mi("won_amulet_health_4", "Amulet of Health +4", "gear", 16000, 0,
-    "A powerful jade amulet.",
-    "+4 enhancement bonus to Constitution", 30),
-  mi("won_belt_giant_str_4", "Belt of Giant Strength +4", "gear", 16000, 1,
-    "A wide belt of ogre hide.",
-    "+4 enhancement bonus to Strength", 30),
-  mi("won_gloves_dexterity_4", "Gloves of Dexterity +4", "gear", 16000, 0,
-    "Supple mithral-thread gloves.",
-    "+4 enhancement bonus to Dexterity", 30),
-  mi("won_headband_intellect_4", "Headband of Intellect +4", "gear", 16000, 0,
-    "A platinum circlet pulsing with mental energy.",
-    "+4 enhancement bonus to Intelligence", 30),
-  mi("won_periapt_wisdom_4", "Periapt of Wisdom +4", "gear", 16000, 0,
-    "A deep blue pearl pendant.",
-    "+4 enhancement bonus to Wisdom", 30),
-  mi("won_cloak_charisma_4", "Cloak of Charisma +4", "gear", 16000, 1,
-    "An impressive cloak that commands attention.",
-    "+4 enhancement bonus to Charisma", 30),
-  mi("won_bracers_armor_4", "Bracers of Armor +4", "gear", 16000, 1,
-    "Adamantine bracers with a powerful ward.",
-    "+4 armor bonus to AC", 30),
-  mi("won_cloak_resistance_4", "Cloak of Resistance +4", "gear", 16000, 1,
-    "A cloak of deepest grey with powerful protective enchantments.",
-    "+4 resistance bonus to all saving throws", 30),
-  mi("won_pearl_power_4", "Pearl of Power (4th)", "gear", 16000, 0,
-    "A large, perfectly round pearl.",
-    "1/day: recall one 4th-level spell you already cast today", 30),
-  mi("won_scabbard_keen", "Scabbard of Keen Edges", "gear", 16000, 1,
-    "An ornate scabbard that hones any blade placed within.",
-    "Any blade sheathed for 1 round gains keen edge (double threat range) for 10 minutes", 30),
-  mi("won_figurine_golden_lions", "Figurine of Wondrous Power (Golden Lions)", "gear", 16500, 0,
-    "Two tiny golden lion figurines.",
-    "Become 2 lions (HP 32 each, 3 attacks, +7/+7/+2). 1 hour/day, usable once per week", 30),
-  mi("won_amulet_nat_armor_3", "Amulet of Natural Armor +3", "gear", 18000, 0,
-    "A bone amulet blazing with protective magic.",
-    "+3 enhancement bonus to natural armor", 30),
-  mi("won_horn_blasting", "Horn of Blasting", "gear", 20000, 1,
-    "A curved silver horn etched with sonic runes.",
-    "5d6 sonic damage in 40ft cone (Fort DC 16 half). Stuns deaf for 1 round. 1/day", 30),
-  mi("won_portable_hole", "Portable Hole", "gear", 20000, 0,
-    "A circle of cloth that opens into a 10ft deep extradimensional space.",
-    "Unfold: creates 6ft wide, 10ft deep hole. Holds up to 280 cubic ft. Folds up flat", 30),
-  mi("won_stone_good_luck", "Stone of Good Luck (Luckstone)", "gear", 20000, 0,
-    "A small, unremarkable stone that bends probability in your favor.",
-    "+1 luck bonus on saving throws, ability checks, and skill checks", 30),
-  mi("won_rope_entanglement", "Rope of Entanglement", "gear", 21000, 5,
-    "A golden rope that coils around foes.",
-    "Throw: entangles target (Escape Artist DC 20 or Strength DC 23). 50ft long", 30),
-  mi("won_figurine_ivory_goats", "Figurine of Wondrous Power (Ivory Goats)", "gear", 21000, 0,
-    "Three tiny ivory goat figurines.",
-    "Goat of Traveling (48 hrs/month), Goat of Travail (fights 12 hrs/month, gore 2d6+4), Goat of Terror (fear aura, 1/month)", 30),
-  mi("won_circlet_blasting_major", "Circlet of Blasting, Major", "gear", 23760, 0,
-    "A great ruby-set circlet blazing with searing power.",
-    "1/day: searing light (5d8, ranged touch, double vs undead)", 30),
-  mi("won_cloak_displacement_minor", "Cloak of Displacement, Minor", "gear", 24000, 1,
-    "A shimmering cloak that blurs your outline.",
-    "20% miss chance against all attacks (as blur, continuously)", 30),
-  mi("won_bracers_archery_greater", "Bracers of Archery, Greater", "gear", 25000, 1,
-    "Ornate bracers etched with a great bow.",
-    "+2 competence bonus on attack rolls with bows. +1 bonus to damage", 30),
-  mi("won_bracers_armor_5", "Bracers of Armor +5", "gear", 25000, 1,
-    "Gleaming bracers of incredible protective power.",
-    "+5 armor bonus to AC", 30),
-  mi("won_cloak_resistance_5", "Cloak of Resistance +5", "gear", 25000, 1,
-    "A legendary grey cloak of ultimate protection.",
-    "+5 resistance bonus to all saving throws", 30),
-  mi("won_eyes_doom", "Eyes of Doom", "gear", 25000, 0,
-    "Dark crystal lenses that project dread.",
-    "Doom at will (target shaken). 1/day: fear (30ft cone, Will DC 16 or flee)", 30),
-  mi("won_pearl_power_5", "Pearl of Power (5th)", "gear", 25000, 0,
-    "A flawless pearl of exceptional quality.",
-    "1/day: recall one 5th-level spell you already cast today", 30),
-  mi("won_cloak_bat", "Cloak of the Bat", "gear", 26000, 1,
-    "A black bat-wing cloak that grants flight in darkness.",
-    "+5 Hide in dim light. Fly 40ft (average) in darkness. Can hang from ceiling like a bat", 30),
-  mi("won_iron_bands_bilarro", "Iron Bands of Bilarro", "gear", 26000, 1,
-    "A rusty iron sphere that traps foes.",
-    "Throw: ranged touch to restrain target (STR DC 20 to break free). 1/day", 30),
-  mi("won_periapt_proof_poison", "Periapt of Proof against Poison", "gear", 27000, 0,
-    "A gem pendant that neutralizes all toxins.",
-    "Immune to all poisons", 30),
-  mi("won_helm_telepathy", "Helm of Telepathy", "gear", 27000, 3,
-    "A copper helm that reads and projects thoughts.",
-    "Detect thoughts at will. Suggestion 1/day (Will DC 14)", 30),
-  mi("won_robe_scintillating", "Robe of Scintillating Colors", "gear", 27000, 1,
-    "A robe blazing with shifting rainbow hues.",
-    "Dazzle all within 30ft (1d4+1 rounds). Activate: blinds and stuns (Will DC 16)", 30),
-  mi("won_dimensional_shackles", "Dimensional Shackles", "gear", 28000, 5,
-    "Adamantine manacles that prevent teleportation.",
-    "Locked on: target cannot teleport, go ethereal, or use dimension door. DC 30 to escape", 30),
-  mi("won_figurine_obsidian_steed", "Figurine of Wondrous Power (Obsidian Steed)", "gear", 28500, 0,
-    "A tiny figurine of a nightmare horse carved from obsidian.",
-    "Becomes a nightmare mount (HP 45, fly 90ft, flaming hooves 1d4+4 fire). 24 hrs/week", 30),
-  mi("won_lantern_revealing", "Lantern of Revealing", "gear", 30000, 2,
-    "A hooded lantern that reveals all hidden things.",
-    "25ft radius: reveals invisible and ethereal creatures. See through illusions", 40),
+    // Find the highest bonus the player qualifies for
+    const activeBonuses = set.bonuses
+      .filter(b => equippedPieces >= b.piecesRequired)
+      .sort((a, b) => b.piecesRequired - a.piecesRequired);
 
-  // ── Very Expensive (35,000–60,000 gp) ──
-  mi("won_amulet_nat_armor_4", "Amulet of Natural Armor +4", "gear", 32000, 0,
-    "A bone amulet of supreme protective power.",
-    "+4 enhancement bonus to natural armor", 40),
-  mi("won_amulet_proof_detection", "Amulet of Proof against Detection and Location", "gear", 35000, 0,
-    "A black star sapphire amulet that hides you from divination.",
-    "Immune to scrying, locate creature, detect thoughts, and all divination", 40),
-  mi("won_amulet_health_6", "Amulet of Health +6", "gear", 36000, 0,
-    "A legendary jade amulet.",
-    "+6 enhancement bonus to Constitution", 40),
-  mi("won_belt_giant_str_6", "Belt of Giant Strength +6", "gear", 36000, 1,
-    "A titanic belt of storm giant hide.",
-    "+6 enhancement bonus to Strength", 40),
-  mi("won_gloves_dexterity_6", "Gloves of Dexterity +6", "gear", 36000, 0,
-    "Legendary mithral-thread gloves.",
-    "+6 enhancement bonus to Dexterity", 40),
-  mi("won_headband_intellect_6", "Headband of Intellect +6", "gear", 36000, 0,
-    "A legendary platinum circlet of mental mastery.",
-    "+6 enhancement bonus to Intelligence", 40),
-  mi("won_periapt_wisdom_6", "Periapt of Wisdom +6", "gear", 36000, 0,
-    "A legendary pearl of transcendent insight.",
-    "+6 enhancement bonus to Wisdom", 40),
-  mi("won_cloak_charisma_6", "Cloak of Charisma +6", "gear", 36000, 1,
-    "A cloak of such magnificence that all are drawn to you.",
-    "+6 enhancement bonus to Charisma", 40),
-  mi("won_bracers_armor_6", "Bracers of Armor +6", "gear", 36000, 1,
-    "Legendary bracers of supreme protection.",
-    "+6 armor bonus to AC", 40),
-  mi("won_scarab_protection", "Scarab of Protection", "gear", 38000, 0,
-    "A golden scarab brooch that absorbs death magic.",
-    "+3 resistance saves. Absorbs energy drain/death effects (12 charges). Crumbles when empty", 40),
-  mi("won_crystal_ball", "Crystal Ball", "gear", 42000, 7,
-    "A flawless crystal sphere for scrying.",
-    "Scry on any creature you know (Will DC 16 negates). 10 min/use", 50),
-  mi("won_boots_teleportation", "Boots of Teleportation", "gear", 49000, 3,
-    "Sleek boots that fold space.",
-    "Teleport (self only) 3/day — anywhere on the same plane", 50),
-  mi("won_amulet_nat_armor_5", "Amulet of Natural Armor +5", "gear", 50000, 0,
-    "A legendary bone amulet of absolute defense.",
-    "+5 enhancement bonus to natural armor", 50),
-  mi("won_cloak_displacement_major", "Cloak of Displacement, Major", "gear", 50000, 1,
-    "A powerful shimmering cloak that warps your position.",
-    "50% miss chance against all attacks (as displacement, continuously)", 50),
+    if (activeBonuses.length > 0) {
+      // All qualifying bonuses are active (they stack — 2pc + 3pc + 4pc)
+      for (const bonus of activeBonuses) {
+        results.push({ set, activeBonus: bonus });
+      }
+    }
+  }
 
-  // ── Legendary (50,000+ gp) ──
-  mi("won_wings_flying", "Wings of Flying", "gear", 54000, 2,
-    "A pair of silver-feathered wings that unfurl from a cloak.",
-    "Fly at 60ft speed (good maneuverability) at will", 50),
-  mi("won_cloak_etherealness", "Cloak of Etherealness", "gear", 55000, 1,
-    "A ghostly cloak that lets you slip between planes.",
-    "Become ethereal at will (10 min total/day). See into Material Plane while ethereal", 50),
-  mi("won_robe_stars", "Robe of Stars", "gear", 58000, 1,
-    "A midnight-blue robe embroidered with silver stars.",
-    "+1 saves. 6 stars — throw one: 5d6 fireball. Travel to Astral Plane at will", 50),
-  mi("won_bracers_armor_7", "Bracers of Armor +7", "gear", 49000, 1,
-    "Incredible bracers of nearly impenetrable protection.",
-    "+7 armor bonus to AC", 50),
-  mi("won_bracers_armor_8", "Bracers of Armor +8", "gear", 64000, 1,
-    "The finest bracers of armor ever crafted.",
-    "+8 armor bonus to AC", 60),
-  mi("won_gem_seeing", "Gem of Seeing", "gear", 75000, 0,
-    "A jewel that reveals all truths.",
-    "True seeing for 30 min/day (see through illusions, invisibility, polymorph, ethereal)", 60),
-  mi("won_robe_archmagi", "Robe of the Archmagi", "gear", 75000, 1,
-    "The supreme garment of arcane power, woven from pure magic.",
-    "+5 armor AC, SR 18, +4 resistance to saves, +2 caster level checks to overcome SR", 60),
-  mi("won_helm_brilliance", "Helm of Brilliance", "gear", 125000, 3,
-    "A crown-like helm set with 10 diamonds, 20 rubies, 30 fire opals, and 40 opals.",
-    "Gems cast spells: diamond=prismatic spray, ruby=wall of fire, fire opal=fireball, opal=daylight. Fire resist 30. Flaming weapon on touch", 75),
-  mi("won_mantle_faith", "Mantle of Faith", "gear", 76000, 1,
-    "A shimmering gold vestment that shields the devout.",
-    "DR 5/evil. Continuous protection from evil", 60),
-  mi("won_mantle_spell_resistance", "Mantle of Spell Resistance", "gear", 90000, 1,
-    "A dark cloak that repels hostile magic.",
-    "SR 21 (spell resistance — casters must beat DC 21 to affect you with spells)", 60),
-  mi("won_helm_teleportation", "Helm of Teleportation", "gear", 73500, 3,
-    "A helm that bends space at the wearer's will.",
-    "Teleport 3/day — anywhere on the same plane (as the spell)", 60),
-  mi("won_mirror_life_trapping", "Mirror of Life Trapping", "gear", 200000, 50,
-    "A massive mirror that imprisons souls.",
-    "15 cells — any creature seeing its reflection must Will DC 19 or be trapped inside. Owner controls release", 75),
-  mi("won_iron_flask", "Iron Flask", "gear", 170000, 1,
-    "A small iron bottle that can imprison extraplanar beings.",
-    "Trap one outsider (Will DC 19). Release later — serves you for 1 hour (or attacks)", 75),
-];
+  return results;
+}
 
-// ══════════════════════════════════════════════════════════════
-//  ARTIFACT QUEST ITEMS  (key items found during artifact quest legs)
-//  Not equippable — carried in inventory. Category "gear", weight 0.5 lb, 0 gp.
-// ══════════════════════════════════════════════════════════════
-
-export const ARTIFACT_QUEST_ITEMS = [
-  // --- Sword of Kas quest chain ---
-  mi("kas_map_fragment", "Catacomb Map Fragment", "gear", 0, 0.5,
-    "A stone rubbing showing passages beneath the Iron Maw. The ink smells of grave dust."),
-  mi("kas_journal", "Journal of the Entombed", "gear", 0, 0.5,
-    "A cracked leather journal describing a vault where shadow bleeds into stone. The later entries are written in a hand that isn't the author's."),
-  mi("kas_scabbard", "Scabbard of Kas", "gear", 0, 1,
-    "A jet-black scabbard inscribed with shifting runes. It hums faintly, searching for its blade."),
-
-  // --- Orb of Dragonkind quest chain ---
-  mi("kobold_hide_map", "Kobold Hide Map", "gear", 0, 0.5,
-    "A crude map scratched onto dragon hide, showing a mountain pass marked with a skull icon and the kobold word for holy."),
-  mi("draconic_inscription_rubbing", "Draconic Inscription Rubbing", "gear", 0, 0.5,
-    "A charcoal rubbing of Draconic script carved into an ancient dragon skull. It describes a sanctum accessible through the Wyrm's Throat."),
-  mi("wyrm_priest_key", "Wyrm Priest's Orb Shard", "gear", 0, 0.5,
-    "A shard of volcanic glass taken from the wyrm priest's sanctum. It radiates faint warmth and smells of sulfur."),
-
-  // --- Book of Infinite Spells quest chain ---
-  mi("aldermach_workshop_journal", "Aldermach's Workshop Journal", "gear", 0, 0.5,
-    "A wizard's journal with meticulous early entries that devolve into three different handwritings, none of them the author's."),
-  mi("aldermach_sanctum_key", "Sanctum Key", "gear", 0, 0.5,
-    "A brass key warm to the touch, taken from a dead wizard's robes. It opens a door to a room that shouldn't exist."),
-
-  // --- Iron Flask quest chain ---
-  mi("cracked_iron_flask", "Cracked Iron Flask", "gear", 0, 1,
-    "A heavy iron bottle covered in binding sigils that glow faintly red. Cracks web the seal. Something inside is pushing outward."),
-  mi("kael_unbinding_scroll", "Kael's Unbinding Scroll", "gear", 0, 0.5,
-    "A scroll of exorcism rites penned by Sister Kael in trembling hand. The ink is mixed with holy water and the writer's blood."),
-
-  // --- Axe of the Dwarvish Lords quest chain ---
-  mi("bhalanur_stone_tablet", "Stone Tablet of Bhalanur", "gear", 0, 2,
-    "A heavy stone tablet carved with dwarven runes and a map to the lost forge-city of Bhalanur. Stained with the blood of the dwarf who carried it."),
-  mi("bhalanur_forge_directions", "Forge of First Fire Directions", "gear", 0, 0.5,
-    "Dwarven script copied from the deep halls of Bhalanur, pointing the way to the Forge of First Fire where the Lords' weapon was shaped."),
-  mi("bhalanur_inner_key", "Inner Sanctum Key", "gear", 0, 1,
-    "A key of solid mithral, released when the forge guardians fell. It thrums with residual heat from Bhalanur's molten heart."),
-];
-
-// ══════════════════════════════════════════════════════════════
-//  ARTIFACT ITEMS  (final rewards from artifact quest chains)
-//  Legendary items — the most powerful equipment in the game.
-//  Value 100000 gp is a placeholder (priceless, but the system needs a number).
-// ══════════════════════════════════════════════════════════════
-
-export const ARTIFACT_ITEMS = [
-  mi("sword_of_kas", "Sword of Kas", "weapon", 100000, 4,
-    "A black-bladed longsword that severed the Hand of Vecna in a forgotten age. It whispers to its wielder in dreams, hungry and patient, remembering the taste of a god's flesh.",
-    "+5 ATK, +3d6 necrotic damage, once per battle: instant kill on critical hit"),
-  mi("orb_of_dragonkind", "Orb of Dragonkind", "gear", 100000, 3,
-    "A sphere of smoky crystal pulsing with inner fire. Dragons for miles around feel its pull like a hook in the jaw. Those who gaze into it see the shadow of wings.",
-    "Once per battle: dominate dragon (Will DC 25). Passive: immunity to dragon breath, +4 CHA"),
-  mi("book_of_infinite_spells", "Book of Infinite Spells", "gear", 100000, 3,
-    "A leather-bound tome that writes itself endlessly. Each page holds a different spell, and the pages never end. The first page always reads: Hello, new reader.",
-    "Once per rest: cast any spell up to 6th level without using a slot"),
-  mi("iron_flask", "Iron Flask", "gear", 100000, 1,
-    "A sealed iron vessel etched with sigils of binding. It can capture and contain extraplanar beings, compressing their essence into cold iron silence.",
-    "Once per battle: capture a defeated enemy (stores 1 creature). Release to fight for you."),
-  mi("axe_of_dwarvish_lords", "Axe of the Dwarvish Lords", "weapon", 100000, 8,
-    "A mithral-edged greataxe forged in the heart of Bhalanur. The founding runes of the dwarven kingdoms glow along its haft, and the mountain itself seemed to roar when its last guardian fell.",
-    "+5 ATK, +2d6 damage, once per battle: Sundering Strike (destroy enemy shield/armor). +4 CON"),
-];
+/**
+ * Get set progress for UI display.
+ */
+export function getSetProgress(equippedItemIds: string[]): { set: ItemSet; equipped: number; total: number; nextBonus?: SetBonus }[] {
+  return ITEM_SETS
+    .map(set => {
+      const equipped = set.pieces.filter(p => equippedItemIds.includes(p)).length;
+      const total = set.pieces.length;
+      const nextBonus = set.bonuses.find(b => b.piecesRequired > equipped);
+      return { set, equipped, total, nextBonus };
+    })
+    .filter(s => s.equipped > 0);
+}

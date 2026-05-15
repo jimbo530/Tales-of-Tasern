@@ -3,17 +3,18 @@ import { Geist } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/components/Providers";
 import { ServiceWorkerRegister } from "@/components/ServiceWorkerRegister";
+import { FeedbackFooter } from "@/components/FeedbackFooter";
 
 const geist = Geist({ variable: "--font-geist", subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Tales of Tasern",
-  description: "Champions of the Realm — on-chain backed NFT card battle game on Base | memefortrees.com | MfT you SOBs",
+  title: "MfT Studio — Impact Games & Deflationary Tokens on Base",
+  description: "Play games, burn tokens, plant trees. Autonomous reactors fire every 2 hours on Base. Unruggable by code, not by promise.",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "Tales of Tasern",
+    title: "MfT Studio",
   },
 };
 
@@ -33,7 +34,10 @@ export default function RootLayout({
         <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-2325097516629464" crossOrigin="anonymous"></script>
       </head>
       <body className="min-h-full flex flex-col bg-gray-950 text-white">
-        <Providers>{children}</Providers>
+        <Providers>
+          {children}
+          <FeedbackFooter />
+        </Providers>
         <ServiceWorkerRegister />
       </body>
     </html>

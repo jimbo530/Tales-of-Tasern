@@ -166,11 +166,11 @@ export default function PowerVaultsPage() {
       let lpSymbol = "LP";
       // Cross-chain: NFT is on another chain, can't read name() on Base
       if (!isCrossChain) {
-        try { nftName = await baseClient.readContract({ address: nft, abi: ERC1155_URI_ABI, functionName: "name" }); } catch {}
+        try { nftName = await baseClient.readContract({ address: nft, abi: ERC1155_URI_ABI, functionName: "name" }); } catch (e) { console.warn('power-vaults: failed to read NFT name:', nft, e); }
       } else {
         nftName = "Cross-Chain " + nft.slice(0, 8) + "...";
       }
-      try { lpSymbol = await baseClient.readContract({ address: lpPair as `0x${string}`, abi: ERC20_ABI, functionName: "symbol" }); } catch {}
+      try { lpSymbol = await baseClient.readContract({ address: lpPair as `0x${string}`, abi: ERC20_ABI, functionName: "symbol" }); } catch (e) { console.warn('power-vaults: failed to read LP symbol:', lpPair, e); }
 
       return {
         address: va, nft, lpPair: lpPair as `0x${string}`,
@@ -249,7 +249,7 @@ export default function PowerVaultsPage() {
           address: v.lpPair, abi: ERC20_ABI, functionName: "balanceOf", args: [address],
         });
         balances[v.lpPair.toLowerCase()] = bal;
-      } catch {}
+      } catch (e) { console.warn('power-vaults: failed to read LP balance for', v.lpPair, e); }
 
       if (v.isCrossChain) {
         // Cross-chain: check tokenOwner mapping on vault contract
