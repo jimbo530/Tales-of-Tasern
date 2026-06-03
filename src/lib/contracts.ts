@@ -347,7 +347,7 @@ export const STAT_TOKENS = {
       "0xd75dfa972c6136f1c594fec1945302f885e1ab29", // TGN → WIS+CON+CHA
     ] as `0x${string}`[],
     // ── Hub token (0.5x rate, split all 6 + Noble Birth boon) ──
-    con: [
+    mft: [
       "0x8fb87d13b40b1a67b22ed1a17e2835fe7e3a9ba3", // MfT → All 6 (0.5x split) + Noble Birth
     ] as `0x${string}`[],
     // ── Stablecoins (1x rate, split all 6) ──

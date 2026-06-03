@@ -2226,6 +2226,7 @@ type Props = {
   onQuestBattle: (encounter: QuestEncounter) => void;
   onExhaustionCollapse: (isSafe: boolean) => void;  // collapse from exhaustion; isSafe = town/farm (infirmary)
   onInventory: () => void;
+  onCraft?: () => void;
   onEquip?: (itemId: string, slot: keyof Equipment) => void;
   onUnequip?: (slot: keyof Equipment) => void;
   onSwitchParty?: (newIndex: number) => void;  // switch active party
@@ -2285,7 +2286,7 @@ function proxyImg(url: string | undefined): string | undefined {
   return `/api/images?url=${encodeURIComponent(url)}`;
 }
 
-export function WorldMap({ save, character, characters, onTravel, onAction, onBuyItem, onBattle, onQuestBattle, onExhaustionCollapse, onInventory, onEquip, onUnequip, onSwitchParty, onCreateParty, onAddHero, onRemoveHero, onExchange, onSetAutoAction, onCollectMail, onGiveGift, onBuyShip, onBoardShip, onDisembark, onBack, onPowerUp, onEscapeFight }: Props) {
+export function WorldMap({ save, character, characters, onTravel, onAction, onBuyItem, onBattle, onQuestBattle, onExhaustionCollapse, onInventory, onCraft, onEquip, onUnequip, onSwitchParty, onCreateParty, onAddHero, onRemoveHero, onExchange, onSetAutoAction, onCollectMail, onGiveGift, onBuyShip, onBoardShip, onDisembark, onBack, onPowerUp, onEscapeFight }: Props) {
   const [selectedHex, setSelectedHex] = useState<MapHex | null>(null);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -2961,10 +2962,18 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
             return os ? <span style={{ color: "rgba(96,165,250,0.9)" }}>{"\u{26F5}"}{os.name}</span> : null;
           })()}
         </div>
-        <button onClick={onInventory} className="px-3 py-1 rounded text-xs font-bold uppercase tracking-widest"
-          style={{ background: "rgba(251,191,36,0.1)", color: "rgba(251,191,36,0.7)", border: "1px solid rgba(251,191,36,0.25)" }}>
-          Pack
-        </button>
+        <div className="flex gap-1">
+          {onCraft && (
+            <button onClick={onCraft} className="px-3 py-1 rounded text-xs font-bold uppercase tracking-widest"
+              style={{ background: "rgba(139,92,246,0.1)", color: "rgba(167,139,250,0.7)", border: "1px solid rgba(139,92,246,0.25)" }}>
+              Craft
+            </button>
+          )}
+          <button onClick={onInventory} className="px-3 py-1 rounded text-xs font-bold uppercase tracking-widest"
+            style={{ background: "rgba(251,191,36,0.1)", color: "rgba(251,191,36,0.7)", border: "1px solid rgba(251,191,36,0.25)" }}>
+            Pack
+          </button>
+        </div>
       </div>
 
       {/* Party selector bar — always visible */}
@@ -3321,6 +3330,13 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
                     style={{ background: "rgba(201,168,76,0.1)", color: "rgba(201,168,76,0.7)", border: "1px solid rgba(201,168,76,0.2)" }}>
                     Full Inventory
                   </button>
+                  {onCraft && (
+                    <button onClick={onCraft}
+                      className="w-full px-2 py-1.5 rounded text-xs font-bold uppercase tracking-widest mt-1"
+                      style={{ background: "rgba(139,92,246,0.1)", color: "rgba(167,139,250,0.7)", border: "1px solid rgba(139,92,246,0.2)" }}>
+                      Crafting
+                    </button>
+                  )}
                 </div>
               );
             })()}

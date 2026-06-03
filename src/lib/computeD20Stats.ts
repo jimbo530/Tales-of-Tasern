@@ -121,7 +121,7 @@ const regenTokens = lower([...(STAT_TOKENS.polygon as any).regen ?? []]);
 const grantWizardTokens = lower([...(STAT_TOKENS.polygon as any).grantWizard ?? []]);
 
 // Single-stat game tokens
-const conTokens = lower([...(STAT_TOKENS.base as any).con ?? []]);
+const mftTokens = lower([...(STAT_TOKENS.base as any).mft ?? []]);
 
 // Stablecoins (1x rate, split all 6)
 const stablecoinTokens = lower([...STAT_TOKENS.base.stablecoin, ...STAT_TOKENS.polygon.stablecoin]);
@@ -191,7 +191,7 @@ export function computeD20Stats(
       intUsd += each; wisUsd += each; chaUsd += each;
     }
     // ── MfT hub token (0.5x, split all 6 + Noble Birth boon) ──
-    else if (conTokens.includes(addr)) {
+    else if (mftTokens.includes(addr)) {
       const each = usdValue * 0.5 / 6;
       strUsd += each; dexUsd += each; conUsd += each;
       intUsd += each; wisUsd += each; chaUsd += each;

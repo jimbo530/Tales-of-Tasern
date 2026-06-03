@@ -56,3 +56,4 @@ paris_*.bin
 solc-*.json
 solc-output-raw.txt
 tmp_tx*.json
+.env

@@ -162,6 +162,14 @@ export type CharacterSave = {
     questName: string;
     mapImage?: string;
   } | null;
+  // ── Crafting ──
+  crafting?: {
+    playerId: string;
+    materials: { materialId: string; quantity: number }[];
+    skills: { skill: string; level: number; xp: number; xpToNext: number }[];
+    knownRecipes: string[];
+    discoveredByExperiment: string[];
+  };
   created_at: string;
   updated_at: string;
 };

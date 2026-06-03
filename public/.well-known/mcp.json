@@ -1,11 +1,11 @@
 {
   "name": "baselings-mcp",
-  "version": "1.0.0",
-  "description": "AI agent toolkit for Baselings pet game on Base. 35 MCP tools for game interaction, DeFi operations, and token launches.",
+  "version": "1.2.0",
+  "description": "AI agent toolkit for Baselings pet game on Base. 49 MCP tools for game interaction, DeFi operations, and token launches.",
   "install": "npm install -g baselings-mcp",
   "run": "GAME_WALLET_KEY=0x... npx baselings-mcp",
   "npm": "https://www.npmjs.com/package/baselings-mcp",
   "transport": "stdio",
-  "tools": 35,
+  "tools": 49,
   "categories": ["gaming", "defi", "token-launch"]
 }

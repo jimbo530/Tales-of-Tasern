@@ -36,6 +36,8 @@ import { allPartiesActed, resetPartyRound, nextUnactedParty, hireFollower, GENER
 import { ARTIFACT_QUESTS, GONE_ARTIFACT_RUMORS } from "@/lib/artifactQuests";
 import { DownloadImages } from "@/components/DownloadImages";
 import { LevelUpFlow } from "@/components/LevelUpFlow";
+import { CraftingPanel } from "@/components/CraftingPanel";
+import { initSkillProgress, addSkillXp, type CraftingSkill } from "@/lib/craftingSystem";
 
 const PAGE_SIZE = 10;
 
@@ -54,7 +56,7 @@ export default function Home() {
   const [search, setSearch] = useState("");
 
   // Navigation
-  const [view, setView] = useState<"menu" | "heroes" | "army" | "battle" | "worldMap" | "adventure" | "inventory" | "levelUp" | "powerUp" | "tokenPowers">("menu");
+  const [view, setView] = useState<"menu" | "heroes" | "army" | "battle" | "worldMap" | "adventure" | "inventory" | "crafting" | "levelUp" | "powerUp" | "tokenPowers">("menu");
   const [lastBattleRewards, setLastBattleRewards] = useState<{ xp: number; goldCp: number; loot: { name: string }[]; levelsGained: number } | null>(null);
   const [levelUpQueue, setLevelUpQueue] = useState<import("@/hooks/useCharacterSave").LevelUpEntry[]>([]);
   const [questEncounter, setQuestEncounter] = useState<QuestEncounter | null>(null);
@@ -686,6 +688,60 @@ export default function Home() {
     ));
   }
 
+  if (view === "crafting" && save && playerCharacter) {
+    return subPage("Crafting", (
+      <CraftingPanel
+        save={save}
+        onCraftItem={(result) => {
+          // Build crafting state from save (or fresh defaults)
+          const skills: CraftingSkill[] = ["blacksmithing", "leatherworking", "alchemy", "enchanting", "jewelcrafting", "inscription"];
+          const currentMaterials = save.crafting?.materials ?? [];
+          const currentSkills = save.crafting?.skills
+            ? save.crafting.skills.map(s => ({ skill: s.skill as CraftingSkill, level: s.level, xp: s.xp, xpToNext: s.xpToNext }))
+            : skills.map(s => initSkillProgress(s));
+
+          // Update materials (subtract consumed)
+          const newMaterials = currentMaterials.map(m => ({ ...m }));
+          for (const mat of result.removeMaterials) {
+            const stack = newMaterials.find(m => m.materialId === mat.materialId);
+            if (stack) {
+              stack.quantity -= mat.quantity;
+            }
+          }
+
+          // Update skill XP
+          const newSkills = currentSkills.map(s => {
+            if (s.skill === result.skillXp.skill) {
+              return addSkillXp(s, result.skillXp.xp);
+            }
+            return s;
+          });
+
+          // Add crafted item to inventory
+          const newInventory = [...save.inventory];
+          const existing = newInventory.find(i => i.id === result.addItem.id);
+          if (existing) {
+            existing.qty += result.addItem.qty;
+          } else {
+            newInventory.push({ id: result.addItem.id, name: result.addItem.name, qty: result.addItem.qty });
+          }
+
+          updateSave({
+            inventory: newInventory,
+            crafting: {
+              playerId: save.wallet,
+              materials: newMaterials.filter(m => m.quantity > 0),
+              skills: newSkills,
+              knownRecipes: save.crafting?.knownRecipes ?? [],
+              discoveredByExperiment: save.crafting?.discoveredByExperiment ?? [],
+            },
+          });
+        }}
+        onBack={() => cycleView("worldMap")}
+      />
+    ));
+  }
+
   if (view === "worldMap" && save) return subPage("Kardov's Gate", (
     <div style={{ position: "relative", height: "100%" }}>
     <TutorialOverlay save={save} onSetFlag={(flag) => updateSave({ quest_flags: { ...(save.quest_flags ?? {}), [flag]: true } })} />
@@ -1073,6 +1129,7 @@ export default function Home() {
         updateSave(updates);
       }}
       onInventory={() => cycleView("inventory")}
+      onCraft={() => cycleView("crafting")}
       onEquip={(itemId, slot) => {
         const item = save.inventory.find(i => i.id === itemId);
         if (!item) return;

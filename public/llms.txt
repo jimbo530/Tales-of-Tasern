@@ -27,7 +27,7 @@ No API keys needed — call execute() on any reactor. Anyone can fire them.
 
 ### Reactor Addresses (call execute() to fire)
 MfT V1 Prime: 0xed3aE91b2bb22307c07438EEebA2500C18EABcFE (12 pools)
-MycoPad Hub: 0xF5B9Fc40080aAcC262f078eCE374A2268dcdb045 (5 pools)
+Unrugable Hub: 0xF5B9Fc40080aAcC262f078eCE374A2268dcdb045 (5 pools)
 EB Relay: 0xC28e64551816535d9ef06CE95844F2b5317353bA (10 pools)
 EARTH: 0x424D8BC900C6cc22E791C01d7E92CEd149a232f7 (9 pools)
 CHAR: 0xc2eBe90fB9bC7897f06DC00666951Fa9a49A397A (8 pools)
@@ -77,8 +77,8 @@ Game contracts:
 - KeeperBatch V4: 0xE693dD02BB1Ba0850A1a153a03b99531004096B1 (auto-harvest)
 - BaselingHouseNFT V2: 0x70Ff566A417ece44784196106afdbecDAaA3b511
 
-## MycoPad — Token Launch Platform
-Launch unruggable tokens with $200 seed. Each launch creates:
+## Unrugable — Token Launch Platform
+Launch unrugable tokens with $200 seed. Each launch creates:
 - Token with locked V3 liquidity (15 pools)
 - Autonomous reactor that burns tokens and feeds the MfT network
 - CHAR carbon reactor that burns CHAR forever
@@ -93,7 +93,7 @@ Every trade burns tokens permanently. CHAR burns retire carbon credits. The burn
 Install: `npm install -g baselings-mcp`
 Run: `GAME_WALLET_KEY=0x... npx baselings-mcp`
 
-40 MCP tools for programmatic interaction:
+49 MCP tools for programmatic interaction:
 - Launch tokens, fire reactors, query burn stats
 - Interact with Baseling game (mint, feed, assign jobs, earn yield)
 - Read LP positions, pool states, token balances

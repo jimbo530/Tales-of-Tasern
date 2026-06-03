@@ -1,7 +1,7 @@
 {
   "name": "MfT Studio",
   "short_name": "MfT",
-  "description": "Impact games and deflationary tokens on Base. Unruggable by code, not by promise.",
+  "description": "Impact games and deflationary tokens on Base. Unrugable by code, not by promise.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0a0608",
