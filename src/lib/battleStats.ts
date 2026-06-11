@@ -1,7 +1,7 @@
 import type { NftCharacter } from "@/hooks/useNftStats";
 import type { BoonSpell, DiceExpr } from "./computeD20Stats";
 import { type CharacterClass, getBAB, HIT_DIE_VALUES } from "./classes";
-import { getFeatBonuses } from "./feats";
+import { getFeatBonuses, getFeatLevelHpBonus, getFeatResistances } from "./feats";
 
 // ── D&D 3.5 Armor System ────────────────────────────────────────────────────
 // AC = 10 + armor bonus + shield bonus + DEX mod + natural armor + misc
@@ -147,6 +147,10 @@ export function computeStats(
 
   // Feat passive bonuses
   const fb = getFeatBonuses(featIds);
+  // Per-level HP feats (Improved Toughness, Tasern-Bred Tough) scale with level
+  const featLevelHp = getFeatLevelHpBonus(level, featIds);
+  // Damage resistances granted purely by feats (epic-energy-resistance)
+  const featResistances = getFeatResistances(featIds);
 
   // ── D&D 3.5 Armor System ──
   // Parse equipped armor & shield
@@ -180,7 +184,7 @@ export function computeStats(
     mAtk:          Math.max(1, raw.int),
     def:           Math.max(1, raw.dex),
     mDef:          Math.max(1, raw.wis),
-    hp:            hp + hpBonus + fb.hp + (raw.bonusHp ?? 0),
+    hp:            hp + hpBonus + fb.hp + featLevelHp + (raw.bonusHp ?? 0),
     healing:       (Math.max(1, raw.wis) + Math.max(1, raw.con)) / 4,
     initiative:    Math.max(1, raw.dex) + fb.initiative + (raw.initiativeBonus ?? 0),
     carryCapacity: getHeavyLoad(Math.max(1, raw.str)),
@@ -203,10 +207,11 @@ export function computeStats(
     hasEvasion:            raw.hasEvasion ?? false,
     hasRegen:              raw.hasRegen ?? false,
     autoStabilize:         raw.autoStabilize ?? false,
-    hasDeathSave:          raw.hasDeathSave ?? false,
+    // epic-undying reuses the boon death-save machinery (drop to 1 HP, 1/battle)
+    hasDeathSave:          (raw.hasDeathSave ?? false) || featIds.includes("epic-undying"),
     hasPhoenix:            raw.hasPhoenix ?? false,
     hasActionSurge:        raw.hasActionSurge ?? false,
-    resistances:           raw.resistances ?? [],
+    resistances:           [...(raw.resistances ?? []), ...featResistances],
     immunities:            raw.immunities ?? [],
     conditionImmunities:   raw.conditionImmunities ?? [],
     saveAdvantages:        raw.saveAdvantages ?? [],

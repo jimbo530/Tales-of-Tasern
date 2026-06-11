@@ -1,15 +1,35 @@
 // D&D 3.5 SRD Feats — adapted for Tales of Tasern
 // In-game these are called "abilities" but code uses "Feat" for D&D familiarity.
-// Source: https://www.d20srd.org/indexes/feats.htm
+// Sources: 3.5 SRD (OGL) https://www.d20srd.org/indexes/feats.htm
+//          5e SRD + 2024-rules feats (CC-BY-4.0), rescaled to 3.5 math (see below).
+//
+// ── STAT-SCALE CONVERSION (critical — read before touching prereqs) ───────────
+// This game stores ability scores as (D&D book value − 10), floored at 1.
+// So a D&D STR 13 prerequisite is a *game* stat of 3 (13 − 10).
+// `getAvailableFeats` is fed `character.stats` which are ALREADY on the game
+// scale, so every `minAbility.score` below is stored on the GAME scale too
+// (i.e. the converted value, not the book value).  The helper `bookToGameStat`
+// documents the conversion:  bookToGameStat(13) === 3.
+// Book → game quick reference: 13→3, 15→5, 17→7, 19→9, 21→11, 25→15.
+//
+// (Before this conversion the prereqs held raw book values like 13, which the
+//  game-scale comparison could never satisfy — a STR-13 feat was unreachable.
+//  Converting them to the game scale fixes that latent bug.)
 
 import type { Ability } from "./skills";
 
+/** Convert a D&D book ability prerequisite to this game's −10 scale (min 0).
+ *  Book 13 → game 3.  Authored prereqs call this so intent stays readable. */
+export function bookToGameStat(bookScore: number): number {
+  return Math.max(0, bookScore - 10);
+}
+
 // ── Types ────────────────────────────────────────────────────────────────────
 
-export type FeatCategory = "general" | "combat" | "magic" | "skill";
+export type FeatCategory = "general" | "combat" | "magic" | "skill" | "epic";
 
 export type FeatPrereq = {
-  minAbility?: { ability: Ability; score: number };
+  minAbility?: { ability: Ability; score: number };  // score is on the GAME scale (book − 10)
   minBAB?: number;
   minLevel?: number;
   feat?: string;        // requires another feat first
@@ -24,6 +44,9 @@ export type Feat = {
   prereqs: FeatPrereq;
   benefit: string;      // mechanical effect
   canTakeMultiple?: boolean;
+  edition?: "3.5" | "5e" | "2024" | "tasern";  // provenance, for the report/UI
+  implemented?: boolean;  // false = data-only, effect needs an engine that doesn't exist yet
+  flaggedForOwner?: boolean;  // marquee name/flavor the owner may want to punch up
 };
 
 // ── Combat Feats ─────────────────────────────────────────────────────────────
@@ -35,7 +58,7 @@ const COMBAT_FEATS: Feat[] = [
     name: "Power Attack",
     category: "combat",
     description: "Trade accuracy for raw damage on melee attacks.",
-    prereqs: { minAbility: { ability: "str", score: 13 } },
+    prereqs: { minAbility: { ability: "str", score: 3 } },
     benefit: "On your turn, before attacking, you may subtract up to your BAB from your melee attack roll and add that amount to your melee damage roll.",
   },
   {
@@ -43,7 +66,7 @@ const COMBAT_FEATS: Feat[] = [
     name: "Cleave",
     category: "combat",
     description: "Follow through with a mighty swing when you drop a foe.",
-    prereqs: { minAbility: { ability: "str", score: 13 }, feat: "power-attack" },
+    prereqs: { minAbility: { ability: "str", score: 3 }, feat: "power-attack" },
     benefit: "If you deal enough damage to drop an enemy, you immediately get an extra melee attack against another adjacent foe at the same bonus.",
   },
   {
@@ -51,7 +74,7 @@ const COMBAT_FEATS: Feat[] = [
     name: "Great Cleave",
     category: "combat",
     description: "Your cleaving strikes know no limit.",
-    prereqs: { minAbility: { ability: "str", score: 13 }, feat: "cleave", minBAB: 4 },
+    prereqs: { minAbility: { ability: "str", score: 3 }, feat: "cleave", minBAB: 4 },
     benefit: "As Cleave, but you may make unlimited additional attacks each round as long as each one drops a foe.",
   },
   {
@@ -59,7 +82,7 @@ const COMBAT_FEATS: Feat[] = [
     name: "Improved Bull Rush",
     category: "combat",
     description: "You are skilled at driving foes backward.",
-    prereqs: { minAbility: { ability: "str", score: 13 }, feat: "power-attack" },
+    prereqs: { minAbility: { ability: "str", score: 3 }, feat: "power-attack" },
     benefit: "+4 bonus on bull rush attempts. Does not provoke an attack of opportunity.",
   },
   {
@@ -67,7 +90,7 @@ const COMBAT_FEATS: Feat[] = [
     name: "Improved Sunder",
     category: "combat",
     description: "You are skilled at destroying enemy equipment.",
-    prereqs: { minAbility: { ability: "str", score: 13 }, feat: "power-attack" },
+    prereqs: { minAbility: { ability: "str", score: 3 }, feat: "power-attack" },
     benefit: "+4 bonus on sunder attempts. Does not provoke an attack of opportunity.",
   },
   {
@@ -75,7 +98,7 @@ const COMBAT_FEATS: Feat[] = [
     name: "Improved Overrun",
     category: "combat",
     description: "You are skilled at knocking down foes as you run past.",
-    prereqs: { minAbility: { ability: "str", score: 13 }, feat: "power-attack" },
+    prereqs: { minAbility: { ability: "str", score: 3 }, feat: "power-attack" },
     benefit: "+4 bonus on overrun attempts. Target may not choose to avoid you.",
   },
 
@@ -156,7 +179,7 @@ const COMBAT_FEATS: Feat[] = [
     name: "Two-Weapon Fighting",
     category: "combat",
     description: "You can fight effectively with a weapon in each hand.",
-    prereqs: { minAbility: { ability: "dex", score: 15 } },
+    prereqs: { minAbility: { ability: "dex", score: 5 } },
     benefit: "Reduce the penalty for fighting with two weapons. Primary hand: -2, off-hand: -2 (instead of -6/-10).",
   },
   {
@@ -164,7 +187,7 @@ const COMBAT_FEATS: Feat[] = [
     name: "Improved Two-Weapon Fighting",
     category: "combat",
     description: "You gain a second off-hand attack.",
-    prereqs: { minAbility: { ability: "dex", score: 17 }, feat: "two-weapon-fighting", minBAB: 6 },
+    prereqs: { minAbility: { ability: "dex", score: 7 }, feat: "two-weapon-fighting", minBAB: 6 },
     benefit: "Get a second off-hand attack at -5 penalty.",
   },
   {
@@ -172,7 +195,7 @@ const COMBAT_FEATS: Feat[] = [
     name: "Greater Two-Weapon Fighting",
     category: "combat",
     description: "You gain a third off-hand attack.",
-    prereqs: { minAbility: { ability: "dex", score: 19 }, feat: "improved-two-weapon-fighting", minBAB: 11 },
+    prereqs: { minAbility: { ability: "dex", score: 9 }, feat: "improved-two-weapon-fighting", minBAB: 11 },
     benefit: "Get a third off-hand attack at -10 penalty.",
   },
   {
@@ -180,7 +203,7 @@ const COMBAT_FEATS: Feat[] = [
     name: "Two-Weapon Defense",
     category: "combat",
     description: "Wielding two weapons lets you parry incoming blows.",
-    prereqs: { minAbility: { ability: "dex", score: 15 }, feat: "two-weapon-fighting" },
+    prereqs: { minAbility: { ability: "dex", score: 5 }, feat: "two-weapon-fighting" },
     benefit: "+1 shield bonus to AC when wielding two weapons.",
   },
 
@@ -206,7 +229,7 @@ const COMBAT_FEATS: Feat[] = [
     name: "Improved Precise Shot",
     category: "combat",
     description: "Your arrows find their mark despite cover and concealment.",
-    prereqs: { minAbility: { ability: "dex", score: 19 }, feat: "precise-shot", minBAB: 11 },
+    prereqs: { minAbility: { ability: "dex", score: 9 }, feat: "precise-shot", minBAB: 11 },
     benefit: "Ignore anything less than total cover and total concealment on ranged attacks.",
   },
   {
@@ -214,7 +237,7 @@ const COMBAT_FEATS: Feat[] = [
     name: "Rapid Shot",
     category: "combat",
     description: "You can fire an extra projectile each round.",
-    prereqs: { minAbility: { ability: "dex", score: 13 }, feat: "point-blank-shot" },
+    prereqs: { minAbility: { ability: "dex", score: 3 }, feat: "point-blank-shot" },
     benefit: "As a full-round action, get one extra ranged attack at your highest BAB, but all attacks that round take a -2 penalty.",
   },
   {
@@ -222,7 +245,7 @@ const COMBAT_FEATS: Feat[] = [
     name: "Manyshot",
     category: "combat",
     description: "You can fire multiple arrows simultaneously.",
-    prereqs: { minAbility: { ability: "dex", score: 17 }, feat: "rapid-shot", minBAB: 6 },
+    prereqs: { minAbility: { ability: "dex", score: 7 }, feat: "rapid-shot", minBAB: 6 },
     benefit: "As a standard action, fire two arrows at a single target. For every +5 BAB beyond +6, add one more arrow (max 4).",
   },
   {
@@ -238,7 +261,7 @@ const COMBAT_FEATS: Feat[] = [
     name: "Shot on the Run",
     category: "combat",
     description: "You can move, fire, and keep moving.",
-    prereqs: { minAbility: { ability: "dex", score: 13 }, feat: "point-blank-shot", minBAB: 4 },
+    prereqs: { minAbility: { ability: "dex", score: 3 }, feat: "point-blank-shot", minBAB: 4 },
     benefit: "When using the attack action with a ranged weapon, you may move before and after the attack as long as total movement does not exceed your speed.",
   },
 
@@ -248,7 +271,7 @@ const COMBAT_FEATS: Feat[] = [
     name: "Dodge",
     category: "combat",
     description: "You are adept at evading incoming blows.",
-    prereqs: { minAbility: { ability: "dex", score: 13 } },
+    prereqs: { minAbility: { ability: "dex", score: 3 } },
     benefit: "+1 dodge bonus to AC against one designated opponent per round.",
   },
   {
@@ -256,7 +279,7 @@ const COMBAT_FEATS: Feat[] = [
     name: "Mobility",
     category: "combat",
     description: "You can slip past foes without exposing yourself.",
-    prereqs: { minAbility: { ability: "dex", score: 13 }, feat: "dodge" },
+    prereqs: { minAbility: { ability: "dex", score: 3 }, feat: "dodge" },
     benefit: "+4 dodge bonus to AC against attacks of opportunity caused by movement.",
   },
   {
@@ -264,7 +287,7 @@ const COMBAT_FEATS: Feat[] = [
     name: "Spring Attack",
     category: "combat",
     description: "You can dart in, strike, and dart back out.",
-    prereqs: { minAbility: { ability: "dex", score: 13 }, feat: "mobility", minBAB: 4 },
+    prereqs: { minAbility: { ability: "dex", score: 3 }, feat: "mobility", minBAB: 4 },
     benefit: "When using the attack action, you may move both before and after the attack as long as total movement does not exceed your speed. Does not provoke AoO from the target.",
   },
   {
@@ -272,7 +295,7 @@ const COMBAT_FEATS: Feat[] = [
     name: "Whirlwind Attack",
     category: "combat",
     description: "You spin through combat, striking all adjacent foes at once.",
-    prereqs: { minAbility: { ability: "dex", score: 13 }, feat: "spring-attack", minBAB: 4 },
+    prereqs: { minAbility: { ability: "dex", score: 3 }, feat: "spring-attack", minBAB: 4 },
     benefit: "As a full-round action, make one melee attack at full BAB against each opponent you threaten.",
   },
 
@@ -282,7 +305,7 @@ const COMBAT_FEATS: Feat[] = [
     name: "Combat Reflexes",
     category: "combat",
     description: "You can react to many threats simultaneously.",
-    prereqs: { minAbility: { ability: "dex", score: 13 } },
+    prereqs: { minAbility: { ability: "dex", score: 3 } },
     benefit: "You may make a number of extra attacks of opportunity per round equal to your DEX modifier. You may also make AoOs while flat-footed.",
   },
   {
@@ -290,7 +313,7 @@ const COMBAT_FEATS: Feat[] = [
     name: "Improved Disarm",
     category: "combat",
     description: "You are skilled at knocking weapons from enemy hands.",
-    prereqs: { minAbility: { ability: "int", score: 13 } },
+    prereqs: { minAbility: { ability: "int", score: 3 } },
     benefit: "+4 bonus on disarm attempts. Does not provoke an attack of opportunity.",
   },
   {
@@ -298,7 +321,7 @@ const COMBAT_FEATS: Feat[] = [
     name: "Improved Trip",
     category: "combat",
     description: "You are skilled at tripping opponents in combat.",
-    prereqs: { minAbility: { ability: "int", score: 13 } },
+    prereqs: { minAbility: { ability: "int", score: 3 } },
     benefit: "+4 bonus on trip attempts. Does not provoke AoO. If you trip a foe, you get a free melee attack against them.",
   },
   {
@@ -306,7 +329,7 @@ const COMBAT_FEATS: Feat[] = [
     name: "Improved Feint",
     category: "combat",
     description: "You are skilled at misleading foes in combat.",
-    prereqs: { minAbility: { ability: "int", score: 13 } },
+    prereqs: { minAbility: { ability: "int", score: 3 } },
     benefit: "You can feint in combat as a move action instead of a standard action.",
   },
   {
@@ -314,7 +337,7 @@ const COMBAT_FEATS: Feat[] = [
     name: "Combat Expertise",
     category: "combat",
     description: "You trade offensive power for defensive awareness.",
-    prereqs: { minAbility: { ability: "int", score: 13 } },
+    prereqs: { minAbility: { ability: "int", score: 3 } },
     benefit: "On your turn, subtract up to 5 from your attack roll and add that number to your AC until your next turn.",
   },
   {
@@ -322,7 +345,7 @@ const COMBAT_FEATS: Feat[] = [
     name: "Improved Grapple",
     category: "combat",
     description: "You are skilled at seizing and restraining foes.",
-    prereqs: { minAbility: { ability: "dex", score: 13 } },
+    prereqs: { minAbility: { ability: "dex", score: 3 } },
     benefit: "+4 bonus on grapple checks. Does not provoke an attack of opportunity to start a grapple.",
   },
   {
@@ -330,7 +353,7 @@ const COMBAT_FEATS: Feat[] = [
     name: "Stunning Fist",
     category: "combat",
     description: "You can stun an opponent with an unarmed strike.",
-    prereqs: { minAbility: { ability: "dex", score: 13 }, minBAB: 8 },
+    prereqs: { minAbility: { ability: "dex", score: 3 }, minBAB: 8 },
     benefit: "Declare before attacking. Target must make a Fortitude save (DC 10 + half your level + WIS mod) or be stunned for 1 round. Usable once per round.",
   },
   {
@@ -338,7 +361,7 @@ const COMBAT_FEATS: Feat[] = [
     name: "Deflect Arrows",
     category: "combat",
     description: "You can knock aside one incoming ranged attack per round.",
-    prereqs: { minAbility: { ability: "dex", score: 13 } },
+    prereqs: { minAbility: { ability: "dex", score: 3 } },
     benefit: "Once per round, when you would be hit by a ranged weapon, you may deflect it so it deals no damage. You must have a hand free.",
   },
   {
@@ -346,7 +369,7 @@ const COMBAT_FEATS: Feat[] = [
     name: "Snatch Arrows",
     category: "combat",
     description: "You pluck arrows from the air and hurl them back.",
-    prereqs: { minAbility: { ability: "dex", score: 15 }, feat: "deflect-arrows" },
+    prereqs: { minAbility: { ability: "dex", score: 5 }, feat: "deflect-arrows" },
     benefit: "When you deflect an arrow, you may catch it and immediately throw it back as a free action.",
   },
 
@@ -578,7 +601,7 @@ const GENERAL_FEATS: Feat[] = [
     name: "Improved Natural Armor",
     category: "general",
     description: "Your hide is unnaturally thick.",
-    prereqs: { minAbility: { ability: "con", score: 13 } },
+    prereqs: { minAbility: { ability: "con", score: 3 } },
     benefit: "+1 natural armor bonus to AC.",
     canTakeMultiple: true,
   },
@@ -934,7 +957,7 @@ const MAGIC_FEATS: Feat[] = [
     name: "Natural Spell",
     category: "magic",
     description: "You can cast spells even while in wild shape.",
-    prereqs: { minAbility: { ability: "wis", score: 13 }, classOnly: ["druid"] },
+    prereqs: { minAbility: { ability: "wis", score: 3 }, classOnly: ["druid"] },
     benefit: "You may complete the verbal and somatic components of spells while in wild shape.",
   },
   {
@@ -965,6 +988,344 @@ const MAGIC_FEATS: Feat[] = [
   },
 ];
 
+// ── PHB 3.5 Additions ────────────────────────────────────────────────────────
+// More of the core 3.5 feat list, filling gaps in the trees above.
+// All effects wire into the existing combat math (PASSIVE_BONUS_MAP / combat flags).
+
+const PHB_EXTRA_FEATS: Feat[] = [
+  {
+    id: "great-cleave-mastery",
+    name: "Improved Toughness",
+    category: "general",
+    description: "Your hardiness grows with your experience.",
+    prereqs: { minLevel: 3 },
+    benefit: "+1 HP per character level (applied as a flat bonus scaled to your level).",
+    edition: "3.5",
+  },
+  {
+    id: "armor-proficiency-shield-heavy",
+    name: "Heavy Armor Optimization",
+    category: "combat",
+    description: "You wear heavy plate as if it were a second skin.",
+    prereqs: { feat: "armor-proficiency-heavy", minBAB: 1 },
+    benefit: "+1 AC while wearing heavy armor; reduce its armor check penalty by 1.",
+    edition: "3.5",
+  },
+  {
+    id: "combat-brute",
+    name: "Combat Brute",
+    category: "combat",
+    description: "After a hard charge, your follow-up blows land with crushing force.",
+    prereqs: { minAbility: { ability: "str", score: 3 }, feat: "power-attack", minBAB: 6 },
+    benefit: "+2 damage on melee strikes the round after you charge or bull rush (modeled as a steady +2 melee damage).",
+    edition: "3.5",
+  },
+  {
+    id: "expertise-deflective",
+    name: "Deflective Stance",
+    category: "combat",
+    description: "You read incoming blows and turn your guard into them.",
+    prereqs: { minAbility: { ability: "int", score: 3 }, feat: "combat-expertise" },
+    benefit: "+1 AC at all times (stacks with Combat Expertise's active trade).",
+    edition: "3.5",
+  },
+  {
+    id: "eschew-materials",
+    name: "Eschew Materials",
+    category: "magic",
+    description: "You can cast many spells without their minor reagents.",
+    prereqs: {},
+    benefit: "Cast any spell with a material component costing 1 gp or less without that component.",
+    edition: "3.5",
+  },
+  {
+    id: "spell-mastery",
+    name: "Spell Mastery",
+    category: "magic",
+    description: "A handful of spells are burned into your memory forever.",
+    prereqs: { classOnly: ["wizard"], minLevel: 1 },
+    benefit: "Choose a number of spells equal to your INT modifier; you can prepare these without a spellbook.",
+    edition: "3.5",
+    canTakeMultiple: true,
+  },
+  {
+    id: "leadership",
+    name: "Banner of Tasern",
+    category: "general",
+    description: "Folk rally to your colors and follow you into danger.",
+    prereqs: { minLevel: 6 },
+    benefit: "Attract a loyal cohort and a band of followers whose strength scales with your renown.",
+    edition: "3.5",
+    flaggedForOwner: true,
+  },
+  {
+    id: "great-fortitude-greater",
+    name: "Epic Fortitude",
+    category: "general",
+    description: "Your body shrugs off what would fell lesser folk.",
+    prereqs: { feat: "great-fortitude", minLevel: 9 },
+    benefit: "+4 additional bonus on Fortitude saves (stacks with Great Fortitude).",
+    edition: "3.5",
+  },
+  {
+    id: "natural-spell-extra",
+    name: "Wild Endurance",
+    category: "magic",
+    description: "Your beast shapes hold longer than nature intends.",
+    prereqs: { classOnly: ["druid"], minLevel: 5 },
+    benefit: "Wild shape durations are doubled.",
+    edition: "3.5",
+    implemented: false,  // wild shape duration tracking not yet in the combat engine
+  },
+];
+
+// ── 5e / 2024-Rules Imports ──────────────────────────────────────────────────
+// Imported from the 5e SRD (CC-BY-4.0) and 2024 rules, then RESCALED to this
+// game's 3.5-style math.  5e assumes higher HP / flatter AC and uses
+// "advantage"; we translate:
+//   • 5e advantage  →  +4 to the roll (the roll engine takes flat modifiers).
+//   • 5e flat +HP/AC/damage  →  scaled down ~halfway so no edition is strictly
+//     better than its 3.5 counterpart.
+//   • Half-feat ability bumps (5e gives +1 to a stat)  →  dropped; stats here
+//     come from LP backing, not feats, so a feat must not mint raw stat points.
+// Deduped against 3.5: Great Weapon Master ≡ Power Attack (kept 3.5 version);
+// Sharpshooter folds into Far Shot + Precise Shot; Polearm Master folds into
+// Combat Reflexes + reach handling.
+
+const FIVE_E_FEATS: Feat[] = [
+  {
+    id: "alert",
+    name: "Alert",
+    category: "combat",
+    description: "Danger never catches you flat-footed.",
+    prereqs: {},
+    benefit: "+4 bonus on initiative; you cannot be surprised while conscious.",
+    edition: "5e",
+  },
+  {
+    id: "tough",
+    name: "Tasern-Bred Tough",
+    category: "general",
+    description: "Years of hard living have given you uncommon staying power.",
+    prereqs: {},
+    benefit: "+2 HP per character level (rescaled from 5e's +2/level to fit 3.5 HP totals).",
+    edition: "5e",
+    flaggedForOwner: true,
+  },
+  {
+    id: "sentinel",
+    name: "Sentinel",
+    category: "combat",
+    description: "Those who fight near you do so at their peril.",
+    prereqs: { minBAB: 1 },
+    benefit: "Enemies you hit with an attack of opportunity stop moving; foes in reach provoke even when they Disengage.",
+    edition: "5e",
+  },
+  {
+    id: "lucky",
+    name: "Devil's Own Luck",
+    category: "general",
+    description: "Fate keeps shoving its thumb on the scale for you.",
+    prereqs: {},
+    benefit: "Three times per long rest, reroll a d20 you just rolled and keep either result.",
+    edition: "5e",
+    implemented: false,  // luck-point pool needs a per-rest resource system not yet built
+    flaggedForOwner: true,
+  },
+  {
+    id: "mage-slayer",
+    name: "Mage Slayer",
+    category: "combat",
+    description: "You close on spellcasters and break their concentration.",
+    prereqs: { minBAB: 1 },
+    benefit: "When a creature within reach casts a spell, you may strike at it; you have +4 on saves vs spells cast by adjacent foes.",
+    edition: "5e",
+  },
+  {
+    id: "great-weapon-master-cleave",
+    name: "Reaping Strike",
+    category: "combat",
+    description: "Felling one foe leaves your blade moving toward the next.",
+    prereqs: { minAbility: { ability: "str", score: 3 }, minBAB: 4 },
+    benefit: "When you drop a foe to 0 HP in melee, make one immediate extra melee attack against an adjacent enemy (1/round).",
+    edition: "5e",
+  },
+  {
+    id: "sharpshooter",
+    name: "Sharpshooter",
+    category: "combat",
+    description: "Distance and cover mean little to your aim.",
+    prereqs: { feat: "point-blank-shot", minBAB: 1 },
+    benefit: "Ignore the first range increment penalty; ranged attacks ignore cover bonuses below total cover.",
+    edition: "5e",
+  },
+  {
+    id: "polearm-master",
+    name: "Polearm Drill",
+    category: "combat",
+    description: "Your reach weapon is always moving, butt and blade alike.",
+    prereqs: { minBAB: 1 },
+    benefit: "Foes entering your reach with a reach weapon provoke an attack of opportunity (works with Combat Reflexes).",
+    edition: "5e",
+  },
+  {
+    id: "shield-master",
+    name: "Shield Master",
+    category: "combat",
+    description: "Your shield is a weapon and a wall both.",
+    prereqs: { feat: "improved-shield-bash", minBAB: 1 },
+    benefit: "+1 AC with a shield; add your shield bonus to DEX saves against effects you can see.",
+    edition: "5e",
+  },
+  {
+    id: "war-caster",
+    name: "War Caster",
+    category: "magic",
+    description: "You weave spells amid the clash of steel.",
+    prereqs: {},
+    benefit: "+4 on Concentration checks to keep a spell going; you may cast a spell as an attack of opportunity instead of striking.",
+    edition: "5e",
+  },
+  {
+    id: "resilient",
+    name: "Resilient",
+    category: "general",
+    description: "You have shored up a weakness in your defenses.",
+    prereqs: {},
+    benefit: "+2 bonus on one saving throw category of your choice (chosen when taken).",
+    edition: "5e",
+    canTakeMultiple: true,
+  },
+  {
+    id: "savage-attacker",
+    name: "Savage Attacker",
+    category: "combat",
+    description: "Your blows tear rather than cut.",
+    prereqs: { minBAB: 1 },
+    benefit: "+2 melee weapon damage (rescaled from 5e's once-per-turn damage reroll).",
+    edition: "2024",
+  },
+  {
+    id: "charger",
+    name: "Charger",
+    category: "combat",
+    description: "You hit hardest at a dead run.",
+    prereqs: { minBAB: 1 },
+    benefit: "+2 damage on a charge attack and you may charge through difficult terrain (modeled as +2 melee damage after moving 2+ hexes).",
+    edition: "2024",
+  },
+  {
+    id: "skilled",
+    name: "Skilled",
+    category: "skill",
+    description: "You have dabbled widely and remember most of it.",
+    prereqs: {},
+    benefit: "Gain 6 extra skill points to spend immediately.",
+    edition: "2024",
+  },
+  {
+    id: "magic-initiate",
+    name: "Hedge Magic",
+    category: "magic",
+    description: "A wandering mage once taught you a few simple tricks.",
+    prereqs: {},
+    benefit: "Learn two cantrips and one 1st-level spell, cast 1/long rest, using your highest mental stat.",
+    edition: "2024",
+    implemented: false,  // grants spellcasting to non-casters — needs a spell-grant hook in the caster setup
+    flaggedForOwner: true,
+  },
+];
+
+// ── Epic Feats (late-game tier) ──────────────────────────────────────────────
+// NOTE ON NAMING: the game already has a token-holdings "Boon" system in
+// boons.ts (the impact-boons reward channel).  To avoid any collision, this
+// high-level feat reward tier is called EPIC FEATS, not "epic boons".  These
+// are powerful capstone abilities gated behind high character level + BAB.
+// Marquee names are flagged for the owner to punch up.
+
+const EPIC_FEATS: Feat[] = [
+  {
+    id: "epic-toughness",
+    name: "Epic Toughness",
+    category: "epic",
+    description: "Your vitality outstrips anything mortal flesh should hold.",
+    prereqs: { minLevel: 15 },
+    benefit: "+20 hit points.",
+    edition: "3.5",
+    canTakeMultiple: true,
+  },
+  {
+    id: "epic-prowess",
+    name: "Epic Prowess",
+    category: "epic",
+    description: "Your strikes land with uncanny, practiced certainty.",
+    prereqs: { minLevel: 15, minBAB: 12 },
+    benefit: "+2 attack bonus with all attacks.",
+    edition: "3.5",
+    canTakeMultiple: true,
+  },
+  {
+    id: "epic-armor-skin",
+    name: "Aegis of the Reaches",
+    category: "epic",
+    description: "Your skin hardens to something between hide and stone.",
+    prereqs: { minLevel: 18 },
+    benefit: "+2 natural armor bonus to AC (stacks with itself and with boon natural armor).",
+    edition: "3.5",
+    canTakeMultiple: true,
+    flaggedForOwner: true,
+  },
+  {
+    id: "epic-overwhelming-critical",
+    name: "Iron Maw Strike",
+    category: "epic",
+    description: "When you find an opening, you tear it wide.",
+    prereqs: { minLevel: 18, minBAB: 16, feat: "improved-critical" },
+    benefit: "Your critical threat range widens by one more step and crits add +6 bonus damage.",
+    edition: "3.5",
+    flaggedForOwner: true,
+  },
+  {
+    id: "epic-blinding-speed",
+    name: "Blinding Speed",
+    category: "epic",
+    description: "You move between heartbeats.",
+    prereqs: { minLevel: 18, minAbility: { ability: "dex", score: 15 } },
+    benefit: "+15 ft move speed and +4 initiative.",
+    edition: "3.5",
+  },
+  {
+    id: "epic-spell-focus",
+    name: "Luminar's Mastery",
+    category: "epic",
+    description: "Your chosen school answers you almost without resistance.",
+    prereqs: { minLevel: 18, feat: "greater-spell-focus" },
+    benefit: "+1 additional save DC for the chosen school (stacks for +3 total with the Spell Focus line).",
+    edition: "3.5",
+    flaggedForOwner: true,
+  },
+  {
+    id: "epic-energy-resistance",
+    name: "Bulwark of the Maw",
+    category: "epic",
+    description: "Flame, frost, and lightning break against you.",
+    prereqs: { minLevel: 15 },
+    benefit: "Gain resistance to fire, cold, and lightning damage.",
+    edition: "5e",
+    flaggedForOwner: true,
+  },
+  {
+    id: "epic-undying",
+    name: "Boon of the Deathless",
+    category: "epic",
+    description: "Death has tried and failed to keep you.",
+    prereqs: { minLevel: 20 },
+    benefit: "Once per battle, when reduced to 0 HP, drop to 1 HP instead.",
+    edition: "5e",
+    flaggedForOwner: true,
+  },
+];
+
 // ── Combined Array ───────────────────────────────────────────────────────────
 
 export const FEATS: Feat[] = [
@@ -972,6 +1333,9 @@ export const FEATS: Feat[] = [
   ...GENERAL_FEATS,
   ...SKILL_FEATS,
   ...MAGIC_FEATS,
+  ...PHB_EXTRA_FEATS,
+  ...FIVE_E_FEATS,
+  ...EPIC_FEATS,
 ];
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -1127,7 +1491,42 @@ const PASSIVE_BONUS_MAP: Record<string, Partial<FeatBonuses>> = {
   "toughness":                    { hp: 3 },           // +3 HP
   "endurance":                    { hp: 2 },           // +4 CON checks → simplified +2 HP
   "run":                          { speed: 5 },        // ×5 run speed → +5 ft base
+
+  // ── PHB 3.5 additions ──
+  "armor-proficiency-shield-heavy": { ac: 1 },         // Heavy Armor Optimization: +1 AC in heavy armor (simplified always-on)
+  "combat-brute":                 { damage: 2 },       // post-charge follow-through → steady +2 melee dmg
+  "expertise-deflective":         { ac: 1 },           // +1 AC always
+
+  // ── 5e / 2024 imports (rescaled) ──
+  "alert":                        { initiative: 4 },   // 5e advantage-ish → +4 initiative
+  "sentinel":                     { ac: 1 },           // battlefield control → modest +1 AC
+  "savage-attacker":              { damage: 2 },       // damage reroll → flat +2 melee dmg
+  "charger":                      { damage: 2 },       // charge bonus → +2 melee dmg
+  "shield-master":                { ac: 1 },           // +1 AC with shield
+
+  // ── Epic feats ──
+  "epic-prowess":                 { atkBonus: 2 },     // +2 to all attacks
+  "epic-armor-skin":              { ac: 2 },           // +2 natural-armor-equivalent (flows through miscAC → both ACs)
+  "epic-blinding-speed":          { speed: 15, initiative: 4 },
 };
+
+// Feats whose HP bonus scales with character level (5e/3.5 "+N HP per level").
+// Kept separate because getFeatBonuses has no level context; battleStats applies
+// these via getFeatLevelHpBonus(level, featIds) and adds to the flat total.
+const PER_LEVEL_HP_FEATS: Record<string, number> = {
+  "great-cleave-mastery": 1,  // Improved Toughness: +1 HP / level
+  "tough":                2,  // Tasern-Bred Tough: +2 HP / level (rescaled from 5e)
+};
+
+/** Total HP from feats that scale with character level. */
+export function getFeatLevelHpBonus(level: number, featIds: string[]): number {
+  let hp = 0;
+  for (const id of featIds) {
+    const perLevel = PER_LEVEL_HP_FEATS[id];
+    if (perLevel) hp += perLevel * Math.max(1, level);
+  }
+  return hp;
+}
 
 /**
  * Aggregate passive stat bonuses from a list of feat IDs.
@@ -1188,19 +1587,30 @@ export type FeatCombatFlags = {
   farShot: boolean;            // range increment penalty halved (-1 instead of -2)
   // ── Magic ──
   sculptSpell: boolean;        // exclude allies from AoE spells/abilities
+  // ── Epic / 5e additions ──
+  epicCrit: boolean;           // crits add bonus damage and widen threat one more step
 };
 
 /** Extract active combat flags from feat ID list */
 export function getFeatCombatFlags(featIds: string[]): FeatCombatFlags {
   const s = new Set(featIds);
   return {
-    improvedCritical: s.has("improved-critical"),
-    cleave: s.has("cleave"),
+    // improved-critical OR the epic upgrade widens threat range
+    improvedCritical: s.has("improved-critical") || s.has("epic-overwhelming-critical"),
+    // 3.5 cleave line OR the 5e Reaping Strike import grant a free post-kill attack
+    cleave: s.has("cleave") || s.has("great-weapon-master-cleave"),
     greatCleave: s.has("great-cleave"),
     pointBlankShot: s.has("point-blank-shot"),
     preciseShot: s.has("precise-shot"),
     rapidShot: s.has("rapid-shot"),
-    farShot: s.has("far-shot"),
+    // far-shot OR sharpshooter ease range penalties
+    farShot: s.has("far-shot") || s.has("sharpshooter"),
     sculptSpell: s.has("sculpt-spell"),
+    epicCrit: s.has("epic-overwhelming-critical"),
   };
+}
+
+/** Damage types a character resists purely from feats (epic-energy-resistance). */
+export function getFeatResistances(featIds: string[]): string[] {
+  return featIds.includes("epic-energy-resistance") ? ["fire", "cold", "lightning"] : [];
 }

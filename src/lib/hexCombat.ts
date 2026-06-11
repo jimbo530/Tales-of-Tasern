@@ -5,7 +5,7 @@ import { DEFAULT_BOON_FIELDS } from "./computeD20Stats";
 import { nd } from "./treasure";
 import { type CharacterClass, getBAB, HIT_DIE_VALUES, getClassById } from "./classes";
 import type { Monster } from "./monsters";
-import { getFeatCombatFlags, getFeatBonuses } from "./feats";
+import { getFeatCombatFlags, getFeatBonuses, getFeatLevelHpBonus } from "./feats";
 import type { SpellBattleEffect } from "./spells";
 import { type Follower, type EntityProgression, totalBAB, totalSaves, parseWeaponAvgDmg } from "./party";
 import { getItemInfo } from "./itemRegistry";
@@ -413,7 +413,7 @@ export function createPlayerUnit(
     stats.ac = 10 + stats.armorBonus + stats.shieldBonus + stats.dexMod + stats.naturalArmor + miscAC;
     stats.magicAC = 10 + stats.dexMod + stats.naturalArmor + miscAC;
     stats.speed = (char.stats.speed || 30) + speedBonus + fb.speed;
-    stats.hp += hpBonus + fb.hp;
+    stats.hp += hpBonus + fb.hp + getFeatLevelHpBonus(level, feats);
   }
   const wr = getWeaponRange(weaponName);
   const maxHp = progression ? stats.hp : stats.hp;
@@ -938,7 +938,10 @@ export function resolveAttack(
     parts.push(`${fireRolled} Fire${diceTag}`);
   }
 
-  if (isCrit) damage *= 2;
+  if (isCrit) {
+    damage *= 2;
+    if (flags.epicCrit) { damage += 6; parts.push("+6 Epic Crit"); }  // Iron Maw Strike
+  }
   damage = Math.max(1, Math.round(damage));
 
   // ── Apply target resistances/immunities ──

@@ -27,7 +27,7 @@ export function CharacterCreation({ ownedChars, onStart }: {
   const [expandedClass, setExpandedClass] = useState<string | null>(null);
   const [pickedFeats, setPickedFeats] = useState<string[]>([]);
   const [skillRanks, setSkillRanks] = useState<Record<string, number>>({});
-  const [featFilter, setFeatFilter] = useState<"all" | "combat" | "general" | "magic" | "skill">("all");
+  const [featFilter, setFeatFilter] = useState<"all" | "combat" | "general" | "magic" | "skill" | "epic">("all");
   const [factionName, setFactionName] = useState("");
   // ── Spell creation state ──
   const [pickedDomains, setPickedDomains] = useState<string[]>([]);

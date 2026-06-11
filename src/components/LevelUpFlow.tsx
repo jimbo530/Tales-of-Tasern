@@ -106,7 +106,7 @@ export function LevelUpFlow({ save, character, fromLevel, toLevel, entry, onComp
   // Feat selection state
   const [luFeats, setLuFeats] = useState<string[]>([]);
   const [luPendingFeat, setLuPendingFeat] = useState<string | null>(null);
-  const [luFeatFilter, setLuFeatFilter] = useState<"all" | "combat" | "general" | "magic" | "skill">("all");
+  const [luFeatFilter, setLuFeatFilter] = useState<"all" | "combat" | "general" | "magic" | "skill" | "epic">("all");
   const allFeats = [...prog.feats, ...luFeats];
   const availableFeats = cls ? getAvailableFeats(toLevel, cls.id, stats as Record<string, number>, allFeats) : [];
   const filteredFeats = luFeatFilter === "all" ? availableFeats : availableFeats.filter(f => f.category === luFeatFilter);
@@ -360,7 +360,7 @@ export function LevelUpFlow({ save, character, fromLevel, toLevel, entry, onComp
           </div>
         )}
         <div className="flex gap-1 justify-center flex-wrap">
-          {(["all", "combat", "general", "magic", "skill"] as const).map(cat => (
+          {(["all", "combat", "general", "magic", "skill", "epic"] as const).map(cat => (
             <button key={cat} onClick={() => setLuFeatFilter(cat)}
               className="px-2 py-0.5 rounded text-xs uppercase" style={{ background: luFeatFilter === cat ? "rgba(168,85,247,0.15)" : "rgba(255,255,255,0.03)", color: luFeatFilter === cat ? "rgba(168,85,247,0.9)" : gold, border: `1px solid ${luFeatFilter === cat ? "rgba(168,85,247,0.4)" : "rgba(201,168,76,0.1)"}` }}>
               {cat}
