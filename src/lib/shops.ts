@@ -617,6 +617,45 @@ const STABLES: Shop = {
     shopItem("shop_stabling_7days", "Stabling (7 days)", "gear", 4, 0, "A week of shelter, water, and basic care at the stables.", {
       effect: "Mount is housed, watered, and groomed for 7 days",
     }),
+
+    // ---- Land Conveyances (Arms & Equipment Guide — caravan/trade gear) ----
+    shopItem("shop_handcart", "Handcart", "gear", 15, 60, "A simple one-axle barrow you push by hand.", {
+      effect: "Carries up to 200 lbs; halves the effective weight of cargo on a road, but slows you to half speed off-road",
+    }),
+    shopItem("shop_cart_ox", "Ox Cart", "gear", 30, 200, "A sturdy two-wheeled cart, drawn by a single ox or mule.", {
+      effect: "Carries up to 1,000 lbs with a draft animal; speed 20ft on roads; needs a mount to pull",
+      minLevel: 3,
+    }),
+    shopItem("shop_wagon_trade", "Trade Wagon", "gear", 35, 400, "A four-wheeled flatbed wagon, the backbone of any merchant caravan.", {
+      effect: "Carries up to 2,000 lbs with a two-animal team; speed 20ft on roads; the standard caravan hauler",
+      minLevel: 3,
+    }),
+    shopItem("shop_wagon_covered", "Covered Wagon", "gear", 50, 500, "A canvas-hooded wagon that shelters cargo and crew from the marsh rains.", {
+      effect: "Carries up to 2,000 lbs; crew sleeps dry inside (no exhaustion from weather); speed 20ft on roads",
+      minLevel: 5,
+    }),
+    shopItem("shop_carriage", "Carriage", "gear", 100, 600, "An enclosed passenger coach with sprung axles and padded benches.", {
+      effect: "Seats 4 in comfort; needs a two-horse team; +2 on Diplomacy when arriving in style; speed 30ft on roads",
+      minLevel: 5,
+      kardovOnly: true,
+    }),
+    shopItem("shop_war_chariot", "War Chariot", "gear", 250, 300, "A light two-wheeled fighting platform drawn by a warhorse team.", {
+      effect: "Fights from a moving platform; driver may make trample attacks (2d6) when charging in a straight line; needs combat-trained team",
+      minLevel: 10,
+      kardovOnly: true,
+    }),
+
+    // ---- Exotic Mounts (Arms & Equipment Guide — rethemed) ----
+    shopItem("shop_marsh_strider", "Marsh Strider", "gear", 200, 0, "A long-legged, web-toed riding bird native to the Tasern fens — ungainly on roads, tireless in the mire.", {
+      effect: "Speed 50ft; ignores difficult terrain in swamp/marsh; carries up to 200 lbs; skittish in battle (Ride DC 15)",
+      minLevel: 5,
+      kardovOnly: true,
+    }),
+    shopItem("shop_tundra_elk", "Tundra Elk", "gear", 300, 0, "A great antlered elk broken to the saddle by the highland clans, sure-footed on ice and scree.", {
+      effect: "Speed 50ft; ignores difficult terrain in snow/mountain; gore attack 1d8+3; carries up to 250 lbs",
+      minLevel: 10,
+      kardovOnly: true,
+    }),
   ],
 };
 
