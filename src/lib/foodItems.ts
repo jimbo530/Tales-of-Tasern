@@ -93,7 +93,7 @@ export const EXOTIC_FOOD: FoodItem[] = [
   { id: "food_dwarven_garnet",  name: "Garnet Wine, Dwarven", priceCp: 9000, weight: 2, foodValue: 0, category: "drink",  desc: "Mountain grapes with ground garnet 'for flavor.'" },
   { id: "food_frenzywater",     name: "Frenzywater",         priceCp: 1500, weight: 2, foodValue: 0, category: "drink",   desc: "Potent clear spirit. Those with rage must save or fly into a frenzy." },
   { id: "food_frostwine",       name: "Frostwine",           priceCp: 4000, weight: 2, foodValue: 0, category: "drink",   desc: "Delicate white wine from extreme northern grapes. Frost worms guard the vines." },
-  { id: "food_drow_spiderblood",name: "Spiderblood, Drow",   priceCp: 15000, weight: 2, foodValue: 0, category: "drink",  desc: "Drow mushroom wine laced with spider venom. Poisonous to surface dwellers." },
+  { id: "food_drow_spiderblood",name: "Spiderblood, Deepkin", priceCp: 15000, weight: 2, foodValue: 0, category: "drink",  desc: "Deepkin mushroom wine laced with spider venom. Poisonous to surface dwellers." },
   { id: "food_buffalo_jerked",  name: "Buffalo Jerky",       priceCp: 4500, weight: 1, foodValue: 3, category: "meat",    desc: "Rare and expensive. From the great plains." },
   { id: "food_smoked_salmon",   name: "Smoked Salmon",       priceCp: 1500, weight: 1, foodValue: 2, category: "meat",    desc: "Delicate pink fish, slowly smoked over alder." },
 ];

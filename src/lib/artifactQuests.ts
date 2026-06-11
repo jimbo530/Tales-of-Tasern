@@ -878,10 +878,10 @@ export const ARTIFACT_QUESTS: ArtifactQuest[] = [
         enemies: [
           { type: "monster", monsterId: "troglodyte", emoji: "\uD83E\uDD8E", count: "scale" },
           { type: "monster", monsterId: "troglodyte", emoji: "\uD83E\uDD8E", count: 2, nameOverride: "Troglodyte Brute", hpBoost: 8 },
-          { type: "monster", monsterId: "otyugh", emoji: "\uD83D\uDC19", count: 1 },
+          { type: "monster", monsterId: "filth_maw", emoji: "\uD83D\uDC19", count: 1 },
         ],
         completionFlag: "axe_of_dwarvish_lords_leg2_done",
-        rewardText: "The otyugh's tentacles go slack and it slides back into the refuse pit it called home. Beyond its lair, the halls improve — these deeper sections are less damaged, sealed behind doors the creatures couldn't breach. Dwarven script on the walls points deeper: \"The Forge of First Fire — where the Lords' weapon was shaped.\" The passage descends, and the air grows warmer. Bhalanur's heart still burns.",
+        rewardText: "The filth-maw's tentacles go slack and it slides back into the refuse pit it called home. Beyond its lair, the halls improve — these deeper sections are less damaged, sealed behind doors the creatures couldn't breach. Dwarven script on the walls points deeper: \"The Forge of First Fire — where the Lords' weapon was shaped.\" The passage descends, and the air grows warmer. Bhalanur's heart still burns.",
         rewardItems: ["bhalanur_forge_directions"],
         rewardGoldCp: 3500,
         questKeyword: "halls_bhalanur",

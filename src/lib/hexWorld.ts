@@ -195,7 +195,7 @@ const VISIBILITY_RANGE: Record<Terrain, number> = {
 const TERRAIN_MONSTERS: Record<Terrain, string[]> = {
   grass: ["wolf", "dire_rat", "goblin", "kobold", "giant_bee"],
   plains: ["wolf", "gnoll", "orc", "giant_ant_worker", "hyena"],
-  forest: ["wolf", "bear", "dire_rat", "spider", "stirge", "goblin", "owlbear"],
+  forest: ["wolf", "bear", "dire_rat", "spider", "stirge", "goblin", "fenmaw"],
   jungle: ["spider", "snake", "stirge", "lizardfolk", "giant_centipede"],
   desert: ["scorpion", "gnoll", "mummy", "jackal", "hyena"],
   swamp: ["lizardfolk", "stirge", "giant_frog", "crocodile", "will_o_wisp"],

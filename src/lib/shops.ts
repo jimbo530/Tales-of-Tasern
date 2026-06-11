@@ -773,15 +773,15 @@ const PET_STORE: Shop = {
     }),
 
     // ---- Guard Creatures ----
-    shopItem("pet_rust_monster", "Rust Monster", "gear", 2200, 0, "A strange insectoid creature that devours metal. Friendly when domesticated.", {
+    shopItem("pet_rust_monster", "Corroder", "gear", 2200, 0, "A strange armored insect with twitching feelers that devours raw metal. Friendly enough once fed.", {
       effect: "Guard: destroys metal weapons/armor on touch. First line of defense for camps. Antennae rust metal within 5ft",
       minLevel: 15,
     }),
-    shopItem("pet_otyugh", "Otyugh", "gear", 3500, 0, "A grotesque three-legged aberration that wallows in filth. Surprisingly obedient.", {
+    shopItem("pet_otyugh", "Filth-Maw", "gear", 3500, 0, "A grotesque three-legged fen-aberration that wallows in filth. Surprisingly obedient.", {
       effect: "Guard: follows complex guarding instructions, tentacle attack 1d6+2. Lives happily in garbage/sewers",
       minLevel: 15,
     }),
-    shopItem("pet_owlbear", "Owlbear (Young)", "gear", 5000, 0, "A fearsome hybrid of bear and owl — surly to strangers, devoted to its trainer.", {
+    shopItem("pet_owlbear", "Fenmaw (Young)", "gear", 5000, 0, "A shaggy, beaked fen-brute the size of a calf — surly to strangers, devoted to its trainer.", {
       effect: "Guard: claw/claw/bite 1d6+2/1d6+2/1d8+1, HP 32. Very aggressive toward anyone but owner",
       minLevel: 20,
     }),

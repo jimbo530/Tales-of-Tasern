@@ -1109,15 +1109,15 @@ const THEME_ENEMIES: Record<DungeonTheme, { minions: string[]; standards: string
   },
   mine: {
     minions: ["Kobold Miner", "Giant Rat", "Cave Cricket"],
-    standards: ["Goblin Sapper", "Rust Monster", "Giant Ant"],
+    standards: ["Goblin Sapper", "Irongnaw Crawler", "Giant Ant"],
     elites: ["Bugbear Foreman", "Earth Elemental", "Cave Troll"],
     bosses: ["Stone Golem", "Mine Wyrm", "The Collapsed King", "Deep Borer"],
   },
   sewer: {
     minions: ["Dire Rat", "Sewer Roach", "Slime Mold"],
-    standards: ["Otyugh", "Rat Swarm", "Crocodile"],
-    elites: ["Shambling Mound", "Gelatinous Cube", "Wererat"],
-    bosses: ["Rat King", "Sewer Aboleth", "The Plague Bearer", "Otyugh Matriarch"],
+    standards: ["Filth-Maw", "Rat Swarm", "Crocodile"],
+    elites: ["Shambling Mound", "Devouring Ooze", "Wererat"],
+    bosses: ["Rat King", "Sewer Horror", "The Plague Bearer", "Filth-Maw Matriarch"],
   },
   temple: {
     minions: ["Animated Candle", "Prayer Wisp", "Temple Guard Ghost"],
@@ -1314,7 +1314,7 @@ function generateItem(rng: RNG, rarity: LootRarity, theme: DungeonTheme, playerL
     },
     reagent: {
       common: ["Dried Mushroom", "Iron Shavings", "Sulfur Powder"],
-      uncommon: ["Owlbear Feather", "Troll Blood Vial", "Moonpetal"],
+      uncommon: ["Fenmaw Feather", "Troll Blood Vial", "Moonpetal"],
       rare: ["Dragon Scale", "Unicorn Hair", "Elemental Essence"],
       epic: ["Phoenix Ash", "Lich Dust", "Void Crystal"],
       legendary: ["Primordial Spark", "God-Bone Fragment", "Quintessence"],

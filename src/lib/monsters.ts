@@ -859,12 +859,12 @@ export const MONSTERS: Monster[] = [
   // CR 4
   // =======================================================================
   {
-    id: "owlbear", name: "Owlbear", cr: 4, size: "large", type: "magical_beast",
+    id: "fenmaw", name: "Fenmaw", cr: 4, size: "large", type: "magical_beast",
     hp: 52, ac: 15, str: 11, dex: 2, con: 11, int: 1, wis: 2, cha: 1,
-    attack: "Claws +9 (1d6+5), Bite +4 (1d8+2)", damage: "1d6+5", speed: 30,
-    special: "Improved grab",
+    attack: "Claws +9 (1d6+5), Beak +4 (1d8+2)", damage: "1d6+5", speed: 30,
+    special: "Crushing grip",
     terrain: ["forest"],
-    description: "A bear with an owl's head, driven mad by hunger.",
+    description: "A shaggy, marsh-bred brute the size of a bear with the hooked beak and round, unblinking eyes of a great owl. It hunts the fen-edges by night, hooting low before it charges, and what it grips in its claws it does not let go.",
   },
   {
     id: "glimmerstalk", name: "Glimmerstalk", cr: 4, size: "large", type: "magical_beast",
@@ -891,12 +891,12 @@ export const MONSTERS: Monster[] = [
     description: "A stony winged demon that hides among ancient ruins.",
   },
   {
-    id: "otyugh", name: "Otyugh", cr: 4, size: "large", type: "aberration",
+    id: "filth_maw", name: "Filth-Maw", cr: 4, size: "large", type: "aberration",
     hp: 36, ac: 17, str: 8, dex: 1, con: 8, int: 1, wis: 2, cha: 1,
     attack: "Tentacle +4 (1d6), Bite +2 (1d4)", damage: "1d6", speed: 20,
     special: "Constrict, disease (filth fever)",
     terrain: ["underground", "swamp"],
-    description: "A foul tentacled thing that dwells in refuse and offal.",
+    description: "A bloated, three-legged horror that wallows in the sewers and middens beneath the city, hauling refuse to its toothed maw with two long, leaf-tipped tentacles. Its bite festers with rot-fever, and it lairs where the filth runs deepest. (Reskin of an SRD refuse-dweller.)",
   },
   {
     id: "ogre", name: "Ogre", cr: 4, size: "large", type: "humanoid",

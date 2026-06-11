@@ -2415,7 +2415,7 @@ export const TERRAIN_LOOT: TerrainLoot[] = [
       "A sealed stone coffer behind a false wall holds dungeon builders' pay.",
       "An underground temple's offering bowl still holds precious gifts.",
       "A dragon's secondary hoard room — just scraps by dragon standards — is a fortune to you.",
-      "A drow trader's hidden vault is concealed behind an illusion that has faded.",
+      "A deepkin trader's hidden vault is concealed behind an illusion that has faded.",
       "A geode cavern glitters with crystals, some of which are genuine gemstones.",
     ],
   },

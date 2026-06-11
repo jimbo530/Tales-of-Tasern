@@ -313,10 +313,10 @@ const SEWER_1: DungeonTemplate = {
       roomId: "sewer_1_r2",
       name: "The Cistern",
       description:
-        "The tunnel opens into a vast cistern, the ceiling lost in darkness above. A central pillar of corroded iron rises from waist-deep water that churns with movement. Rat swarms boil across the surface like a living carpet, and near the far wall something large and tentacled stirs in a mound of refuse — an otyugh, half-submerged, its eye-stalk tracking you with lazy malice.",
+        "The tunnel opens into a vast cistern, the ceiling lost in darkness above. A central pillar of corroded iron rises from waist-deep water that churns with movement. Rat swarms boil across the surface like a living carpet, and near the far wall something large and tentacled stirs in a mound of refuse — a filth-maw, half-submerged, its eye-stalk tracking you with lazy malice.",
       enemies: [
         { type: "monster", monsterId: "rat_swarm", emoji: "\uD83D\uDC00", count: 2 },
-        { type: "monster", monsterId: "otyugh", emoji: "\uD83D\uDC19", count: 1 },
+        { type: "monster", monsterId: "filth_maw", emoji: "\uD83D\uDC19", count: 1 },
       ],
       lootChance: 0.35,
       lootTier: "moderate",

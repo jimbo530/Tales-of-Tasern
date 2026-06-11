@@ -797,7 +797,7 @@ const THORNWOOD_HARD: EncounterTableEntry[] = [
   { weight: 3, monsterIds: ["medium_spider"],     count: [4, 6], flavor: "A spider nest erupts — dozens of webs shake as the colony swarms to defend its territory." },
   { weight: 3, monsterIds: ["bugbear"],            count: [1, 2], flavor: "Bugbears using the thorns as cover. You don't see them until they're on top of you." },
   { weight: 2, monsterIds: ["dire_wolf"],          count: [1, 2], flavor: "Dire wolves — their eyes glow in the dim forest light. The pack alpha bares teeth like daggers." },
-  { weight: 2, monsterIds: ["owlbear"],            count: 1,      flavor: "An owlbear crashes through the thorns, oblivious to the scratches. It hoots and charges." },
+  { weight: 2, monsterIds: ["fenmaw"],            count: 1,      flavor: "A fenmaw crashes through the thorns, oblivious to the scratches tearing its shaggy hide. It hoots low and charges, hooked beak snapping." },
   { weight: 1, monsterIds: ["worg"],               count: [2, 3], flavor: "A worg pack — intelligent, coordinated. They cut off your escape routes before attacking." },
 ];
 
@@ -861,7 +861,7 @@ const FOREST_EASY: EncounterTableEntry[] = [
 
 const FOREST_HARD: EncounterTableEntry[] = [
   { weight: 4, monsterIds: ["dire_wolf"],           count: [2, 3], flavor: "Dire wolves — each the size of a horse. The alpha's hackles rise and the pack fans out." },
-  { weight: 3, monsterIds: ["owlbear"],             count: 1,      flavor: "An owlbear crashes through the undergrowth, hooting with rage. It's been tracking you." },
+  { weight: 3, monsterIds: ["fenmaw"],             count: 1,      flavor: "A fenmaw crashes through the undergrowth, round owl-eyes fixed on you and hooting with rage. It's been tracking you." },
   { weight: 3, monsterIds: ["glimmerstalk"],        count: 1,      flavor: "A long-limbed marsh cat slinks between the trees — a glimmerstalk! The light bends around it, so every strike you aim falls a hand-span wide." },
   { weight: 2, monsterIds: ["troll"],               count: 1,      flavor: "A forest troll steps from behind a tree — lanky, green-skinned, and hungry." },
   { weight: 2, monsterIds: ["bugbear"],             count: [2, 3], flavor: "Bugbears! They've been shadowing you for an hour, waiting for the perfect ambush." },
