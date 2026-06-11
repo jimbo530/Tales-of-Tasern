@@ -266,6 +266,7 @@ export type Kingdom = {
   seed: number;             // for deterministic random events
   victoryPoints: number;
   flags: Record<string, boolean>;  // state flags for events/quests
+  morale_streak?: number;          // consecutive turns at 90+ morale (cultural victory tracker)
 };
 
 // ── Combat ──────────────────────────────────────────────────────────────────
@@ -2048,9 +2049,9 @@ export function checkVictory(
   // Cultural: maintain 90+ morale for 20 consecutive turns
   // (tracked via flags)
   const highMoraleTurns = kingdom.morale >= 90
-    ? (Number(kingdom.flags["high_morale_streak"] ?? "0") + 1)
+    ? ((kingdom.morale_streak ?? 0) + 1)
     : 0;
-  kingdom.flags["high_morale_streak"] = String(highMoraleTurns);
+  kingdom.morale_streak = highMoraleTurns;
   if (highMoraleTurns >= 20) {
     return { type: "cultural", moraleTurns: highMoraleTurns };
   }
