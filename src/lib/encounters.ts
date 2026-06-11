@@ -862,7 +862,7 @@ const FOREST_EASY: EncounterTableEntry[] = [
 const FOREST_HARD: EncounterTableEntry[] = [
   { weight: 4, monsterIds: ["dire_wolf"],           count: [2, 3], flavor: "Dire wolves — each the size of a horse. The alpha's hackles rise and the pack fans out." },
   { weight: 3, monsterIds: ["owlbear"],             count: 1,      flavor: "An owlbear crashes through the undergrowth, hooting with rage. It's been tracking you." },
-  { weight: 3, monsterIds: ["displacer_beast"],        count: 1,      flavor: "A six-legged panther-like beast shimmer between the trees — a displacer beast! Its image shifts, making it impossible to pinpoint." },
+  { weight: 3, monsterIds: ["glimmerstalk"],        count: 1,      flavor: "A long-limbed marsh cat slinks between the trees — a glimmerstalk! The light bends around it, so every strike you aim falls a hand-span wide." },
   { weight: 2, monsterIds: ["troll"],               count: 1,      flavor: "A forest troll steps from behind a tree — lanky, green-skinned, and hungry." },
   { weight: 2, monsterIds: ["bugbear"],             count: [2, 3], flavor: "Bugbears! They've been shadowing you for an hour, waiting for the perfect ambush." },
   { weight: 2, monsterIds: ["ettercap"],            count: [1, 2], flavor: "Ettercaps in the canopy — their web-choked territory spans dozens of trees." },
@@ -997,7 +997,7 @@ const ENDGAME_EASY: EncounterTableEntry[] = [
 const ENDGAME_HARD: EncounterTableEntry[] = [
   { weight: 4, monsterIds: ["young_black_dragon"],  count: 1,      flavor: "A young black dragon erupts from the lake, acid dripping from its jaws. Its eyes burn with ancient malice." },
   { weight: 3, monsterIds: ["hydra_5head"],         count: 1,      flavor: "A five-headed hydra surges from the shallows. Each head snaps independently — cutting one only makes two." },
-  { weight: 3, monsterIds: ["mind_flayer"],         count: 1,      flavor: "A mind flayer materializes from nothing, tentacles writhing. Your thoughts feel... exposed. Alien." },
+  { weight: 3, monsterIds: ["maw_priest"],         count: 1,      flavor: "A grey, robed Maw-Priest steps from the dark, the nest of feelers where its face should be writhing in silence. A pressure builds behind your eyes — your thoughts feel exposed, prised open." },
   { weight: 2, monsterIds: ["hill_giant"],          count: [1, 2], flavor: "Hill giants hurling boulders from the ridge. Each impact shakes the ground like an earthquake." },
   { weight: 2, monsterIds: ["stone_giant"],         count: 1,      flavor: "A stone giant steps from the cliff face itself — perfectly camouflaged until it moves. It hefts a boulder the size of a cart." },
   { weight: 1, monsterIds: ["frost_giant"],         count: 1,      flavor: "A frost giant strides through the mist, greataxe resting on one shoulder. Ice crystals form in its wake." },

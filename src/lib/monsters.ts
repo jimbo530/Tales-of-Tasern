@@ -1,4 +1,4 @@
-export type MonsterSize = "tiny" | "small" | "medium" | "large";
+export type MonsterSize = "tiny" | "small" | "medium" | "large" | "huge";
 export type MonsterType =
   | "beast"
   | "humanoid"
@@ -867,12 +867,12 @@ export const MONSTERS: Monster[] = [
     description: "A bear with an owl's head, driven mad by hunger.",
   },
   {
-    id: "displacer_beast", name: "Displacer Beast", cr: 4, size: "large", type: "magical_beast",
+    id: "glimmerstalk", name: "Glimmerstalk", cr: 4, size: "large", type: "magical_beast",
     hp: 51, ac: 16, str: 8, dex: 5, con: 6, int: 1, wis: 2, cha: 1,
-    attack: "Tentacles +9 (1d6+4)", damage: "1d6+4", speed: 40,
-    special: "Displacement (50% miss chance)",
+    attack: "Lashing Feelers +9 (1d6+4)", damage: "1d6+4", speed: 40,
+    special: "Lightsmear (50% miss chance)",
     terrain: ["forest", "plains"],
-    description: "A six-legged panther whose image shifts, making it nearly impossible to hit.",
+    description: "A long-limbed marsh cat the fen-folk swear is two beasts in one — its true body never quite where the eye reports. Light bends around it like oil on water, and the lash of its barbed feelers comes from a hand-span aside of where it seems to stand.",
   },
   {
     id: "griffon", name: "Griffon", cr: 4, size: "large", type: "magical_beast",
@@ -1050,12 +1050,12 @@ export const MONSTERS: Monster[] = [
   // CR 8
   // =======================================================================
   {
-    id: "mind_flayer", name: "Mind Flayer", cr: 8, size: "medium", type: "aberration",
+    id: "maw_priest", name: "Maw-Priest", cr: 8, size: "medium", type: "aberration",
     hp: 44, ac: 15, str: 2, dex: 4, con: 2, int: 9, wis: 7, cha: 7,
-    attack: "Tentacle +8 (1d4+1)", damage: "1d4+1", speed: 30,
-    special: "Mind blast (60ft cone, Will DC 17 or stunned 3d4 rounds), extract brain, spell resistance 25",
+    attack: "Feeler +8 (1d4+1)", damage: "1d4+1", speed: 30,
+    special: "Silent Scream (60ft cone, Will DC 17 or stunned 3d4 rounds), hollowing, ward against magic 25",
     terrain: ["underground"],
-    description: "An alien intellect with face-tentacles that feeds on brains.",
+    description: "A grey, robed thing that crawled up out of the Iron Maw with a nest of feelers where a face should be. It speaks in no tongue, only a pressure behind the eyes — and those it takes are found days later, breathing but emptied, their thoughts eaten clean.",
   },
   {
     id: "frost_giant", name: "Frost Giant", cr: 8, size: "large", type: "humanoid",
@@ -1080,6 +1080,133 @@ export const MONSTERS: Monster[] = [
     special: "Lightning breath (80ft line, 8d8, Ref DC 18), create/destroy water",
     terrain: ["desert"],
     description: "A young dragon crackling with lightning, ruler of the sand wastes.",
+  },
+
+  // =======================================================================
+  // CONTENT EXPANSION — renamed/rethemed from the 3.5 SRD (OGL open content).
+  // All ability scores converted -10 (min 1) per project convention.
+  // Product Identity creatures carry genuine Tasern reskins (new name + flavor).
+  // Marquee items flagged in CONTENT-INTEGRATION report for the owner's flavor pass.
+  // =======================================================================
+
+  // ── CR 0.5–1 fillers ──
+  {
+    id: "mudwretch", name: "Mudwretch", cr: 0.5, size: "small", type: "humanoid",
+    hp: 5, ac: 14, str: 1, dex: 3, con: 2, int: 1, wis: 1, cha: 1,
+    attack: "Rusty shiv +1 (1d4)", damage: "1d4", speed: 30,
+    special: "Pack tactics (+1 attack per adjacent ally, max +3)",
+    terrain: ["swamp", "underground"],
+    description: "A stunted, web-fingered scavenger of the tide-flats, scuttling up from the drains beneath Kardov's Gate to strip the drowned of their boots and teeth.",
+  },
+  {
+    id: "carrion_creeper", name: "Carrion Creeper", cr: 1, size: "large", type: "aberration",
+    hp: 13, ac: 15, str: 4, dex: 3, con: 3, int: 1, wis: 5, cha: 1,
+    attack: "Tendrils +4 (paralysis)", damage: "0", speed: 30,
+    special: "Paralytic tendrils (8 attacks, Fort DC 13 or paralyzed 2d4 rounds)",
+    terrain: ["underground", "swamp"],
+    description: "A pallid, many-legged worm the length of a longboat that hauls itself along sewer ceilings, its ring of grey feelers leaving victims twitching and helpless while it feeds. (Reskin of an SRD crawler.)",
+  },
+  {
+    id: "fen_lurker", name: "Fen Lurker", cr: 1, size: "medium", type: "plant",
+    hp: 11, ac: 13, str: 5, dex: 1, con: 4, int: 1, wis: 1, cha: 1,
+    attack: "Slam +3 (1d6+1 plus 1d4 acid)", damage: "1d6+1", speed: 20,
+    special: "Acid (1d4 on hit), camouflage in marsh (Hide +8)",
+    terrain: ["swamp"],
+    description: "A hummock of rotted reeds and black water that rises on root-legs when the unwary step too close, its touch blistering with bog-acid.",
+  },
+
+  // ── CR 2–3 fillers ──
+  {
+    id: "razorbeak", name: "Razorbeak", cr: 2, size: "small", type: "magical_beast",
+    hp: 10, ac: 15, str: 1, dex: 4, con: 1, int: 1, wis: 3, cha: 1,
+    attack: "Bite +2 (1d4) plus latch", damage: "1d4", speed: 10,
+    special: "Flock attack (latch on, drain 1d4 blood/round), flight 40ft",
+    terrain: ["swamp", "forest"],
+    description: "A leathery rag of a bird with a needle beak and a hunger for warm blood; they come in clouds at dusk over the marsh and leave cattle dead by dawn.",
+  },
+  {
+    id: "tunnel_brute", name: "Tunnel Brute", cr: 2, size: "large", type: "humanoid",
+    hp: 19, ac: 16, str: 7, dex: 2, con: 5, int: 1, wis: 1, cha: 1,
+    attack: "Greatclub +5 (1d10+4)", damage: "1d10+4", speed: 30,
+    special: "Darkvision 90ft, light sensitivity (-1 in daylight)",
+    terrain: ["underground", "mountain"],
+    description: "A hulking, ash-skinned digger bred in the old mine-warrens below the city, blind in sunlight but a terror in the dark tunnels it calls home.",
+  },
+  {
+    id: "ridge_stalker", name: "Ridge Stalker", cr: 3, size: "large", type: "magical_beast",
+    hp: 26, ac: 14, str: 7, dex: 2, con: 5, int: 1, wis: 2, cha: 1,
+    attack: "Bite +6 (1d8+4), Claws +4 (1d4+2)", damage: "1d8+4", speed: 40,
+    special: "Burrow 20ft, leap from earth (charge +4, knockdown)",
+    terrain: ["mountain", "plains", "desert"],
+    description: "An armor-plated land-shark that swims through soil and erupts beneath travelers on the high passes, jaws first. (Reskin of an SRD burrowing predator.)",
+  },
+  {
+    id: "shadowcloak", name: "Shadowcloak", cr: 5, size: "large", type: "aberration",
+    hp: 45, ac: 19, str: 11, dex: 6, con: 7, int: 4, wis: 5, cha: 5,
+    attack: "Tail slap +8 (1d6+5), Bite +3 (1d4+2)", damage: "1d6+5", speed: 10,
+    special: "Moan (Fort DC 15 or hold 5 rounds), engulf, fly 40ft, shadow shift",
+    terrain: ["underground"],
+    description: "What looks like a black travel-cloak nailed to a cave wall until it peels away on bony wings, all toothed maw and whipping tail, its low moan freezing prey where they stand. (Reskin of the SRD cloaker.)",
+  },
+
+  // ── CR 6–7 mid-tier ──
+  {
+    id: "fungal_horror", name: "Fungal Horror", cr: 6, size: "large", type: "plant",
+    hp: 60, ac: 17, str: 9, dex: 1, con: 8, int: 1, wis: 1, cha: 1,
+    attack: "Slam +11 (2d6+6)", damage: "2d6+6", speed: 20,
+    special: "Engulf, immune to lightning (heals 1/dmg), constrict",
+    terrain: ["swamp", "forest"],
+    description: "A shambling heap of glistening fen-rot and tangled root that drinks the lightning of storms to grow ever larger, smothering whatever it folds into its mass. (Reskin of an SRD plant horror.)",
+  },
+  {
+    id: "stone_render", name: "Stone Render", cr: 6, size: "large", type: "magical_beast",
+    hp: 65, ac: 19, str: 11, dex: 2, con: 8, int: 1, wis: 3, cha: 1,
+    attack: "Bite +12 (2d6+7), Claws +7 (1d8+3)", damage: "2d6+7", speed: 30,
+    special: "Rend (extra 2d8+10 if both claws hit), scent",
+    terrain: ["mountain", "plains"],
+    description: "A grey, two-legged brute with a slab of a jaw and forelimbs like quarry-picks, said to be born where a hill-troll dies on cursed ground. (Reskin of an SRD render.)",
+  },
+  {
+    id: "venom_lord", name: "Venom Lord", cr: 7, size: "large", type: "aberration",
+    hp: 75, ac: 20, str: 8, dex: 4, con: 7, int: 6, wis: 6, cha: 5,
+    attack: "Sting +11 (1d8+4 plus poison)", damage: "1d8+4", speed: 30,
+    special: "Poison (Fort DC 18 or 1d6 CON), spell-like abilities (charm, hold person)",
+    terrain: ["swamp", "underground"],
+    description: "A coiled, serpent-bodied sorcerer of the drowned places, crown-frilled and cold-eyed, that bends weaker minds to guard its sunken hoard.",
+  },
+
+  // ── CR 9–12 endgame (new top end) ──
+  {
+    id: "marsh_wyrm", name: "Marsh Wyrm", cr: 9, size: "huge", type: "dragon",
+    hp: 152, ac: 24, str: 11, dex: 1, con: 7, int: 4, wis: 5, cha: 4,
+    attack: "Bite +18 (2d8+7), Claws +13 (2d6+3)", damage: "2d8+7", speed: 40,
+    special: "Acid breath (80ft line, 12d4, Ref DC 21), frightful presence, water mastery",
+    terrain: ["swamp"],
+    description: "An adult of the black marsh-dragons, moss-scaled and patient, whose breath strips flesh to bone and whose passing turns whole villages to reeking fen.",
+  },
+  {
+    id: "frost_jarl", name: "Frost Jarl", cr: 9, size: "large", type: "humanoid",
+    hp: 142, ac: 22, str: 21, dex: 1, con: 11, int: 2, wis: 4, cha: 3,
+    attack: "Greataxe +20 (3d6+15)", damage: "3d6+15", speed: 40,
+    special: "Rock throwing (2d6+10, 120ft), cold immunity, command frost-kin",
+    terrain: ["mountain"],
+    description: "A war-chief of the ice-bound clans, taller and crueler than his kin, who wears the skulls of slain heroes as a belt and leads the winter raids down from the peaks.",
+  },
+  {
+    id: "bone_tyrant", name: "Bone Tyrant", cr: 11, size: "medium", type: "undead",
+    hp: 104, ac: 24, str: 3, dex: 4, con: 1, int: 6, wis: 6, cha: 8,
+    attack: "Touch +12 (1d8+5 negative)", damage: "1d8+5", speed: 30,
+    special: "Fear aura (DC 19), paralyzing touch (DC 19), channel negative energy, turn resistance +4",
+    terrain: ["underground", "swamp"],
+    description: "A crowned skeleton wrapped in the rags of a buried king, risen from the Crypts of Ashen Memory with a will that never died and a hatred for the breathing that has only sharpened in the dark.",
+  },
+  {
+    id: "deep_terror", name: "Deep Terror", cr: 12, size: "huge", type: "aberration",
+    hp: 119, ac: 21, str: 13, dex: 1, con: 9, int: 8, wis: 9, cha: 9,
+    attack: "Tentacle +16 (1d8+6), Bite +11 (2d6+3)", damage: "1d8+6", speed: 10,
+    special: "Enslave (DC 18, 3/day, dominate at 60ft), psionics, slime (transmutes flesh)",
+    terrain: ["underground", "swamp"],
+    description: "An ancient thing from the black water under the world, ringed in lashing arms and a lamprey maw, that rules drowned cities through the hollowed-out minds of those it has enslaved. (Reskin of an SRD deep aberration.)",
   },
 ];
 
