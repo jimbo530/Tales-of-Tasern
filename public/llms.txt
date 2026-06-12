@@ -34,7 +34,7 @@ function; liquidity is locked by the absence of code.
 
 The two pools per launch:
 - TOKEN / Money for Trees — 70% of supply. Money for Trees is a USDC-backed deposit receipt
-  whose Aave yield funds verified tree planting. It is NOT a stablecoin.
+  whose Aave yield is directed toward tree planting. It is NOT a stablecoin.
 - TOKEN / Meme for Trees (MfT) — 30% of supply. MfT is a meme born on Bankr plus open tools,
   and it is the network heartbeat that reactors burn.
 
@@ -48,17 +48,19 @@ ReactorPrimeV3 is the terminal reactor — it fires last with accumulated fees f
 network. Anyone can fire any reactor; it is permissionless. Call execute() (selector
 0x61461954); a reactor reverts cheaply if its cooldown has not elapsed.
 
-## Community Vaults — earn yield on idle USDC while funding real forests
+## Community Vaults — put idle USDC to work as an LP position that also funds tree planting
 
 Put idle treasury USDC to work like a normal LP position, self-custodied: deposit USDC from
 YOUR wallet, the shares are credited to YOUR wallet, withdraw anytime to USDC or the token.
 Your position earns pool trading fees plus vault yield, and the Money for Trees backing routes
-a share of system yield to verified tree planting — you earn, forests grow.
+a share of system yield toward tree planting. Returns vary with pool volume and Aave rates
+and are not guaranteed.
 
 Plain contracts on Base (chain 8453), CommunityLPVaultV4. When you deposit USDC, half is
 minted into Money for Trees and half buys the community token; both become V2 LP. All swaps
-are price-impact guarded (max 5% of the pool per transaction) — no deposit or withdrawal can
-execute at a bad price.
+are price-impact guarded: a swap that would exceed the vault's configured maximum price
+impact (default 5% of the pool per transaction) reverts instead of executing. For large
+amounts, queue the deposit and process it in chunks.
 
 Agent integration (approve USDC to the vault first):
 - deposit(uint256 usdcAmount) — instant; must be <= maxInstantDeposit() (view, 6 decimals)
@@ -125,10 +127,11 @@ Verification guide: https://tasern.quest/launcher/verify-burn.html
 - Meme for Trees (MfT): 0x8FB87d13B40B1A67B22ED1a17e2835fe7e3a9bA3 — meme born on Bankr plus
   open tools; the network heartbeat. Every launched token has a Meme pool.
 - Money for Trees: 0xe3dd3881477c20C17Df080cEec0C1bD0C065A072 — USDC-backed deposit receipt
-  (6 decimals). Aave yield funds tree planting. NOT a stablecoin. Every launch pairs 70% of
-  supply against it.
-- CHAR: 0x20b048fA035D5763685D695e66aDF62c5D9F5055 — carbon credit token. 1 CHAR = 1 lb CO2e
-  biochar. Collected from trading fees and removed from markets permanently.
+  (6 decimals). A share of Aave yield is directed to tree planting. NOT a stablecoin. Every
+  launch pairs 70% of supply against it.
+- CHAR: 0x20b048fA035D5763685D695e66aDF62c5D9F5055 — carbon-credit token. 1 CHAR = 1 lb CO2e
+  biochar. Collected from trading fees and sent to the network burn address; the mission is
+  to connect these burns to real carbon retirement.
 
 ## Contracts (Base, chain 8453)
 
