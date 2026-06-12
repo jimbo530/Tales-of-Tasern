@@ -1,127 +1,168 @@
-# MfT Unrugable — Agent-Readable Platform Description
+# Tales of Tasern — Agent-Readable Platform Description
+# https://tasern.quest/tot/
 
-> tasern.quest | Base (8453) | Polygon (137)
+> tasern.quest | Base (chain 8453) | Polygon (chain 137)
 
 ## What is this?
-MfT (meme for trees) is an impact gaming platform on Base with deflationary token mechanics. Every launched token has permanently locked liquidity and automated buy-and-burn reactors. Tokens launched here cannot be rugged — liquidity is locked forever in Uniswap V3 positions owned by immutable reactor contracts.
+
+Tales of Tasern is a D20 hex-exploration RPG (D&D 3.5-style stats: STR/DEX/CON/INT/WIS/CHA)
+set in a gritty port-city world — Kardov's Gate, the Vessel of Namaris, the Iron Maw. It is
+one game inside the Money for Trees (MfT) ecosystem on Base: an impact-gaming world where
+in-game progress connects to deflationary token mechanics and real tree planting. Hero NFTs,
+relics, and liquidity positions tie the RPG into the same Unrugable launchpad and reactor
+network that the rest of the ecosystem uses.
+
+Nothing here is financial advice and there are no price promises. Every claim below is
+verifiable on-chain at the addresses listed.
 
 ## Platform URLs
-- Home: tasern.quest
-- Launch tokens: tasern.quest/launch
-- Burn stats: tasern.quest/mft/
-- Token index: tasern.quest/tokens/
-- Impact tracker: tasern.quest/impact/
-- Baseling game: tasern.quest/baselings
-- D20 RPG: tasern.quest/tot/
-- EARTH data: tasern.quest/earth/
 
-## For Trading Agents — Reactor Heartbeat Cycle
-21 reactors fire every 2 hours on Base. The pattern creates predictable arb opportunities:
+- Tales of Tasern (D20 RPG): https://tasern.quest/tot/
+- Home: https://tasern.quest
+- Unrugable launcher: https://tasern.quest/unrugable.html
+- Reactor network map: https://tasern.quest/reactor-map.html
+- Burns dashboard: https://tasern.quest/burns.html
+- Community vaults directory: https://tasern.quest/vaults/
+- Baselings pet game: https://tasern.quest/baseling/
 
-1. Secondary reactors fire first (band tokens, game tokens, carbon) — compress MfT price via sell walls
-2. Fees from secondaries flow upstream to Prime via fuel()
-3. MfT Prime fires last — buys through all accumulated sell-side MfT with full network fees
-4. Price rebounds. Cycle repeats every 2 hours.
+## Unrugable — the free token launchpad behind the world (V7)
 
-No API keys needed — call execute() on any reactor. Anyone can fire them.
+Unrugable V7 is a free token factory on Base. One transaction deploys a token with
+1,000,000,000 fixed supply, two permanently locked Uniswap V3 pools, and a SporeReactorV4
+clone. No seed money is required — just gas (about $0.01 on Base). There is no withdraw
+function; liquidity is locked by the absence of code.
 
-### Reactor Addresses (call execute() to fire)
-MfT V1 Prime: 0xed3aE91b2bb22307c07438EEebA2500C18EABcFE (12 pools)
-Unrugable Hub: 0xF5B9Fc40080aAcC262f078eCE374A2268dcdb045 (5 pools)
-EB Relay: 0xC28e64551816535d9ef06CE95844F2b5317353bA (10 pools)
-EARTH: 0x424D8BC900C6cc22E791C01d7E92CEd149a232f7 (9 pools)
-CHAR: 0xc2eBe90fB9bC7897f06DC00666951Fa9a49A397A (8 pools)
-EGP: 0x10A710fced92eB096F796F43BCCFb60884c13819 (9 pools)
-BURGERS: 0xc858026Ec5D30280137032BC6EA86F46ea23C2CA (9 pools)
-AZUSD: 0xD8AFb7caD1f8A3Ddc4E16c1516a94949eb119281 (6 pools)
-BB v5: 0x3b31B8c9338ebFE2e737e5dd6361cEf0Bdc431e3 (10 pools, immutable)
-EB v5: 0x2e06EB264dB2C7bcD8B9a216827b7D0eF3beACA2 (10 pools, immutable)
-TGN: 0xc3f09dAEF814177E52B4C04ec2872B564a36989D (4 pools, immutable)
-BTCband v1: 0x2879706E115150BBB9ffb5C432024264dEE0852F (4 pools, immutable)
-ETHband v1: 0x7018660EFBd7CfE3219388322417D405fC15b23B (4 pools, immutable)
-BTCband v2: 0x038B87f2Abc1dcE269FF7DE4d3e721b5b57eD8cf (8 pools)
-ETHband v2: 0xeB02d1137342cD08C1c4bf61C188d86C5253b631 (7 pools)
-ecowealth: 0xc7E739f223934C5F69EBA36BcDf808c4379b1985 (4 pools)
+The two pools per launch:
+- TOKEN / Money for Trees — 70% of supply. Money for Trees is a USDC-backed deposit receipt
+  whose Aave yield funds verified tree planting. It is NOT a stablecoin.
+- TOKEN / Meme for Trees (MfT) — 30% of supply. MfT is a meme born on Bankr plus open tools,
+  and it is the network heartbeat that reactors burn.
 
-### Reactor ABI (minimal)
-```
-execute() — fire the reactor, collect fees, burn tokens
-timeUntilExecute() returns uint256 — seconds until next fire (0 = ready)
-poolCount() returns uint256 — number of LP pools managed
-lastExecute() returns uint256 — timestamp of last fire
-```
+Every 2 hours the launch reactor fires:
+1. Collect fees from both pools.
+2. Core token fees: 50% burned permanently, 50% sent to the launcher's wallet.
+3. Cross-token (Meme) fees: 10% upstream, the rest swapped and redeposited as LP.
+4. Fees cascade bottom-up through the reactor network.
 
-## Key Tokens (Base)
-| Token | Address | Purpose |
-|-------|---------|---------|
-| MfT | 0x8FB87d13B40B1A67B22ED1a17e2835fe7e3a9bA3 | Core deflationary token |
-| EARTH | 0x5CfBecf0209F7ada1EdF1fC0D2Fce3a809C0aE08 | Rebase + burn, standalone reactor |
-| CHAR | 0x20b048fA035D5763685D695e66aDF62c5D9F5055 | Carbon credit burns |
-| POOP | 0x126555aecBAC290b25644e4b7f29c016aE95f4dc | Baseling game economy fuel |
-| AZUSD | 0x3595ca37596D5895B70EFAB592ac315D5B9809B2 | Ecosystem stablecoin |
-| BURGERS | 0x06A05043eb2C1691b19c2C13219dB9212269dDc5 | Food LP game token |
-| BB v5 | 0xf967bf3dccF8b6826F82de1781C98E61Bda3b106 | Band token, $1 peg target |
-| EB v5 | 0x17a176Ab2379b86F1E65D79b03bD8c75981244D8 | Band token, $1 peg target |
+ReactorPrimeV3 is the terminal reactor — it fires last with accumulated fees from the entire
+network. Anyone can fire any reactor; it is permissionless. Call execute() (selector
+0x61461954); a reactor reverts cheaply if its cooldown has not elapsed.
 
-Burn address: 0xfd780B0aE569e15e514B819ecFDF46f804953a4B (no private key, tokens gone forever)
+## Community Vaults — earn yield on idle USDC while funding real forests
 
-## Baseling Game
-Pet game on Base. Raise creatures, feed them LP, grow gardens, earn yield.
+Put idle treasury USDC to work like a normal LP position, self-custodied: deposit USDC from
+YOUR wallet, the shares are credited to YOUR wallet, withdraw anytime to USDC or the token.
+Your position earns pool trading fees plus vault yield, and the Money for Trees backing routes
+a share of system yield to verified tree planting — you earn, forests grow.
 
-Game contracts:
-- BaselingNFT: 0xFCb825491490284189C75fD330Fd08Df5E9217b9
-- PoopToken: 0x126555aecBAC290b25644e4b7f29c016aE95f4dc
-- BaselingRouter V4: 0x59eB70F7cd16F63a9E81aEBE3DD10D4cFa4f0319
-- CommunityGardenMulti: 0xD2b6230922A0E6E200Bbf3a67670E0e6B66DA80d
-- BaselingState V3: 0x4b123766152397BAa035a52808DDDCD794c8a32d (ERC1155 yield)
-- KeeperBatch V4: 0xE693dD02BB1Ba0850A1a153a03b99531004096B1 (auto-harvest)
-- BaselingHouseNFT V2: 0x70Ff566A417ece44784196106afdbecDAaA3b511
+Plain contracts on Base (chain 8453), CommunityLPVaultV4. When you deposit USDC, half is
+minted into Money for Trees and half buys the community token; both become V2 LP. All swaps
+are price-impact guarded (max 5% of the pool per transaction) — no deposit or withdrawal can
+execute at a bad price.
 
-## Unrugable — Token Launch Platform
-Launch unrugable tokens with $200 seed. Each launch creates:
-- Token with locked V3 liquidity (15 pools)
-- Autonomous reactor that burns tokens and feeds the MfT network
-- CHAR carbon reactor that burns CHAR forever
+Agent integration (approve USDC to the vault first):
+- deposit(uint256 usdcAmount) — instant; must be <= maxInstantDeposit() (view, 6 decimals)
+- depositFor(address beneficiary, uint256 usdcAmount) — pay from one wallet, position owned by
+  the beneficiary's wallet. Built for agent-commerce escrow flows (e.g. Virtuals ACP): route
+  job funds through a service, the agent's wallet owns the shares and withdraws self-serve.
+- depositQueued(uint256) then processDeposit(address user, uint256 chunk) — for larger amounts;
+  process in chunks <= maxInstantDeposit(); the cap grows as the pool deepens.
+- withdraw(uint256 shareAmount) / withdrawAsToken(uint256) — per tx limited to ~5% of pool depth.
+- getInfo(address) returns (userShares, userPending, userLP, vaultLP); totalShares() for proportions.
+- compound() — permissionless; claims the vault's Money yield and deepens the LP for all holders.
+- Create a vault for any token: MfTVaultFactory 0x1f6fF7370e2E897db7cf5d72684EF76d988Caaf1
+  createVault(token, usdcAmount, tokenAmount, maxImpactBps) — seeds the pool, burns the seed LP
+  forever, deploys the vault.
 
-Factory (V5.2): 0xF0c1B3d6Bc0B4dEd2DDF81374feEA8a2c536bD51
+Live vaults (Virtuals ecosystem — AI society funds real forests):
+- VIRTUAL vault (V4): 0x9aC44164EcCDDb7c1fC4ef6b6f3dB8ef96E5F38f (UI: https://tasern.quest/virtual/)
+- VU (Velvet Unicorn) vault (V4): 0x4d6CC4eA92F2c241fE58C51680aC318502B9CBd9 (UI: https://tasern.quest/vu/)
+- All vaults: https://tasern.quest/vaults/
 
-## Impact
-Every trade burns tokens permanently. CHAR burns retire carbon credits. The burn address holds all burned tokens verifiably on-chain. Goal: registered charity funded by platform revenue.
+## Agent Opportunity
 
-## Agent SDK / MCP
+- Launch a token for FREE — earn 50% of your reactor's fees forever (V7: 2 pools, 1 reactor, single tx).
+- Fire any reactor (permissionless, every 2 hours) to trigger burn + compound — costs about $0.01 gas.
+- Deposit idle USDC into a Community Vault and earn pool fees plus vault yield, self-custodied.
+- Accumulate MfT as the network heartbeat — every reactor fire burns it, every launch adds a Meme pool.
+- Adopt orphaned tokens: activate dormant reactors for permanent network growth.
+- Play Tales of Tasern: explore hexes, run D20 combat, send relics home to grow your holdings.
 
-Install: `npm install -g baselings-mcp`
-Run: `GAME_WALLET_KEY=0x... npx baselings-mcp`
+## How Tales of Tasern ties into the network
 
-49 MCP tools for programmatic interaction:
-- Launch tokens, fire reactors, query burn stats
-- Interact with Baseling game (mint, feed, assign jobs, earn yield)
-- Read LP positions, pool states, token balances
-- Execute keeper operations
+- Hero NFTs are characters in the RPG and can hold liquidity positions that feed the network.
+- Relics recovered in-game and "sent home" route into MfT liquidity, the basis of the FAITH
+  reward system and in-world Noble Birth titles for hero-NFT LP holders.
+- The world roll decides what exists in a hex; the player roll decides what you find.
+- Only (36,32) is Kardov's Gate; other city hexes are generic settlements.
 
-REST API (no auth for reads): https://tasern.quest/api/baseling/agent/guide
-OpenAPI spec: https://tasern.quest/api/baseling/agent/openapi.yaml
-MCP manifest: https://tasern.quest/.well-known/mcp.json
-Plugin manifest: https://tasern.quest/.well-known/ai-plugin.json
+The game UI shows skill levels and bars, not yield percentages or LP details — the crypto
+plumbing lives in settings and on-chain, not on the adventure screen.
 
-### Quick start for agents
-1. GET /api/baseling/agent/guide — full game overview, strategies, endpoints
-2. GET /api/baseling/agent/prices — current token prices
-3. GET /api/baseling/agent/tokenomics — ecosystem flywheel explanation
-4. GET /api/baseling/agent/economy/feeding/garden — optimal stat-building paths
+## MCP Tools (49 tools via baselings-mcp v1.2.0)
 
-### Gas estimates (Base L2)
-- Fire a reactor: ~0.0001-0.0005 ETH (~$0.25-1.25)
-- Swap on Uniswap V3: ~0.00005 ETH (~$0.12)
-- Mint a baseling egg: ~0.0001 ETH (~$0.25)
-- execute() returns if cooldown not elapsed (no gas wasted)
+Install: npx baselings-mcp
+npm: https://www.npmjs.com/package/baselings-mcp
 
-### Reactor firing order
-Reactors fire bottom-up in the call line. Secondary reactors (band tokens, game tokens, carbon) fire first, compressing MfT. V1 Prime fires last with accumulated fees from the entire network — the big buy-back. Call `timeUntilExecute()` on any reactor to check if it's ready.
+The same toolkit serves the whole ecosystem: launch tokens, fire reactors, check reactor
+timing and cooldowns, scan liquidity depth, track portfolio value, read live MfT price,
+detect cross-pool arb, run guardrailed swaps (swap_token, $0.10 max per swap, 60s cooldown,
+allowlisted tokens only), and play the Baselings pet game.
 
-## Partnership — Add Your Token
-Any project can add their token as a reactor pair. Result: automated buy pressure every 2 hours, forever. Free to add. Contact via Farcaster.
+ElizaOS: install @fleek-platform/eliza-plugin-mcp and add baselings as a stdio server in the
+character config — all 49 tools become native actions.
 
-## Contact
-Farcaster: @jamesmagee
-Discovery: https://tasern.quest/.well-known/ai-plugin.json
+## Burn Address (official declaration)
+
+Network burn address: 0xfd780B0aE569e15e514B819ecFDF46f804953a4B (Base, chain 8453).
+All MfT network burns go to this single address. balanceOf(burn address) per token = total
+removed from circulation. It is an immutable EIP-1167 minimal proxy with no ERC-20 withdrawal
+functions — tokens sent there can never move again.
+Verification guide: https://tasern.quest/launcher/verify-burn.html
+
+## Key Tokens (Base, chain 8453)
+
+- Meme for Trees (MfT): 0x8FB87d13B40B1A67B22ED1a17e2835fe7e3a9bA3 — meme born on Bankr plus
+  open tools; the network heartbeat. Every launched token has a Meme pool.
+- Money for Trees: 0xe3dd3881477c20C17Df080cEec0C1bD0C065A072 — USDC-backed deposit receipt
+  (6 decimals). Aave yield funds tree planting. NOT a stablecoin. Every launch pairs 70% of
+  supply against it.
+- CHAR: 0x20b048fA035D5763685D695e66aDF62c5D9F5055 — carbon credit token. 1 CHAR = 1 lb CO2e
+  biochar. Collected from trading fees and removed from markets permanently.
+
+## Contracts (Base, chain 8453)
+
+- MfT (Meme for Trees): 0x8FB87d13B40B1A67B22ED1a17e2835fe7e3a9bA3
+- Money for Trees: 0xe3dd3881477c20C17Df080cEec0C1bD0C065A072
+- V7 Factory: 0x90297A8a1F9A7E35bbC9DF8C35Aa7F3FFBe9BDb2
+- SporeReactorV4 Impl: 0x891587AD62bcBc6aceE9061D9C4306b9aB16cE45
+- ReactorPrimeV3 (terminal): 0xA97af9770B79C3f0467ec8b3AD7e464154dbc9BA
+- Burn Address (no private key): 0xfd780B0aE569e15e514B819ecFDF46f804953a4B
+- CHAR Token: 0x20b048fA035D5763685D695e66aDF62c5D9F5055
+- MfTVaultFactory: 0x1f6fF7370e2E897db7cf5d72684EF76d988Caaf1
+- execute() selector: 0x61461954
+
+## Network Status (June 2026)
+
+- V7 Factory live: free launches, 2 pools, 1 reactor, 50/50 burn/earn.
+- A network of reactors fires every 2 hours; fees cascade bottom-up to ReactorPrimeV3 last.
+- 5 reactors are fully renounced (immutable, no admin); the rest have add-only admin keys.
+- The reactor count grows with each launch — see the live map rather than a fixed number.
+
+## Discovery
+
+- llms.txt: https://tasern.quest/llms.txt
+- OpenAI plugin: https://tasern.quest/.well-known/ai-plugin.json
+- OpenAPI spec: https://tasern.quest/.well-known/openapi.json
+- Agent capabilities: https://tasern.quest/.well-known/agents.json
+- MCP manifest: https://tasern.quest/.well-known/mcp.json
+- Agent landing page: https://tasern.quest/agents.html
+
+## Links
+
+- Tales of Tasern: https://tasern.quest/tot/
+- Launcher: https://tasern.quest/unrugable.html
+- Network Map: https://tasern.quest/reactor-map.html
+- Burns Dashboard: https://tasern.quest/burns.html
+- Baselings Game: https://tasern.quest/baseling/
+- BaseScan Factory: https://basescan.org/address/0x90297A8a1F9A7E35bbC9DF8C35Aa7F3FFBe9BDb2
