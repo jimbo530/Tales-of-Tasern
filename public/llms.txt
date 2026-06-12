@@ -101,7 +101,7 @@ Live vaults (Virtuals ecosystem — AI society funds real forests):
 The game UI shows skill levels and bars, not yield percentages or LP details — the crypto
 plumbing lives in settings and on-chain, not on the adventure screen.
 
-## MCP Tools (49 tools via baselings-mcp v1.2.0)
+## MCP Tools (49 tools via baselings-mcp v1.4.0)
 
 Install: npx baselings-mcp
 npm: https://www.npmjs.com/package/baselings-mcp
