@@ -138,6 +138,7 @@ export type CharacterSave = {
   fame: number;                     // performer renown (0+), unlocks venues & tips
   last_rest_hour: number;           // hour when the player last rested (for exhaustion)
   last_ate_hour: number;            // hour when the player last ate (for starvation exhaustion)
+  last_upkeep_day?: number;         // in-game day the daily upkeep (spoilage/wages/feast) last ran — persisted so it can't double-run on remount
   hex_threats: Record<string, { expires_day: number; encounter_key: string }>;  // "q,r" → territorial threat
   gate_mail: { coins: Coins; messages: string[] };  // accumulates at Kardov's Gate — must visit to collect
   battles_won: number;
@@ -366,6 +367,7 @@ export function defaultSave(
     fame: 0,
     last_rest_hour: 0,
     last_ate_hour: 0,
+    last_upkeep_day: 1,         // day 1 upkeep is considered done at character creation (no wages/spoilage on the first morning)
     hex_threats: {},
     gate_mail: { coins: { gp: 0, sp: 0, cp: 0 }, messages: [] },
     battles_won: 0,

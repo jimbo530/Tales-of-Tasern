@@ -99,31 +99,43 @@ export default function Home() {
     cycleView("battle");
   }, [save, activeCharacter]);
 
-  // Migrate old saves: give each party its own coins/food/inventory/equipment/hp
-  if (save?.parties && !save.parties.some(p => p.coins !== undefined)) {
-    const migrated = migratePartySupplies(save.parties, save.active_party_index ?? 0, {
-      coins: save.coins, food: save.food, inventory: save.inventory, equipment: save.equipment,
-      current_hp: save.current_hp, max_hp: save.max_hp,
-    });
-    updateSave({ parties: migrated });
-  }
-  // Rename legacy "Main Party" → "Party 1"
-  if (save?.parties?.[0]?.name === "Main Party") {
-    updateSave({ parties: save.parties.map((p, i) => i === 0 ? { ...p, name: "Party 1" } : p) });
-  }
-  // Migrate: move top-level progression into hero.progression + add follower xp/loyalty
-  if (save && !save.party?.heroes?.[0]?.progression) {
-    const progPatch = migrateEntityProgression(save);
-    if (progPatch) updateSave(progPatch);
-  }
+  // One-time save migrations. These must run in an effect (not the render body),
+  // because calling updateSave() during render is a setState-during-render bug.
+  // Keyed on the loaded wallet so they run once per save load; each migration is
+  // self-guarded so a re-run is a harmless no-op.
+  useEffect(() => {
+    if (!save) return;
+    // Migrate old saves: give each party its own coins/food/inventory/equipment/hp
+    if (save.parties && !save.parties.some(p => p.coins !== undefined)) {
+      const migrated = migratePartySupplies(save.parties, save.active_party_index ?? 0, {
+        coins: save.coins, food: save.food, inventory: save.inventory, equipment: save.equipment,
+        current_hp: save.current_hp, max_hp: save.max_hp,
+      });
+      updateSave({ parties: migrated });
+    }
+    // Rename legacy "Main Party" → "Party 1"
+    if (save.parties?.[0]?.name === "Main Party") {
+      updateSave({ parties: save.parties.map((p, i) => i === 0 ? { ...p, name: "Party 1" } : p) });
+    }
+    // Migrate: move top-level progression into hero.progression + add follower xp/loyalty
+    if (!save.party?.heroes?.[0]?.progression) {
+      const progPatch = migrateEntityProgression(save);
+      if (progPatch) updateSave(progPatch);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [save?.wallet]);
 
   // ── Daily: spoilage check + follower upkeep ──
-  const lastUpkeepDay = useRef<number>(-1);
+  // Runs in an effect (not the render body — that was a setState-during-render bug)
+  // and guards on the PERSISTED last_upkeep_day rather than a per-mount ref, so a
+  // remount with the clock past a day boundary can't double-run wages/spoilage.
   const currentDay = save ? Math.floor((save.hour ?? 0) / 24) + 1 : 0;
-  if (save && currentDay > 0 && currentDay !== lastUpkeepDay.current) {
-    lastUpkeepDay.current = currentDay;
+  useEffect(() => {
+    if (!save || currentDay <= 0) return;
+    const lastUpkeepDay = save.last_upkeep_day ?? 0;
+    if (currentDay <= lastUpkeepDay) return;
     const gameHour = save.hour ?? 0;
-    const dayUpdates: Record<string, unknown> = {};
+    const dayUpdates: Record<string, unknown> = { last_upkeep_day: currentDay };
 
     // Spoilage: fresh food past its spoilHour turns into spoiled meat or loam
     const spoiledFresh = save.inventory.filter(it => it.spoilHour !== undefined && it.id.startsWith("fresh_") && gameHour >= it.spoilHour);
@@ -221,8 +233,10 @@ export default function Home() {
       }
     }
 
-    if (Object.keys(dayUpdates).length > 0) updateSave(dayUpdates);
-  }
+    // dayUpdates always carries last_upkeep_day, so this also advances the guard.
+    updateSave(dayUpdates);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [save?.wallet, currentDay]);
 
   // Cycling background images
   const BG_IMAGES = ["/bg-plains-1.webp", "/bg-plains-2.webp", "/bg-plains-3.webp", "/bg-plains-4.webp", "/bg-desert-1.webp", "/bg-desert-2.webp", "/bg-desert-3.webp", "/bg-desert-4.webp"];
