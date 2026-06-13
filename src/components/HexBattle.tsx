@@ -19,6 +19,16 @@ import { getAvailableAbilities, ABILITY_DEFS, type AvailableAbility } from "@/li
 import { MONSTERS } from "@/lib/monsters";
 import type { DungeonRoom } from "@/lib/dungeons";
 
+// Post-battle per-entity survival state, keyed by the entity's save-side id
+// (hero nft_address or follower id). Lets the caller persist each hero's and
+// follower's surviving HP + spell slots, instead of only the leader's.
+export type BattleSurvivor = {
+  key: string;                 // BattleUnit.entityKey
+  currentHp: number;           // HP at battle end (may be <=0 if downed/dead)
+  maxHp: number;
+  spellSlotsUsed?: number[];   // slots expended during the battle (casters only)
+};
+
 export type QuestEncounter = {
   questId: string;
   questName: string;
@@ -54,7 +64,7 @@ type Props = {
   playerProgression?: import("@/lib/party").EntityProgression;  // multiclass progression
   extraHeroes?: { char: NftCharacter; charClass?: import("@/lib/classes").CharacterClass; featIds?: string[]; weaponName?: string; currentHp?: number; progression?: import("@/lib/party").EntityProgression }[];  // additional NFT heroes in party
   onExit: () => void;
-  onBattleEnd?: (outcome: "victory" | "defeat" | "retreat", difficulty: "easy" | "medium" | "hard" | "deadly", enemies: string[], rounds: number, spellSlotsUsed?: number[], remainingHp?: number, prisoners?: string[]) => Promise<{ xp: number; goldCp: number; loot: { name: string }[]; levelsGained: number; newLevel: number } | null> | void;
+  onBattleEnd?: (outcome: "victory" | "defeat" | "retreat", difficulty: "easy" | "medium" | "hard" | "deadly", enemies: string[], rounds: number, spellSlotsUsed?: number[], remainingHp?: number, prisoners?: string[], survivors?: BattleSurvivor[]) => Promise<{ xp: number; goldCp: number; loot: { name: string }[]; levelsGained: number; newLevel: number } | null> | void;
   onDefeatChoice?: (choice: "perish" | "rescue") => void;  // death penalty choice
   playerUseRopeBonus?: number;  // Use Rope skill ranks + DEX mod for binding prisoners
 };
@@ -328,6 +338,20 @@ export function HexBattle({ characters, questEncounter, playerFeats, playerWeapo
   // Spell system helpers
   const playerUnit = state.units.find(u => u.isPlayer);
   const canCastSpells = !!(playerUnit?.availableSpells && playerUnit.availableSpells.length > 0 && playerUnit.spellSlots);
+
+  // Snapshot every player-side unit's surviving HP + spell slots, keyed by its
+  // save-side entityKey, so the caller can persist per-hero / per-follower state
+  // (not just the leader's). Units without an entityKey are skipped.
+  const collectSurvivors = useCallback((): BattleSurvivor[] =>
+    state.units
+      .filter(u => u.isPlayer && u.entityKey)
+      .map(u => ({
+        key: u.entityKey!,
+        currentHp: Math.round(u.currentHp),
+        maxHp: Math.round(u.maxHp),
+        spellSlotsUsed: u.spellSlotsUsed ? [...u.spellSlotsUsed] : undefined,
+      })),
+  [state.units]);
 
   /** Get castable spells grouped by level with remaining slot counts */
   const castableSpells = useMemo(() => {
@@ -1250,7 +1274,7 @@ export function HexBattle({ characters, questEncounter, playerFeats, playerWeapo
                   if (onBattleEnd) {
                     const enemyNames = state.units.filter(u => !u.isPlayer).map(u => u.name);
                     const prisonerNames = boundPrisoners.map(pid => state.units.find(u => u.id === pid)?.name).filter(Boolean) as string[];
-                    const result = await onBattleEnd("victory", effectiveDifficulty, enemyNames, state.round, playerUnit?.spellSlotsUsed, playerUnit?.currentHp, prisonerNames);
+                    const result = await onBattleEnd("victory", effectiveDifficulty, enemyNames, state.round, playerUnit?.spellSlotsUsed, playerUnit?.currentHp, prisonerNames, collectSurvivors());
                     if (result) { setBattleRewards(result); setCollectingRewards(false); return; }
                   }
                   setCollectingRewards(false);
@@ -1315,7 +1339,7 @@ export function HexBattle({ characters, questEncounter, playerFeats, playerWeapo
               <button onClick={async () => {
                 if (onBattleEnd) {
                   const enemyNames = state.units.filter(u => !u.isPlayer).map(u => u.name);
-                  await onBattleEnd("retreat", effectiveDifficulty, enemyNames, state.round, playerUnit?.spellSlotsUsed, playerUnit?.currentHp);
+                  await onBattleEnd("retreat", effectiveDifficulty, enemyNames, state.round, playerUnit?.spellSlotsUsed, playerUnit?.currentHp, undefined, collectSurvivors());
                 }
                 onExit();
               }} className="px-6 py-2 rounded text-sm font-bold uppercase tracking-widest"

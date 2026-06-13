@@ -181,8 +181,15 @@ export function useCharacterSave() {
     enemies: string[];
     outcome: "victory" | "defeat" | "retreat";
     rounds: number;
+    // Per-entity surviving HP + spell slots from the battle, keyed by save-side
+    // id (hero nft_address / follower id). HP persists between battles for ALL
+    // heroes and followers (no auto-heal to full on the next fight).
+    survivors?: { key: string; currentHp: number; maxHp: number; spellSlotsUsed?: number[] }[];
   }) => {
     if (!save || !address) return null;
+
+    // Lookup of post-battle survival state by entity key.
+    const survivorByKey = new Map((result.survivors ?? []).map(s => [s.key, s]));
 
     const leaderProg = getLeaderProgression(save);
     const leaderHeroIdx = save.party.heroes.findIndex(h => h.isLeader) ?? 0;
@@ -217,6 +224,16 @@ export function useCharacterSave() {
       let updatedProg = heroProg
         ? { ...heroProg, xp: heroResult.xp, total_level: heroResult.level }
         : undefined;
+
+      // Persist this hero's surviving HP + spell slots (HP carries between battles).
+      const heroSurvivor = survivorByKey.get(hero.nft_address);
+      if (updatedProg && heroSurvivor) {
+        updatedProg = {
+          ...updatedProg,
+          current_hp: Math.max(0, Math.min(heroSurvivor.currentHp, updatedProg.max_hp)),
+          ...(heroSurvivor.spellSlotsUsed ? { spell_slots_used: heroSurvivor.spellSlotsUsed } : {}),
+        };
+      }
 
       if (heroResult.levelsGained > 0) {
         const isLeader = hIdx === (leaderHeroIdx >= 0 ? leaderHeroIdx : 0);
@@ -270,6 +287,22 @@ export function useCharacterSave() {
             let autoF = updated;
             for (let i = 0; i < fResult.levelsGained; i++) autoF = autoLevelFollower(autoF);
             updated = autoF;
+          }
+        }
+        // Persist this follower's surviving HP + spell slots (HP carries between battles).
+        const fSurvivor = survivorByKey.get(f.id);
+        if (fSurvivor) {
+          const survHp = Math.max(0, Math.min(fSurvivor.currentHp, updated.maxHp));
+          updated = { ...updated, hp: survHp };
+          if (updated.progression) {
+            updated = {
+              ...updated,
+              progression: {
+                ...updated.progression,
+                current_hp: Math.max(0, Math.min(fSurvivor.currentHp, updated.progression.max_hp)),
+                ...(fSurvivor.spellSlotsUsed ? { spell_slots_used: fSurvivor.spellSlotsUsed } : {}),
+              },
+            };
           }
         }
         return updated;

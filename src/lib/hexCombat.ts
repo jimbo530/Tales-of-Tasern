@@ -142,6 +142,7 @@ export type SpellCastResult = {
 
 export type BattleUnit = {
   id: string;
+  entityKey?: string;   // save-side identity for player units: hero nft_address (lowercased) or follower id. Used to write post-battle HP/spell-slots back to the right entity.
   name: string;
   imageUrl?: string;
   imageEmoji?: string;
@@ -421,6 +422,7 @@ export function createPlayerUnit(
     : progression ? Math.min(progression.current_hp, maxHp) : maxHp;
   return {
     id: heroIndex !== undefined && heroIndex > 0 ? `hero-${heroIndex}` : "player",
+    entityKey: char.contractAddress?.toLowerCase(),   // hero's save-side nft_address
     name: char.name,
     imageUrl: char.imageUrl ?? undefined,
     position,
@@ -585,6 +587,7 @@ export function createFollowerUnit(follower: Follower, position: HexCoord, index
     };
     return {
       id: `follower-${index}`,
+      entityKey: follower.id,   // follower's save-side instance id
       name: follower.name,
       imageEmoji: isRanged ? "\u{1F3F9}" : "\u2694\uFE0F",
       position,

@@ -351,8 +351,10 @@ export default function Home() {
         cycleView(hasCharacter ? "worldMap" : "menu");
       }
     }}
-    onBattleEnd={async (outcome, difficulty, enemies, rounds, spellSlotsUsed, remainingHp) => {
-      const result = await recordBattle({ difficulty, enemies, outcome, rounds });
+    onBattleEnd={async (outcome, difficulty, enemies, rounds, spellSlotsUsed, remainingHp, _prisoners, survivors) => {
+      // recordBattle writes per-entity surviving HP + spell slots for ALL heroes
+      // and followers (HP persists between battles — no auto-heal on next fight).
+      const result = await recordBattle({ difficulty, enemies, outcome, rounds, survivors });
       const rewards = result ? { xp: result.rewards.xp, goldCp: result.rewards.goldCp, loot: (result.rewards.loot ?? []).map((l: { name: string }) => ({ name: l.name })), levelsGained: result.levelsGained, newLevel: (save?.level ?? 1) + result.levelsGained } : null;
       if (rewards) setLastBattleRewards(rewards);
       // Populate level-up queue from battle results
