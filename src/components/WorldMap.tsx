@@ -124,6 +124,8 @@ export type WorldLuckResult = {
   description: string;
   hpChange: number;
   goldChange: number;           // flat copper change (costs negative, tips positive)
+  setCoinsAbsolute?: Coins;     // replace the purse with this EXACT consolidated purse (money changer) — value change already baked in, do NOT also apply goldChange
+  service?: boolean;            // paid service (money changer, healing prayer), NOT a rest — must not clear exhaustion, advance the clock, or grant rest-heal
   coinReward?: Coins;           // mixed denomination coin find (preserves cp/sp/gp weight)
   foodChange: number;
   xpChange: number;
@@ -4043,7 +4045,10 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
                                 worldRoll: 0, skillRoll: 0, skillDC: 0,
                                 interaction: "rest", outcome: "nothing",
                                 description: `The priests tend to ${character?.name ?? "the leader"}'s wounds. Full HP restored.`,
+                                // Paid heal: applies hpChange (full restore) for the fee, but
+                                // service:true so it does NOT clear exhaustion or skip 8h like a rest.
                                 hpChange: healAmt, goldChange: -blessingCost, foodChange: 0, xpChange: 0,
+                                service: true,
                               };
                               setLastAction(result); onAction(result);
                             }
@@ -4067,17 +4072,26 @@ export function WorldMap({ save, character, characters, onTravel, onAction, onBu
                               worldRoll: 0, skillRoll: 0, skillDC: 0,
                               interaction: "rest", outcome: "nothing",
                               description: `The temple changes your coin. ${formatCoins(save.coins)} → ${formatCoins(newCoins)} (10% tithe).`,
-                              hpChange: 0, goldChange: -fee, foodChange: 0, xpChange: 0,
+                              // Replace the purse with the consolidated coins (the 10% temple
+                              // tithe is already baked into newCoins). service:true so this
+                              // paid service does NOT clear exhaustion or skip 8h. goldChange
+                              // stays 0 — the value change is fully expressed by setCoinsAbsolute.
+                              hpChange: 0, goldChange: 0, foodChange: 0, xpChange: 0,
+                              setCoinsAbsolute: newCoins,
+                              service: true,
                               factionRepChange: factionId ? { factionId, amount: Math.max(1, Math.floor(fee / 100)) } : undefined,
                             };
                             setLastAction(result); onAction(result);
                           }}
-                          disabled={save.coins.sp + save.coins.cp <= 0}
+                          // Disable when the purse is already fully consolidated (cp<10 and
+                          // sp<10 — nothing left to roll up into gold), so the player can't
+                          // pay the tithe for zero consolidation benefit.
+                          disabled={save.coins.cp < 10 && save.coins.sp < 10}
                           className="px-2 py-1.5 rounded text-xs font-bold"
                           style={{
                             background: "rgba(251,191,36,0.08)", color: "rgba(251,191,36,0.7)",
                             border: "1px solid rgba(251,191,36,0.2)", fontSize: "0.5rem",
-                            opacity: save.coins.sp + save.coins.cp <= 0 ? 0.4 : 1,
+                            opacity: save.coins.cp < 10 && save.coins.sp < 10 ? 0.4 : 1,
                           }}>
                           Money Changer (10% tithe — earns temple favor)
                         </button>

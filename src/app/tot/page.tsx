@@ -890,9 +890,24 @@ export default function Home() {
       onAction={(result: WorldLuckResult) => {
         const newHour = (save.hour ?? 0) + 8;  // 8 hours per rest/search
         const updates: Record<string, unknown> = {};
-        const isInnRest = result.interaction === "rest" && result.worldRoll === 0 && result.goldChange < 0;
+        // A paid service (money changer, healing prayer) is NOT a rest: it must not
+        // clear exhaustion, grant rest-heal, or skip 8h — even though it uses
+        // interaction:"rest" for styling. Genuine inns/sleep set service:false/undefined.
+        const isService = result.service === true;
+        const isInnRest = !isService && result.interaction === "rest" && result.worldRoll === 0 && result.goldChange < 0;
 
-        if (isInnRest) {
+        if (isService) {
+          // Pay any flat fee (e.g. Healing Prayer). Money Changer carries goldChange:0
+          // and expresses its value change via setCoinsAbsolute instead.
+          if (result.goldChange < 0) {
+            updates.coins = subtractCp(save.coins, Math.abs(result.goldChange)) ?? save.coins;
+          }
+          // Apply the service's explicit hp effect (Healing Prayer full restore; 0 for changer).
+          if (result.hpChange !== 0) {
+            updates.current_hp = Math.min(save.max_hp, Math.max(1, save.current_hp + result.hpChange));
+          }
+          // NOTE: deliberately no last_rest_hour / last_ate_hour / time-skip here.
+        } else if (isInnRest) {
           updates.coins = subtractCp(save.coins, Math.abs(result.goldChange)) ?? { gp: 0, sp: 0, cp: 0 };
           updates.current_hp = Math.min(save.max_hp, save.current_hp + result.hpChange);
           updates.last_rest_hour = newHour;
@@ -922,6 +937,11 @@ export default function Home() {
         if (result.goldChange > 0) {
           const base2 = (updates.coins as { gp: number; sp: number; cp: number } | undefined) ?? coinBase;
           updates.coins = addCp(base2, result.goldChange);
+        }
+        // Money changer: replace the purse outright with the consolidated coins.
+        // The fee is already baked into setCoinsAbsolute, so this takes final precedence.
+        if (result.setCoinsAbsolute) {
+          updates.coins = result.setCoinsAbsolute;
         }
         // Add hunted fresh food to inventory with spoil timer
         if (result.huntedFood && result.huntedFood.length > 0) {
@@ -1018,24 +1038,29 @@ export default function Home() {
           updates.party = { heroes: updatedHeroes };
         }
 
-        // Multi-party: mark current party as acted, auto-advance
-        if (save.parties && save.parties.length > 1) {
-          const idx = save.active_party_index ?? 0;
-          const updatedParties = save.parties.map((p, i) =>
-            i === idx ? { ...p, has_acted: true } : p
-          );
-          if (allPartiesActed(updatedParties)) {
+        // A paid service (money changer, healing prayer) does NOT consume a turn:
+        // no 8h time-skip and the party is not marked as acted. Only genuine
+        // rests/searches/actions advance the clock.
+        if (!isService) {
+          // Multi-party: mark current party as acted, auto-advance
+          if (save.parties && save.parties.length > 1) {
+            const idx = save.active_party_index ?? 0;
+            const updatedParties = save.parties.map((p, i) =>
+              i === idx ? { ...p, has_acted: true } : p
+            );
+            if (allPartiesActed(updatedParties)) {
+              updates.hour = newHour;
+              updates.day = Math.floor(newHour / 24) + 1;
+              updates.parties = resetPartyRound(updatedParties);
+              updates.active_party_index = 0;
+            } else {
+              updates.parties = updatedParties;
+              updates.active_party_index = nextUnactedParty(updatedParties, idx);
+            }
+          } else {
             updates.hour = newHour;
             updates.day = Math.floor(newHour / 24) + 1;
-            updates.parties = resetPartyRound(updatedParties);
-            updates.active_party_index = 0;
-          } else {
-            updates.parties = updatedParties;
-            updates.active_party_index = nextUnactedParty(updatedParties, idx);
           }
-        } else {
-          updates.hour = newHour;
-          updates.day = Math.floor(newHour / 24) + 1;
         }
 
         updateSave(updates);
