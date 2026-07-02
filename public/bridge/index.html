@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tasern Bridge &mdash; Polygon &harr; Base</title>
+<meta name="description" content="Bridge the Tasern nation tokens and PR25 between Polygon and Base.">
+<script src="https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.umd.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --green:#3fb950;--green-dim:#2ea043;--green-glow:rgba(63,185,80,.25);
+  --card:rgba(21,26,33,.82);--border:rgba(55,65,81,.5);
+  --text:#c9d1d9;--dim:#8b949e;--bright:#e6edf3;
+  --accent:#58a6ff;--orange:#d29922;--purple:#a371f7;--red:#f85149;
+  --mono:'SF Mono','Cascadia Code','Fira Code',monospace;
+}
+body{margin:0;color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;line-height:1.6;min-height:100vh;background:#0b0e11}
+body::before{content:'';position:fixed;inset:0;z-index:-2;background:url('/mft/bg.jpg') center/cover no-repeat}
+body::after{content:'';position:fixed;inset:0;z-index:-1;background:linear-gradient(180deg,rgba(5,10,5,.68) 0%,rgba(8,14,8,.85) 40%,rgba(5,10,5,.94) 100%)}
+.wrap{max-width:560px;margin:0 auto;padding:2rem 1.25rem;position:relative;z-index:1}
+header{text-align:center;margin-bottom:2rem}
+.logo{font-size:2.4rem;font-weight:800;color:#fff;letter-spacing:.08em;text-shadow:0 0 40px var(--green-glow),0 2px 8px rgba(0,0,0,.6)}
+.logo span{color:var(--green)}
+.subtitle{font-size:.95rem;color:var(--green);font-weight:500}
+.glass{background:var(--card);border:1px solid var(--border);border-radius:12px;backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px)}
+.panel{padding:1.4rem}
+label{display:block;font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:var(--dim);font-weight:600;margin-bottom:.35rem}
+select,input{width:100%;padding:.8rem .9rem;border-radius:9px;border:1px solid var(--border);background:rgba(11,14,17,.8);color:var(--bright);font-size:1.05rem;font-weight:600}
+select:focus,input:focus{outline:none;border-color:var(--green)}
+.row{margin-bottom:1.1rem}
+.dir{display:grid;grid-template-columns:1fr auto 1fr;gap:.6rem;align-items:center;margin-bottom:1.1rem}
+.chain-box{text-align:center;padding:.8rem .5rem;border-radius:9px;border:1px solid var(--border);background:rgba(11,14,17,.6)}
+.chain-box .cname{font-weight:700;color:var(--bright);font-size:1rem}
+.chain-box .cbal{font-family:var(--mono);font-size:.75rem;color:var(--dim);margin-top:.15rem;word-break:break-all}
+.chain-box.pol .cname{color:var(--purple)}
+.chain-box.base .cname{color:var(--accent)}
+#flipBtn{background:none;border:1px solid var(--border);border-radius:99px;width:44px;height:44px;color:var(--green);font-size:1.3rem;cursor:pointer;transition:transform .2s}
+#flipBtn:hover{transform:rotate(180deg);border-color:var(--green)}
+.maxlink{float:right;font-size:.72rem;color:var(--accent);cursor:pointer;text-transform:none;letter-spacing:0}
+button.action{width:100%;padding:1rem;border:none;border-radius:9px;font-size:1.1rem;font-weight:700;cursor:pointer;background:var(--green-dim);color:#fff;transition:background .15s}
+button.action:hover{background:var(--green)}
+button.action:disabled{background:#30363d;color:var(--dim);cursor:not-allowed}
+.status{margin-top:1rem;padding:.9rem 1rem;border-radius:9px;font-size:.88rem;display:none}
+.status.show{display:block}
+.status.info{background:rgba(88,166,255,.1);border:1px solid rgba(88,166,255,.3);color:var(--accent)}
+.status.ok{background:rgba(63,185,80,.1);border:1px solid rgba(63,185,80,.35);color:var(--green)}
+.status.err{background:rgba(248,81,73,.1);border:1px solid rgba(248,81,73,.35);color:var(--red)}
+.note{margin-top:1.4rem;font-size:.8rem;color:var(--dim);text-align:center;line-height:1.5}
+.note b{color:var(--text)}
+.egp-note{margin-top:.8rem;font-size:.78rem;color:var(--dim);text-align:center}
+.egp-note a{color:var(--accent);text-decoration:none}
+footer{text-align:center;margin-top:2rem;font-size:.75rem;color:var(--dim)}
+footer a{color:var(--green);text-decoration:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo">TASERN <span>BRIDGE</span></div>
+    <div class="subtitle">Move nation coins &amp; PR25 between Polygon and Base</div>
+  </header>
+
+  <div class="glass panel">
+    <div class="dir">
+      <div class="chain-box pol" id="fromBox"><div class="cname" id="fromName">Polygon</div><div class="cbal" id="fromBal">&mdash;</div></div>
+      <button id="flipBtn" title="Flip direction">&#8646;</button>
+      <div class="chain-box base" id="toBox"><div class="cname" id="toName">Base</div><div class="cbal" id="toBal">&mdash;</div></div>
+    </div>
+
+    <div class="row">
+      <label>Token</label>
+      <select id="tokenSel"></select>
+    </div>
+
+    <div class="row">
+      <label>Amount <span class="maxlink" id="maxLink">MAX</span></label>
+      <input id="amount" type="text" inputmode="decimal" placeholder="0.0" autocomplete="off">
+    </div>
+
+    <button class="action" id="actionBtn">Connect Wallet</button>
+    <div class="status" id="status"></div>
+  </div>
+
+  <div class="note"><b>How it works:</b> your coins <b>lock</b> in the vault on the sending chain and arrive on the other chain in a minute or two. Nothing is ever minted beyond the original fixed supply.</div>
+  <div class="egp-note">Looking for <b>EGP</b>? Elven Gold bridges via <a href="https://app.chainport.io" target="_blank" rel="noopener">ChainPort</a>.</div>
+
+  <footer><a href="/tokens/">Token Directory</a> &middot; <a href="/">Tales of Tasern</a></footer>
+</div>
+
+<script>
+// ===== Filled in after deployment (tasern-bridge-deployment.json) =====
+const CONFIG = {
+  polygonVault: '0xBB62C2DCcCa84047b4445b1dB568A3c475B5016f',
+  baseVault: '0x492Ae01aad197D77ebB817597d8Fa096122040F8',
+  tokens: [
+    { symbol:'DDD',  name:'Durgan Dynasty Doubloon', decimals:18, polygon:'0x4bf82cf0d6b2afc87367052b793097153c859d38', base:'0x87CD3a19a30b7f714dd0D6020dAb8e9EBE4fe8C4' },
+    { symbol:'OGC',  name:'Orklin Gold Coin',        decimals:18, polygon:'0xccf37622e6b72352e7b410481dd4913563038b7c', base:'0xa294dF3BB33197a579756Fc530c0504b2a75aF32' },
+    { symbol:'PKT',  name:'Pirate Kings Treasure',   decimals:18, polygon:'0x8a088dceecbcf457762eb7c66f78fff27dc0c04a', base:'0x9157359C9a1CDbAD85414069DDc29a63C55cfEc4' },
+    { symbol:'BTN',  name:'Button',                  decimals:8,  polygon:'0xd7c584d40216576f1d8651eab8bef9de69497666', base:'0xe11C804CD5eF617302c18c946370fE245DC43c5C' },
+    { symbol:'IGS',  name:'Igypt Gold Sovereign',    decimals:8,  polygon:'0xe302672798d12e7f68c783db2c2d5e6b48ccf3ce', base:'0xea320718a64854f0547A1213A3043678ea5755bB' },
+    { symbol:'DHG',  name:'Dragon Hoard Gold',       decimals:8,  polygon:'0x75c0a194cd8b4f01d5ed58be5b7c5b61a9c69d0a', base:'0x25cFE0a4dC89c6D1Ad3984D30B6F8365bCb4a75C' },
+    { symbol:'LGP',  name:'Luminosity Gold Piece',   decimals:18, polygon:'0xddc330761761751e005333208889bfe36c6e6760', base:'0x72b92244E8eE724F12bcC02B3CE158121e0E3666' },
+    { symbol:'PR25', name:'PR25',                    decimals:10, polygon:'0x72e4327f592e9cb09d5730a55d1d68de144af53c', base:'0xE6B95cc9307BEB5d37fe2e0891d680cb9C9aac6b' },
+  ],
+};
+// ======================================================================
+
+const CHAINS = {
+  polygon: { id: 137,  hex: '0x89',   name: 'Polygon', rpc: 'https://polygon-rpc.com',  explorer: 'https://polygonscan.com' },
+  base:    { id: 8453, hex: '0x2105', name: 'Base',    rpc: 'https://mainnet.base.org', explorer: 'https://basescan.org' },
+};
+const ERC20 = ['function balanceOf(address) view returns (uint256)','function allowance(address,address) view returns (uint256)','function approve(address,uint256) returns (bool)'];
+const POLY_VAULT = ['function bridgeToBase(address token, uint256 amount, address baseRecipient)'];
+const BASE_VAULT = ['function bridgeToPolygon(address twin, uint256 amount, address polygonRecipient)'];
+
+let from = 'polygon';
+let account = null;
+
+const $ = (id) => document.getElementById(id);
+const readers = {
+  polygon: new ethers.JsonRpcProvider(CHAINS.polygon.rpc),
+  base: new ethers.JsonRpcProvider(CHAINS.base.rpc),
+};
+
+function selectedToken() { return CONFIG.tokens[Number($('tokenSel').value) || 0]; }
+function setStatus(kind, html) { const el = $('status'); el.className = 'status show ' + kind; el.innerHTML = html; }
+function clearStatus() { $('status').className = 'status'; }
+
+function renderDirection() {
+  const to = from === 'polygon' ? 'base' : 'polygon';
+  $('fromName').textContent = CHAINS[from].name;
+  $('toName').textContent = CHAINS[to].name;
+  $('fromBox').className = 'chain-box ' + (from === 'polygon' ? 'pol' : 'base');
+  $('toBox').className = 'chain-box ' + (to === 'polygon' ? 'pol' : 'base');
+  refreshBalances();
+}
+
+async function refreshBalances() {
+  $('fromBal').textContent = '—'; $('toBal').textContent = '—';
+  if (!account || !CONFIG.tokens.length) return;
+  const t = selectedToken();
+  for (const side of ['polygon', 'base']) {
+    const addr = t[side];
+    const el = side === from ? $('fromBal') : $('toBal');
+    if (!addr) { el.textContent = 'not deployed yet'; continue; }
+    try {
+      const bal = await new ethers.Contract(addr, ERC20, readers[side]).balanceOf(account);
+      el.textContent = Number(ethers.formatUnits(bal, t.decimals)).toLocaleString(undefined, { maximumFractionDigits: 4 });
+    } catch { el.textContent = '?'; }
+  }
+}
+
+async function ensureChain(side) {
+  const c = CHAINS[side];
+  try {
+    await window.ethereum.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: c.hex }] });
+  } catch (e) {
+    if (e.code === 4902) {
+      await window.ethereum.request({ method: 'wallet_addEthereumChain', params: [{ chainId: c.hex, chainName: c.name, rpcUrls: [c.rpc], nativeCurrency: side === 'polygon' ? { name: 'POL', symbol: 'POL', decimals: 18 } : { name: 'Ether', symbol: 'ETH', decimals: 18 }, blockExplorerUrls: [c.explorer] }] });
+    } else throw e;
+  }
+}
+
+async function connect() {
+  if (!window.ethereum) { setStatus('err', 'No wallet found. Open this page in a wallet browser or install one.'); return; }
+  const accs = await window.ethereum.request({ method: 'eth_requestAccounts' });
+  account = ethers.getAddress(accs[0]);
+  $('actionBtn').textContent = 'Bridge';
+  refreshBalances();
+}
+
+async function bridge() {
+  const t = selectedToken();
+  const amtStr = $('amount').value.trim();
+  if (!amtStr || Number(amtStr) <= 0) { setStatus('err', 'Enter an amount first.'); return; }
+  const amount = ethers.parseUnits(amtStr, t.decimals);
+  const vaultAddr = from === 'polygon' ? CONFIG.polygonVault : CONFIG.baseVault;
+  const tokenAddr = t[from];
+  if (!vaultAddr || !tokenAddr) { setStatus('err', 'Bridge not live for this token yet.'); return; }
+
+  const btn = $('actionBtn'); btn.disabled = true;
+  try {
+    await ensureChain(from);
+    const provider = new ethers.BrowserProvider(window.ethereum);
+    const signer = await provider.getSigner();
+    const token = new ethers.Contract(tokenAddr, ERC20, signer);
+
+    // exact approval, only if needed
+    const allowance = await token.allowance(account, vaultAddr);
+    if (allowance < amount) {
+      setStatus('info', '<b>Step 1 of 2:</b> approve ' + amtStr + ' ' + t.symbol + ' in your wallet&hellip;');
+      await (await token.approve(vaultAddr, amount)).wait();
+    }
+
+    setStatus('info', '<b>Step 2 of 2:</b> confirm the bridge transaction&hellip;');
+    let tx;
+    if (from === 'polygon') {
+      const vault = new ethers.Contract(vaultAddr, POLY_VAULT, signer);
+      tx = await vault.bridgeToBase(tokenAddr, amount, account);
+    } else {
+      const vault = new ethers.Contract(vaultAddr, BASE_VAULT, signer);
+      tx = await vault.bridgeToPolygon(tokenAddr, amount, account);
+    }
+    await tx.wait();
+    const to = from === 'polygon' ? 'Base' : 'Polygon';
+    setStatus('ok', '<b>Locked!</b> Your ' + t.symbol + ' is on its way to <b>' + to + '</b>. It lands after confirmations &mdash; usually <b>2&ndash;5 minutes</b>. <a href="' + CHAINS[from].explorer + '/tx/' + tx.hash + '" target="_blank" rel="noopener" style="color:inherit">view tx</a>');
+    $('amount').value = '';
+    setTimeout(refreshBalances, 5000);
+    // keep refreshing so the arrival shows up
+    const iv = setInterval(refreshBalances, 30000);
+    setTimeout(() => clearInterval(iv), 600000);
+  } catch (e) {
+    setStatus('err', 'Failed: ' + (e.shortMessage || e.message || e).toString().slice(0, 160));
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function init() {
+  const sel = $('tokenSel');
+  if (!CONFIG.tokens.length || !CONFIG.polygonVault) {
+    sel.innerHTML = '<option>Coming soon</option>';
+    $('actionBtn').disabled = true;
+    $('actionBtn').textContent = 'Bridge not live yet';
+  } else {
+    sel.innerHTML = CONFIG.tokens.map((t, i) => `<option value="${i}">${t.symbol} — ${t.name}</option>`).join('');
+  }
+  sel.addEventListener('change', () => { clearStatus(); refreshBalances(); });
+  $('flipBtn').addEventListener('click', () => { from = from === 'polygon' ? 'base' : 'polygon'; clearStatus(); renderDirection(); });
+  $('maxLink').addEventListener('click', async () => {
+    const t = selectedToken(); if (!account || !t || !t[from]) return;
+    const bal = await new ethers.Contract(t[from], ERC20, readers[from]).balanceOf(account);
+    $('amount').value = ethers.formatUnits(bal, t.decimals);
+  });
+  $('actionBtn').addEventListener('click', () => account ? bridge() : connect());
+  renderDirection();
+}
+init();
+</script>
+</body>
+</html>
