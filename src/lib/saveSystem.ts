@@ -413,6 +413,54 @@ export function setLocalSave(save: CharacterSave) {
 
 // ── Load (local-first for RPG, chain-first for stats) ────────────────────────
 
+// ── Cloud row mapping ────────────────────────────────────────────────────────
+// The full CharacterSave lives in a single `save_data` jsonb column. We also
+// write the handful of flat columns the table already has (for any leaderboard
+// or analytics queries), but `save_data` is the source of truth on read.
+// This avoids the PGRST204 "column not found" failure that occurred when the
+// whole ~50-field object was upserted into a ~22-column table.
+
+type CloudRow = {
+  wallet: string;
+  nft_address: string;
+  class_id: string;
+  level: number;
+  xp: number;
+  battles_won: number;
+  battles_lost: number;
+  total_play_time: number;
+  save_data: CharacterSave;
+  updated_at: string;
+};
+
+function buildCloudRow(save: CharacterSave, now: string): CloudRow {
+  return {
+    wallet: save.wallet.toLowerCase(),
+    nft_address: save.nft_address ?? "",
+    class_id: save.class_id ?? "fighter",
+    level: save.level ?? 1,
+    xp: save.xp ?? 0,
+    battles_won: save.battles_won ?? 0,
+    battles_lost: save.battles_lost ?? 0,
+    total_play_time: save.total_play_time ?? 0,
+    save_data: { ...save, updated_at: now },
+    updated_at: now,
+  };
+}
+
+/** Extract the CharacterSave from a cloud row, tolerating both the new
+ *  (save_data blob) and the legacy (flat columns) shapes. */
+function cloudRowToSave(row: Record<string, unknown>): CharacterSave | null {
+  if (row.save_data && typeof row.save_data === "object") {
+    return row.save_data as CharacterSave;
+  }
+  // Legacy row written before the save_data migration — use the flat columns
+  // as-is. It will be missing newer fields, but migration guards on load fill
+  // the gaps and the next save upgrades it to the blob shape.
+  if (row.wallet) return row as unknown as CharacterSave;
+  return null;
+}
+
 export async function loadCharacterSave(wallet: string): Promise<CharacterSave | null> {
   const local = getLocalSave(wallet);
 
@@ -424,9 +472,14 @@ export async function loadCharacterSave(wallet: string): Promise<CharacterSave |
       .select("*")
       .eq("wallet", wallet.toLowerCase())
       .single();
-    if (!error && data) cloud = data as CharacterSave;
-  } catch {
-    // Offline — that's fine, local is authority anyway
+    // PGRST116 = "no rows" — an expected miss for a first-time player, not an error.
+    if (error && error.code !== "PGRST116") {
+      console.warn("loadCharacterSave: cloud read failed:", error.message);
+    }
+    if (!error && data) cloud = cloudRowToSave(data as Record<string, unknown>);
+  } catch (e) {
+    // Network/offline — local is authority anyway, but surface it.
+    console.warn("loadCharacterSave: cloud unreachable, using local:", e);
   }
 
   // LOCAL wins for RPG data. Cloud is only used if no local save exists.
@@ -460,11 +513,19 @@ export async function saveCharacter(save: Partial<CharacterSave> & { wallet: str
   try {
     const { error } = await supabase
       .from("character_saves")
-      .upsert({ ...merged, updated_at: now }, { onConflict: "wallet" });
-    return !error;
-  } catch {
-    // Offline — queued in local, will sync next time
-    return true; // local save succeeded, that's what matters
+      .upsert(buildCloudRow(merged, now), { onConflict: "wallet" });
+    if (error) {
+      // A real cloud failure (schema, RLS, etc.) — local still holds the save,
+      // but do NOT pretend the cloud write succeeded. Surface it so syncStatus
+      // can show "error" and the next interval retries.
+      console.warn("saveCharacter: cloud upsert failed:", error.message);
+      return false;
+    }
+    return true;
+  } catch (e) {
+    // Network/offline — queued in local, will sync next time. Log, don't hide.
+    console.warn("saveCharacter: cloud unreachable, kept local only:", e);
+    return false;
   }
 }
 
@@ -477,9 +538,14 @@ export async function syncToCloud(wallet: string): Promise<boolean> {
   try {
     const { error } = await supabase
       .from("character_saves")
-      .upsert({ ...local, updated_at: new Date().toISOString() }, { onConflict: "wallet" });
-    return !error;
-  } catch {
+      .upsert(buildCloudRow(local, new Date().toISOString()), { onConflict: "wallet" });
+    if (error) {
+      console.warn("syncToCloud: cloud upsert failed:", error.message);
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.warn("syncToCloud: cloud unreachable:", e);
     return false;
   }
 }

@@ -213,6 +213,10 @@ export const GAME_NFTS: GameNft[] = [
   { name: "Mosswhisper Tallowpaw",              contractAddress: "0xC9F92bA591c816c2dE2710F872C9919E08C0c412", chain: "base" },
   { name: "Virel Quill",                        contractAddress: "0xaeA15d04bfD9A6DCC2B7B13F4BcBBcb11B851530", chain: "base" },
   { name: "Brakkus Thundershade",               contractAddress: "0xA80A6bF549fa41431720F680487872d7B3cF30C4", chain: "polygon" },
+  { name: "Seas Crew - The Black Tide (Orc)",   contractAddress: "0x2E2AB7ae48876f1b4497A04d864C025f7DF58e1f", chain: "base" },
+  { name: "Seas Crew - Sol del Mar (Elf)",      contractAddress: "0x9500880DEC9B310b4a728C75A271a25615A2443E", chain: "base" },
+  { name: "Seas Crew - Redrum Raiders (Goblin)", contractAddress: "0x4ECe491951B759363bCBAF75389a202Fe0584080", chain: "base" },
+  { name: "Seas Crew - Harbor Guard (Human)",   contractAddress: "0x8C1f935F6DbB17d593BF3EC8114A2f045e350545", chain: "base" },
 ];
 // @sync-end:GAME_NFTS
 

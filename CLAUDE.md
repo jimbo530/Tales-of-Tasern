@@ -22,7 +22,7 @@ This is the **d20-stats hex exploration RPG**. It is NOT the simpler card-battle
 - **Shared data**: `src/lib/contracts.ts` has GAME_NFTS and KNOWN_LP_PAIRS (shared with card game)
 - **Game-specific stat mapping**: `STAT_TOKENS` in contracts.ts — maps LP tokens to d20 ability scores
 - **Power-ups**: `src/components/PowerUp.tsx` — ETH → LP → NFT stat boosts
-- **Deploy contracts**: Always use localhost HTML pages in `public/deploy-*.html` with embedded bytecode (never Remix/CLI)
+- **Deploy contracts**: Deploy contracts via a node script + the agent wallet. NEVER build HTML deploy pages.
 - **Lore**: Kardov's Gate, Vessel of Namaris, Iron Maw, High Luminar — gritty port city tone
 - **Economy**: gp/sp/cp with coin weight, money changers, trade goods
 

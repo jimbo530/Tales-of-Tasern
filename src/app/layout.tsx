@@ -4,6 +4,7 @@ import "./globals.css";
 import { Providers } from "@/components/Providers";
 import { ServiceWorkerRegister } from "@/components/ServiceWorkerRegister";
 import { FeedbackFooter } from "@/components/FeedbackFooter";
+import { WalletHeader } from "@/components/WalletHeader";
 
 const geist = Geist({ variable: "--font-geist", subsets: ["latin"] });
 
@@ -35,6 +36,7 @@ export default function RootLayout({
       </head>
       <body className="min-h-full flex flex-col bg-gray-950 text-white">
         <Providers>
+          <WalletHeader />
           {children}
           <FeedbackFooter />
         </Providers>

@@ -2,8 +2,12 @@
 // Checks wallet for ToT heroes and Baselings, returns owned characters
 // v3.0 — Real baseling sprites via arcade-roster API + BaselingSprites renderer
 
+// rotate this key in Alchemy + restrict to your domains
+// Client-side RPC: this key is public at runtime, so it MUST be domain-locked in Alchemy.
+// Placeholder until a real domain-locked key is set; the public RPCs below keep the app working.
+const ALCHEMY_BASE_RPC = "https://base-mainnet.g.alchemy.com/v2/YOUR_ALCHEMY_KEY";
 const BASE_RPCS = [
-  "https://base-mainnet.g.alchemy.com/v2/bwii0dH70pKYTKnqj3aNU",
+  ALCHEMY_BASE_RPC,
   "https://mainnet.base.org",
   "https://base.llamarpc.com"
 ];
